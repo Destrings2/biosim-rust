@@ -1,0 +1,7 @@
+population: 100
+steps_per_generation: 100
+max_generations: 100
+num_threads: 4
+signal_layers: 2
+max_genome_length: 100
+max_number_neurons: 100
