@@ -59,15 +59,15 @@ impl Gene {
 
     pub fn make_random_weight() -> u16 {
         let mut rng = rand::thread_rng();
-        return rng.gen_range(0..=0xefff) - 0x8000;
+        return rng.gen_range(0..=0xffff) - 0x8000;
     }
 
     pub fn make_random_encoding() -> u16 {
         let mut rng = rand::thread_rng();
-        let source_type = rng.gen_range(0..2) == 1;
-        let source_num = rng.gen_range(0..0xff);
-        let sink_type = rng.gen_range(0..2) == 1;
-        let sink_num = rng.gen_range(0..0xff);
+        let source_type = rng.gen_range(0..=1) == 1;
+        let source_num = rng.gen_range(0..=0xff);
+        let sink_type = rng.gen_range(0..=1) == 1;
+        let sink_num = rng.gen_range(0..=0xff);
         return Gene::make_encoding(source_type, source_num, sink_type, sink_num);
     }
 
