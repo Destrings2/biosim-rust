@@ -5,11 +5,12 @@ use std::fs::File;
 use std::io::BufReader;
 use serde::{Serialize, Deserialize};
 
+//<editor-fold desc="Parameter struct">
 // To add a parameter, add it to the `Parameters` struct below.
 // Then, add a function returning its default value to the `parameter_defaults` module.
 // Finally, use the serde default attribute to point to the function.
 #[derive(Serialize, Deserialize, Debug)]
-struct Parameters {
+pub struct Parameters {
     #[serde(default = "parameter_defaults::size_y")]
     pub size_y: u16,
 
@@ -70,6 +71,7 @@ struct Parameters {
     #[serde(default = "parameter_defaults::valence_saturation_magnitude")]
     pub valence_saturation_magnitude: f32,
 }
+//</editor-fold>
 
 impl Parameters {
     pub fn read_from_reader(reader: &mut BufReader<File>) -> Result<Parameters, Box<dyn Error>> {
@@ -82,8 +84,14 @@ impl Parameters {
         let mut reader = BufReader::new(file);
         return Parameters::read_from_reader(&mut reader);
     }
+
+    pub fn defaults() -> Parameters {
+        let params : Parameters = serde_yaml::from_str("default: true").unwrap();
+        return params
+    }
 }
 
+//<editor-fold desc="Unit tests">
 #[cfg(test)]
 mod test {
     use crate::simulation::parameters::Parameters;
@@ -93,7 +101,7 @@ mod test {
     #[test]
     fn test_parameter_read() {
         let parameters = super::Parameters::read_from_file("src/simulation/parameters.yaml").unwrap();
-        assert_eq!(parameters.population, 100);
+        assert_eq!(parameters.population, 128);
         assert_eq!(parameters.steps_per_generation, 100);
         assert_eq!(parameters.max_generations, 100);
         assert_eq!(parameters.num_threads, 4);
@@ -104,10 +112,11 @@ mod test {
 
     #[test]
     fn test_defaults() {
-        let params : Parameters = serde_yaml::from_str("population: 128").unwrap();
+        let params : Parameters = serde_yaml::from_str("default: true").unwrap();
         assert_eq!(params.size_y, size_y());
         assert_eq!(params.kill_enabled, kill_enabled());
-        assert_eq!(params.population, 128);
+        assert_eq!(params.population, 100);
 
     }
 }
+//</editor-fold>

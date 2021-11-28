@@ -1,4 +1,4 @@
-population: 100
+population: 128
 steps_per_generation: 100
 max_generations: 100
 num_threads: 4

@@ -1,3 +1,5 @@
+mod sensor_actions;
+
 use crate::population::genome::Genome;
 
 struct Neuron {
@@ -9,8 +11,6 @@ impl Neuron {
     pub const fn initial_neuron_output() -> f64 {
         return 0.5;
     }
-
-
 }
 
 /// An individual's "brain" is a neural net specified by a set

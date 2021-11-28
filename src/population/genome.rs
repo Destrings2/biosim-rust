@@ -1,4 +1,8 @@
-use crate::population::gene::Gene;
+pub mod gene;
+
+use std::collections::HashMap;
+use gene::Gene;
+use crate::{Parameters};
 
 // An individual's genome is a set of Genes, see [`Gene`]. Each
 // gene is equivalent to one connection in a neural net. An individual's

@@ -1,3 +1,5 @@
+use crate::simulation::parameters::Parameters;
+
 mod simulation;
 mod population;
 

@@ -1,9 +1,14 @@
 use rand::Rng;
 
+#[derive(Clone, Copy)]
 pub struct Gene {
     pub encoding: u16,
     pub weight: u16
 }
+
+pub const NEURON: bool = false;
+pub const ACTION: bool = true;
+pub const SENSOR: bool = true;
 
 // This is quite more messy than the C++ version, as Rust doesn't have bitfields.
 /// Each gene specifies one synaptic connection in a neural net. Each connection has an input (source),
