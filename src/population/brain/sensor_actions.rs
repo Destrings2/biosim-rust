@@ -38,6 +38,15 @@ pub enum Sensor {
     Signal0LR        // W strength of signal0 in the left-right axis
 }
 
+pub const ENABLED_SENSORS: [Sensor; 21] =
+    [
+        Sensor::LocX, Sensor::LocY, Sensor::BoundaryDistX, Sensor::BoundaryDist, Sensor::BoundaryDistY,
+        Sensor::GeneticSimFwd, Sensor::LastMoveDirX, Sensor::LastMoveDirY, Sensor::LongProbePopFwd,
+        Sensor::LongProbeBarFwd, Sensor::Population, Sensor::PopulationFwd, Sensor::PopulationLR,
+        Sensor::Osc1, Sensor::Age, Sensor::BarrierFwd, Sensor::BarrierLR, Sensor::Rnd, Sensor::Signal0,
+        Sensor::Signal0Fwd, Sensor::Signal0LR
+    ];
+
 impl Sensor {
     pub fn get_name(&self) -> String {
         match self {
@@ -117,6 +126,14 @@ pub enum Action {
     MoveReverse,             // W
     KillForward             // W
 }
+
+pub const ENABLED_ACTIONS: [Action; 16] =
+    [
+        Action::MoveX, Action::MoveY, Action::MoveForward, Action::MoveRL, Action::MoveRandom,
+        Action::SetOscillatorPeriod, Action::SetLongProbeDist, Action::SetResponsiveness,
+        Action::EmitSignal0, Action::MoveEast, Action::MoveWest, Action::MoveNorth, Action::MoveSouth,
+        Action::MoveLeft, Action::MoveRight, Action::MoveReverse
+    ];
 
 impl Action {
     fn get_name(&self) -> String {

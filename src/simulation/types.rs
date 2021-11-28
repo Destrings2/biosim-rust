@@ -1,4 +1,5 @@
 use std::f32::consts::TAU;
+use rand::Rng;
 use Compass::{Center, East, North, NorthEast, NorthWest, South, SouthEast, SouthWest, West};
 
 //<editor-fold desc="Constants">
@@ -62,6 +63,10 @@ impl Dir {
 
     pub fn rotate180deg(&self) -> Dir {
         return self.rotate(4);
+    }
+
+    pub fn random() -> Dir {
+        return Dir(COORD_DIR_CONVERSION[rand::thread_rng().gen_range(0..=8) as usize]);
     }
 }
 

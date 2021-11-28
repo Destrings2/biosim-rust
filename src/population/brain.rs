@@ -1,4 +1,4 @@
-mod sensor_actions;
+pub mod sensor_actions;
 
 use crate::population::genome::Genome;
 
@@ -40,4 +40,13 @@ impl Neuron {
 pub struct NeuralNet {
     connections: Genome,
     neurons: Vec<Neuron>,
+}
+
+impl NeuralNet {
+    pub fn new(genome: &Genome) -> NeuralNet {
+        NeuralNet {
+            connections: genome.clone(),
+            neurons: Vec::new(),
+        }
+    }
 }

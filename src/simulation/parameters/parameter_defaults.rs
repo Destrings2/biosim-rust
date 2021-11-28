@@ -36,6 +36,6 @@ pub(super) fn responsiveness() -> f32 { 0.5 }
 
 pub(super) fn responsiveness_curve_k_factor() -> u16 { 2 }
 
-pub(super) fn long_probe_distance() -> u16 { 16 }
+pub(super) fn long_probe_distance() -> u32 { 16 }
 
 pub(super) fn valence_saturation_magnitude() -> f32 { 0.5 }

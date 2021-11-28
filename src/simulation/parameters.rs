@@ -66,7 +66,7 @@ pub struct Parameters {
     pub responsiveness_curve_k_factor: u16,
 
     #[serde(default = "parameter_defaults::long_probe_distance")]
-    pub long_probe_distance: u16,
+    pub long_probe_distance: u32,
 
     #[serde(default = "parameter_defaults::valence_saturation_magnitude")]
     pub valence_saturation_magnitude: f32,
