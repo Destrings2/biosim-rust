@@ -1,7 +1,7 @@
 # biosim-rust
 ## What?
 
-This is a (in-progess) rust implementation of davidmiller/biosim4.
+This is a (in-progess) rust implementation of (davidmiller/biosim4)[https://github.com/davidrmiller/biosim4].
 
 ## Why?
 
