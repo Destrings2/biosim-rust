@@ -16,6 +16,7 @@ pub struct Individual {
     pub challenge_bits: u32,
     pub neural_net: NeuralNet,
     pub genome: Genome,
+    pub num_neurons: u16
 }
 
 impl Individual {
@@ -26,12 +27,13 @@ impl Individual {
             location,
             birth_location: location,
             age: 0,
+            num_neurons: p.max_number_neurons,
             responsiveness: 0.5,
             oscillation_period: 34,
             long_probe_distance: p.long_probe_distance,
             last_move_direction: Dir::random(),
             challenge_bits: 0,
-            neural_net: NeuralNet::new(&genome),
+            neural_net: NeuralNet::new(&genome, p.max_number_neurons),
             genome
         };
     }

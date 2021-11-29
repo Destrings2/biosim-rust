@@ -1,14 +1,14 @@
 use rand::Rng;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Gene {
     pub encoding: u16,
-    pub weight: u16
+    pub weight: i16
 }
 
-pub const NEURON: bool = false;
-pub const ACTION: bool = true;
 pub const SENSOR: bool = true;
+pub const ACTION: bool = true;
+pub const NEURON: bool = false;
 
 // This is quite more messy than the C++ version, as Rust doesn't have bitfields.
 /// Each gene specifies one synaptic connection in a neural net. Each connection has an input (source),
@@ -62,18 +62,14 @@ impl Gene {
         return (source_type as u16) << 15 | (source_num as u16) << 8 | (sink_type as u16) << 7 | (sink_num as u16);
     }
 
-    pub fn make_random_weight() -> u16 {
+    pub fn make_random_weight() -> i16 {
         let mut rng = rand::thread_rng();
-        return rng.gen_range(0..=0xffff) - 0x8000;
+        return rng.gen()
     }
 
     pub fn make_random_encoding() -> u16 {
         let mut rng = rand::thread_rng();
-        let source_type = rng.gen_range(0..=1) == 1;
-        let source_num = rng.gen_range(0..=0xff);
-        let sink_type = rng.gen_range(0..=1) == 1;
-        let sink_num = rng.gen_range(0..=0xff);
-        return Gene::make_encoding(source_type, source_num, sink_type, sink_num);
+        return rng.gen()
     }
 
     pub fn make_random_gene() -> Gene {
@@ -83,11 +79,18 @@ impl Gene {
         };
     }
 
-    pub fn new(source_type: bool, source_num: u8, sink_type: bool, sink_num: u8, weight: u16) -> Gene {
+    pub fn new(source_type: bool, source_num: u8, sink_type: bool, sink_num: u8, weight: i16) -> Gene {
         return Gene {
             encoding: Gene::make_encoding(source_type, source_num, sink_type, sink_num),
             weight
         };
+    }
+}
+
+impl ToString for Gene {
+    fn to_string(&self) -> String {
+        return format!("Gene(source_type={}, source_num={}, sink_type={}, sink_num={}, weight={})",
+                       self.get_source_type(), self.get_source_num(), self.get_sink_type(), self.get_sink_num(), self.weight);
     }
 }
 
@@ -98,10 +101,10 @@ mod test {
 
     #[test]
     fn test_bit_field() {
-        let mut gene = Gene::new(false, 16, true, 25, 1);
+        let mut gene = Gene::new(false, 16, false, 25, 1);
         assert_eq!(gene.get_source_type(), false);
         assert_eq!(gene.get_source_num(), 16);
-        assert_eq!(gene.get_sink_type(), true);
+        assert_eq!(gene.get_sink_type(), false);
         assert_eq!(gene.get_sink_num(), 25);
 
         gene.set_sink_num(99);
