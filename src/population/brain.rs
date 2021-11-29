@@ -6,7 +6,7 @@ use crate::population::brain::sensor_actions::{ENABLED_ACTIONS, ENABLED_SENSORS}
 use crate::population::genome::{Genome, genome_to_string, get_connection_map_from_genome, Node, remove_useless_neurons_from_genome, renumber_genome};
 use crate::population::genome::gene::{ACTION, NEURON, SENSOR};
 
-struct Neuron {
+pub struct Neuron {
     output: f64,
     driven: bool
 }
@@ -42,8 +42,8 @@ impl Neuron {
 /// In the neural net, the neurons that end up connected get new indices
 /// assigned sequentially starting at 0.
 pub struct NeuralNet {
-    connections: Genome,
-    neurons: Vec<Neuron>,
+    pub connections: Genome,
+    pub neurons: Vec<Neuron>,
 }
 
 impl NeuralNet {

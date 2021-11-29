@@ -4,7 +4,7 @@ use crate::simulation::grid::Grid;
 
 // Gets the function corresponding to the given action, which accepts a
 // individual, a grid, and the input level.
-pub fn get_action_dispatch(action: Action) -> fn(&mut Individual, &mut Grid, f32) {
+pub fn get_action_dispatch(action: &Action) -> fn(&mut Individual, &mut Grid, f32) {
     match action {
         Action::MoveX => move_x,
         Action::MoveY => move_y,

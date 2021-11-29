@@ -1,6 +1,10 @@
 use crate::Parameters;
 use crate::population::brain::NeuralNet;
+use crate::population::brain::sensor_actions::ENABLED_SENSORS;
+use crate::population::brain::sensor_actions::sensor_implementation::get_sensor_dispatch;
 use crate::population::genome::Genome;
+use crate::simulation::grid::Grid;
+use crate::simulation::simulation::Simulation;
 use crate::simulation::types::{Coord, Dir};
 
 pub struct Individual {
@@ -21,7 +25,7 @@ pub struct Individual {
 
 impl Individual {
     pub fn new(index: usize, location: Coord, genome: Genome, p: &Parameters) {
-        let mut individual = Individual {
+        Individual {
             alive: true,
             index,
             location,
@@ -37,4 +41,14 @@ impl Individual {
             genome
         };
     }
+
+    pub fn get_sensor_value(&self, source_num: u8, simulation: &Simulation) -> f32 {
+        let sensor = &ENABLED_SENSORS[source_num as usize];
+        let sensor_function = get_sensor_dispatch(sensor);
+        return sensor_function(&self, &simulation.grid, simulation.simulation_step);
+    }
+
+    // pub fn feed_forward(&self, simulation: &Simulation) -> f32 {
+    //
+    // }
 }

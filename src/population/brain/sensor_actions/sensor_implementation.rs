@@ -2,7 +2,7 @@ use crate::population::brain::sensor_actions::Sensor;
 use crate::population::individual::Individual;
 use crate::simulation::grid::Grid;
 
-pub fn get_sensor_dispatch(sensor: Sensor) -> fn(&Individual, &Grid, u32) -> f32 {
+pub fn get_sensor_dispatch(sensor: &Sensor) -> fn(&Individual, &Grid, u32) -> f32 {
     match sensor {
         Sensor::LocX => loc_x,
         Sensor::LocY => loc_y,
