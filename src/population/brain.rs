@@ -92,10 +92,10 @@ impl NeuralNet {
             }
         }
 
-        for i in 0..connection_map.len() {
+        for key in connection_map.keys() {
             neural_neurons.push(Neuron {
                 output: Neuron::initial_neuron_output(),
-                driven: (connection_map.get(&(i as u8)).unwrap().other_inputs != 0)
+                driven: (connection_map.get(key).unwrap().other_inputs != 0)
             });
         }
 
@@ -117,9 +117,9 @@ impl NeuralNet {
             graph_string.push_str(" ");
 
             if connection.get_sink_type() == ACTION {
-                graph_string.push_str(&ENABLED_ACTIONS[connection.get_source_num() as usize].to_string());
+                graph_string.push_str(&ENABLED_ACTIONS[connection.get_sink_num() as usize].to_string());
             } else {
-                graph_string.push_str(&format!("N{}", connection.get_source_num()));
+                graph_string.push_str(&format!("N{}", connection.get_sink_num()));
             }
             graph_string.push_str("\n");
         }

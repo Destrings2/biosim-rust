@@ -7,7 +7,7 @@ mod population;
 
 fn main() {
     let genome = make_random_genome(16);
-    let net = NeuralNet::new(&genome, 2);
+    let net = NeuralNet::new(&genome, 8);
     let igraph = net.to_graph_string();
-    dbg!("{}", igraph);
+    println!("{}", igraph);
 }
