@@ -126,4 +126,29 @@ impl NeuralNet {
 
         return graph_string;
     }
+
+    pub fn to_mathematica_string(&self) -> String {
+        let mut graph_string = String::new();
+        graph_string.push_str("{\"");
+        for connection in &self.connections {
+            if graph_string.len() > 2 {graph_string.push_str(",");
+            graph_string.push_str("\"");}
+            if connection.get_source_type() == SENSOR {
+                graph_string.push_str(&ENABLED_SENSORS[connection.get_source_num() as usize].to_string());
+            } else {
+                graph_string.push_str(&format!("N{}", connection.get_source_num()));
+            }
+
+            graph_string.push_str("\"\\[DirectedEdge]\"");
+
+            if connection.get_sink_type() == ACTION {
+                graph_string.push_str(&ENABLED_ACTIONS[connection.get_sink_num() as usize].to_string());
+            } else {
+                graph_string.push_str(&format!("N{}", connection.get_sink_num()));
+            }
+            graph_string.push_str("\"");
+        }
+        graph_string.push_str("}");
+        return graph_string;
+    }
 }
