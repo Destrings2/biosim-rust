@@ -21,6 +21,18 @@ impl Gene {
         return self.weight as f32 / 8192.0
     }
 
+    pub fn set_bit(&mut self, bit: u8, value: bool) {
+        if value {
+            self.encoding |= 1 << bit;
+        } else {
+            self.encoding &= !(1 << bit);
+        }
+    }
+
+    pub fn get_bit(&self, bit: u8) -> bool {
+        return self.encoding & (1 << bit) != 0;
+    }
+
     // Source type is in bit 16
     pub fn get_source_type(&self) -> bool { // SENSOR or NEURON
         return ((self.encoding & 0b1000000000000000) >> 15) == 1;

@@ -30,7 +30,7 @@ pub struct Parameters {
     pub signal_layers: u8,
 
     #[serde(default = "parameter_defaults::max_genome_length")]
-    pub max_genome_length: u16,
+    pub max_genome_length: usize,
 
     #[serde(default = "parameter_defaults::max_number_neurons")]
     pub max_number_neurons: u16,

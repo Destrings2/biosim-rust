@@ -1,4 +1,5 @@
 pub mod gene;
+pub mod mutations;
 
 use std::collections::HashMap;
 use gene::Gene;

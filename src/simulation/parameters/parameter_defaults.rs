@@ -12,7 +12,7 @@ pub(super) fn num_threads() -> u8 { 4 }
 
 pub(super) fn signal_layers() -> u8 { 100 }
 
-pub(super) fn max_genome_length() -> u16 { 20 }
+pub(super) fn max_genome_length() -> usize { 20 }
 
 pub(super) fn max_number_neurons() -> u16 { 10 }
 
