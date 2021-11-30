@@ -46,7 +46,7 @@ impl Individual {
     pub fn get_sensor_value(&self, source_num: u8, simulation: &Simulation) -> f32 {
         let sensor = &ENABLED_SENSORS[source_num as usize];
         let sensor_function = get_sensor_dispatch(sensor);
-        return sensor_function(&self, &simulation.grid, simulation.simulation_step);
+        return sensor_function(&self, &simulation, simulation.simulation_step);
     }
 
     pub fn feed_forward(&mut self, simulation: &Simulation) -> [f32; ENABLED_ACTIONS.len()] {

@@ -36,14 +36,11 @@ impl std::ops::IndexMut<usize> for Column {
 //</editor-fold>
 
 const EMPTY_CELL: u16 = 0;
-const BARRIER_CELL: u16 = 0xffff;
 
 pub struct Grid {
     pub width: u16,
     pub height: u16,
     data: Vec<Column>,
-    pub barrier_locations: Vec<Coord>,
-    pub barrier_centers: Vec<Coord>,
 }
 
 impl Grid {
@@ -52,8 +49,8 @@ impl Grid {
         for _ in 0..width {
             data.push(Column::new(height as usize));
         }
-        return Grid { width, height, data, barrier_locations: vec![], barrier_centers: vec![] };
-        }
+        return Grid { width, height, data };
+    }
 
     pub fn at(&self, x: u16, y: u16) -> u16 {
         self.data[x as usize][y as usize]
@@ -82,37 +79,19 @@ impl Grid {
     }
 
     #[inline]
-    pub fn is_barrier_at(&self, location: Coord) -> bool {
-        return self.at_coord(location) == BARRIER_CELL;
-    }
-
-    #[inline]
-    pub fn is_occupied_at(&self, location: Coord) -> bool {
-        return !(self.is_empty_at(location) || self.is_barrier_at(location));
-    }
-
-    #[inline]
     pub fn is_border_at(&self, location: Coord) -> bool {
-        return location.0 == 0 || location.0 == self.width - 1 || location.1 == 0 || location.1 == self.height - 1;
+        return location.0 == 0 || location.0 == self.width as i16 - 1
+            || location.1 == 0 || location.1 == self.height as i16 - 1;
     }
 
-    pub fn find_random_empty_location(&self) -> Coord {
-        let mut rng = rand::thread_rng();
-        let mut location = Coord::new(rng.gen_range(0, self.width as i16), rng.gen_range(0, self.height as i16));
-        while !self.is_empty_at(location) {
-            location = Coord::new(rng.gen_range(0, self.width as i16), rng.gen_range(0, self.height as i16));
-        }
-        return location;
-    }
-
-    pub fn apply_neighborhood_to_f(&self, location: Coord, radius: i16, f: &dyn FnMut(&Grid, Coord)) {
+    pub fn apply_neighborhood_to_f(&self, location: Coord, radius: i16, f: &mut dyn FnMut(&Grid, Coord)) {
         // Visits the Von Neumann neighborhood of the given location.
         // Then calls the given function on each of the visited locations.
         let mut x = location.0 - radius;
         while x <= location.0 + radius {
             let mut y = location.1 - radius;
             while y <= location.1 + radius {
-                let neighbor = Coord::new(x, y);
+                let neighbor = Coord(x, y);
                 if self.is_in_bounds(neighbor) {
                     f(&self, neighbor);
                 }
@@ -121,6 +100,4 @@ impl Grid {
             x += 1;
         }
     }
-
-    //TODO: Implement the createBarrier in a better way
 }
