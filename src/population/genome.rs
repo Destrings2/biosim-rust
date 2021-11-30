@@ -3,7 +3,6 @@ pub mod mutations;
 
 use std::collections::HashMap;
 use gene::Gene;
-use crate::population::brain::NeuralNet;
 use crate::population::brain::sensor_actions::{ENABLED_ACTIONS, ENABLED_SENSORS};
 use crate::population::genome::gene::NEURON;
 

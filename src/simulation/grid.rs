@@ -1,5 +1,3 @@
-use std::ops::Index;
-use rand::Rng;
 use crate::simulation::types::Coord;
 
 //<editor-fold desc="Column implementation">

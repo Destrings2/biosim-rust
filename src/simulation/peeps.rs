@@ -1,5 +1,5 @@
 use crate::population::individual::Individual;
-use crate::simulation::grid::{EMPTY_CELL, Grid};
+use crate::simulation::grid::EMPTY_CELL;
 use crate::simulation::signals::Signals;
 use crate::simulation::types::{Coord, Dir};
 use crate::simulation::world::World;

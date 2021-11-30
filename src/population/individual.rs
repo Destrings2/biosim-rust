@@ -4,7 +4,6 @@ use crate::population::brain::sensor_actions::{ENABLED_ACTIONS, ENABLED_SENSORS}
 use crate::population::brain::sensor_actions::sensor_implementation::get_sensor_dispatch;
 use crate::population::genome::gene::{ACTION, SENSOR};
 use crate::population::genome::Genome;
-use crate::simulation::grid::Grid;
 use crate::simulation::simulation::Simulation;
 use crate::simulation::types::{Coord, Dir};
 
@@ -82,7 +81,7 @@ impl Individual {
 
             // Obtain the connection's input value from a sensor neuron or other neuron
             // The values are summed for now, later passed through a transfer function
-            let mut input_value = 0.0f32;
+            let mut input_value;
             if gene.get_source_type() == SENSOR {
                 input_value = self.get_sensor_value(gene.get_source_num(), simulation);
             } else {

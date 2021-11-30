@@ -1,9 +1,8 @@
 pub mod sensor_actions;
 
-use std::cmp::max;
 use std::collections::HashMap;
 use crate::population::brain::sensor_actions::{ENABLED_ACTIONS, ENABLED_SENSORS};
-use crate::population::genome::{Genome, genome_to_string, get_connection_map_from_genome, Node, remove_useless_neurons_from_genome, renumber_genome};
+use crate::population::genome::{Genome, get_connection_map_from_genome, Node, remove_useless_neurons_from_genome, renumber_genome};
 use crate::population::genome::gene::{ACTION, NEURON, SENSOR};
 
 pub struct Neuron {

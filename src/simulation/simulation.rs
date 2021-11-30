@@ -1,13 +1,12 @@
+use std::cell::Cell;
 use crate::Parameters;
 use crate::population::brain::sensor_actions::action_implementation::get_action_dispatch;
 use crate::population::brain::sensor_actions::ENABLED_ACTIONS;
 use crate::population::individual::Individual;
-use crate::simulation::grid::Grid;
 use crate::simulation::peeps::Peeps;
-use crate::simulation::signals::Signals;
 
 pub struct Simulation<'a> {
-    pub peeps: Peeps,
+    pub peeps: Cell<Peeps>,
     pub parameters: &'a Parameters,
     pub simulation_step: u32,
 }
@@ -21,7 +20,7 @@ impl<'a> Simulation<'a>{
             let level = action_levels[i];
             action_executor(
                 individual,
-                self,
+                &self.peeps,
                 level,
             );
         }

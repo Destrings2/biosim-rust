@@ -1,8 +1,6 @@
 use crate::population::brain::sensor_actions::Sensor;
 use crate::population::individual::Individual;
-use crate::simulation::grid::Grid;
 use crate::simulation::simulation::Simulation;
-use crate::simulation::world::World;
 
 pub fn get_sensor_dispatch(sensor: &Sensor) -> fn(&Individual, &Simulation, u32) -> f32 {
     match sensor {
