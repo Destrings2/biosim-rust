@@ -97,6 +97,14 @@ impl Gene {
             weight
         };
     }
+
+    pub fn hex_string(&self) -> String {
+        return format!("{:x}{:x}", self.encoding, self.weight);
+    }
+
+    pub fn bit_string(&self) -> String {
+        return format!("{:b}{:b}", self.encoding, self.weight);
+    }
 }
 
 impl ToString for Gene {

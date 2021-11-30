@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use crate::population::brain::NeuralNet;
-use crate::population::genome::{Genome, make_random_genome};
+use crate::population::genome::{Genome, genome_to_hex, make_random_genome};
+use crate::population::genome::similarity::genome_similarity;
+use crate::population::genome::similarity::SimilarityMetric;
 use crate::simulation::parameters::Parameters;
 
 mod simulation;

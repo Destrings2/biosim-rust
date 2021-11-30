@@ -18,7 +18,16 @@ pub fn genome_to_string(genome: &Genome) -> String {
         string.push_str(&gene.to_string());
         string.push_str(" ");
     }
-    string
+    return string;
+}
+
+pub fn genome_to_hex(genome: &Genome) -> String {
+    let mut string = String::new();
+    for gene in genome {
+        string.push_str(&gene.hex_string());
+        string.push_str(":");
+    }
+    return string;
 }
 
 // Returns by value a single genome with random genes.
