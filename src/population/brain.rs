@@ -7,12 +7,12 @@ use crate::population::genome::{Genome, genome_to_string, get_connection_map_fro
 use crate::population::genome::gene::{ACTION, NEURON, SENSOR};
 
 pub struct Neuron {
-    output: f64,
-    driven: bool
+    pub output: f32,
+    pub driven: bool
 }
 
 impl Neuron {
-    pub const fn initial_neuron_output() -> f64 {
+    pub const fn initial_neuron_output() -> f32 {
         return 0.5;
     }
 }

@@ -120,7 +120,7 @@ impl From<Polar> for Dir {
 /// * Coord + Coord
 /// * Coord + Polar
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Coord(i16, i16);
+pub struct Coord(pub i16, pub i16);
 
 impl Coord {
     pub fn length(&self) -> f32 {
