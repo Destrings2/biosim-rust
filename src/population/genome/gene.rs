@@ -1,6 +1,6 @@
 use rand::Rng;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Gene {
     pub encoding: u16,
     pub weight: i16

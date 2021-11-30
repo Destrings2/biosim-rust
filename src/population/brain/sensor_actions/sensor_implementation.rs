@@ -31,15 +31,31 @@ pub fn get_sensor_dispatch(sensor: &Sensor) -> fn(&Individual, &Peeps, &Paramete
     }
 }
 
-fn loc_x(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn loc_x(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {
+    (individual.location.0 / (peeps.world.width as i16 - 1)) as f32
+}
 
-fn loc_y(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn loc_y(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {
+    (individual.location.1 / (peeps.world.height as i16 - 1)) as f32
+}
 
-fn boundary_distance_x(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn boundary_distance_x(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {
+    let distance_x = i16::min(individual.location.0, (peeps.world.width as i16 - individual.location.0 - 1) as i16);
+    return distance_x as f32/(peeps.world.width as f32 /2.0)
+}
 
-fn boundary_distance(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn boundary_distance(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {
+    let distance_x = i16::min(individual.location.0, (peeps.world.width as i16 - individual.location.0 - 1) as i16);
+    let distance_y = i16::min(individual.location.1, (peeps.world.height as i16 - individual.location.1 - 1) as i16);
+    let closest_distance = i16::min(distance_x, distance_y);
+    let max_possible = u16::max(peeps.world.width/2 - 1, peeps.world.height/2 - 1);
+    return closest_distance as f32/max_possible as f32
+}
 
-fn boundary_distance_y(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn boundary_distance_y(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {
+    let distance_y = i16::min(individual.location.1, (peeps.world.height as i16 - individual.location.1 - 1) as i16);
+    return distance_y as f32/(peeps.world.height as f32 /2.0)
+}
 
 fn genetic_similitude_fwd(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
