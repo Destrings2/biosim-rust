@@ -42,3 +42,10 @@ impl std::ops::Deref for World {
         return &self.grid;
     }
 }
+
+impl std::ops::DerefMut for World {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Grid {
+        return &mut self.grid;
+    }
+}

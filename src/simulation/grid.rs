@@ -35,7 +35,7 @@ impl std::ops::IndexMut<usize> for Column {
 
 //</editor-fold>
 
-const EMPTY_CELL: u16 = 0;
+pub const EMPTY_CELL: u16 = 0;
 
 pub struct Grid {
     pub width: u16,
