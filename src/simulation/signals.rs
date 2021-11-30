@@ -6,6 +6,14 @@ pub struct Signals {
 }
 //TODO: Implement Signals
 impl Signals {
+    pub fn new(num_layers: u16, width: u16, height: u16) -> Signals {
+        let mut layers = Vec::new();
+        for _ in 0..num_layers {
+            layers.push(Grid::new(width, height));
+        }
+        return Signals { layers };
+    }
+
     pub fn get(&self, layer: usize, location: Coord) -> u16 {
         self.layers[layer].at_coord(location)
     }

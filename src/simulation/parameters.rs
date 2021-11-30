@@ -11,6 +11,9 @@ use serde::{Serialize, Deserialize};
 // Finally, use the serde default attribute to point to the function.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Parameters {
+    #[serde(default = "parameter_defaults::size_x")]
+    pub size_x: u16,
+
     #[serde(default = "parameter_defaults::size_y")]
     pub size_y: u16,
 

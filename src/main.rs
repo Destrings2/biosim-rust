@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::population::brain::NeuralNet;
 use crate::population::genome::{Genome, make_random_genome};
 use crate::simulation::parameters::Parameters;

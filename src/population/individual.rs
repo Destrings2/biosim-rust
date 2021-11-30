@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use crate::Parameters;
 use crate::population::brain::NeuralNet;
 use crate::population::brain::sensor_actions::{ENABLED_ACTIONS, ENABLED_SENSORS};
@@ -9,7 +10,7 @@ use crate::simulation::types::{Coord, Dir};
 
 pub struct Individual {
     pub alive: bool,
-    pub index: usize, //
+    pub index: u16, //
     pub location: Coord,
     pub birth_location: Coord,
     pub age: u32,
@@ -24,7 +25,7 @@ pub struct Individual {
 }
 
 impl Individual {
-    pub fn new(index: usize, location: Coord, genome: Genome, p: &Parameters) {
+    pub fn new(index: u16, location: Coord, genome: Genome, p: &Parameters) -> Individual {
         Individual {
             alive: true,
             index,
@@ -39,13 +40,13 @@ impl Individual {
             challenge_bits: 0,
             neural_net: NeuralNet::new(&genome, p.max_number_neurons),
             genome
-        };
+        }
     }
 
     pub fn get_sensor_value(&self, source_num: u8, simulation: &Simulation) -> f32 {
         let sensor = &ENABLED_SENSORS[source_num as usize];
         let sensor_function = get_sensor_dispatch(sensor);
-        return sensor_function(&self, &simulation, simulation.simulation_step);
+        return sensor_function(&self, simulation.peeps.borrow().deref(), &simulation.parameters, simulation.simulation_step);
     }
 
     pub fn feed_forward(&mut self, simulation: &Simulation) -> [f32; ENABLED_ACTIONS.len()] {
@@ -81,13 +82,13 @@ impl Individual {
 
             // Obtain the connection's input value from a sensor neuron or other neuron
             // The values are summed for now, later passed through a transfer function
-            let mut input_value;
+            let input_value=
             if gene.get_source_type() == SENSOR {
-                input_value = self.get_sensor_value(gene.get_source_num(), simulation);
+                self.get_sensor_value(gene.get_source_num(), simulation)
             } else {
                 let source_neuron = &self.neural_net.neurons[gene.get_source_num() as usize];
-                input_value = source_neuron.output;
-            }
+                source_neuron.output
+            };
 
             // Weight the connection's value and add to neuron accumulator or action accumulator.
             // The action and neuron accumulators will therefore contain +- float values in
@@ -101,5 +102,9 @@ impl Individual {
         }
 
         return output;
+    }
+
+    pub fn response_curve(value: f32, curve_k_factor: f32) -> f32 {
+        return (value - 2.0).powf(-2.0 * curve_k_factor) - (2.0f32).powf(-2.0 * curve_k_factor)*(1.0-value);
     }
 }

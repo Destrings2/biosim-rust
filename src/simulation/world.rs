@@ -11,6 +11,14 @@ pub struct World {
 const BARRIER_CELL: u16 = 0xffff;
 
 impl World {
+    pub fn new(width: u16, height: u16) -> World {
+        World {
+            grid: Grid::new(width, height),
+            barrier_locations: Vec::new(),
+            barrier_centers: Vec::new(),
+        }
+    }
+
     pub fn find_random_empty_location(&self) -> Coord {
         let mut rng = rand::thread_rng();
         let mut location = Coord(rng.gen_range(0..=self.width as i16), rng.gen_range(0..=self.height as i16));

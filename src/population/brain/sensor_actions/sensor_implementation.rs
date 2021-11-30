@@ -1,8 +1,11 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+use crate::Parameters;
 use crate::population::brain::sensor_actions::Sensor;
 use crate::population::individual::Individual;
-use crate::simulation::simulation::Simulation;
+use crate::simulation::peeps::Peeps;
 
-pub fn get_sensor_dispatch(sensor: &Sensor) -> fn(&Individual, &Simulation, u32) -> f32 {
+pub fn get_sensor_dispatch(sensor: &Sensor) -> fn(&Individual, &Peeps, &Parameters, u32) -> f32 {
     match sensor {
         Sensor::LocX => loc_x,
         Sensor::LocY => loc_y,
@@ -28,44 +31,44 @@ pub fn get_sensor_dispatch(sensor: &Sensor) -> fn(&Individual, &Simulation, u32)
     }
 }
 
-fn loc_x(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn loc_x(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn loc_y(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn loc_y(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn boundary_distance_x(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn boundary_distance_x(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn boundary_distance(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn boundary_distance(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn boundary_distance_y(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn boundary_distance_y(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn genetic_similitude_fwd(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn genetic_similitude_fwd(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn last_move_dir_x(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn last_move_dir_x(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn last_move_dir_y(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn last_move_dir_y(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn long_probe_population_fwd(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn long_probe_population_fwd(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn long_probe_barrier_fwd(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn long_probe_barrier_fwd(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn population(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn population(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn population_fwd(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn population_fwd(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn population_lr(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn population_lr(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn oscillation(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn oscillation(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn age(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn age(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn barrier_fwd(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn barrier_fwd(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn barrier_lr(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn barrier_lr(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn random(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn random(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn signal(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn signal(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn signal_fwd(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn signal_fwd(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
 
-fn signal_lr(individual: &Individual, simulation: &Simulation, simulation_step: u32) -> f32 {0.0}
+fn signal_lr(individual: &Individual, peeps: &Peeps, p: &Parameters, simulation_step: u32) -> f32 {0.0}
