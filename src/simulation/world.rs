@@ -21,9 +21,9 @@ impl World {
 
     pub fn find_random_empty_location(&self) -> Coord {
         let mut rng = rand::thread_rng();
-        let mut location = Coord(rng.gen_range(0..=self.width as i16), rng.gen_range(0..=self.height as i16));
+        let mut location = Coord(rng.gen_range(0..self.width as i16), rng.gen_range(0..self.height as i16));
         while !self.is_empty_at(location) {
-            location = Coord(rng.gen_range(0..=self.width as i16), rng.gen_range(0..=self.height as i16));
+            location = Coord(rng.gen_range(0..self.width as i16), rng.gen_range(0..self.height as i16));
         }
         return location;
     }

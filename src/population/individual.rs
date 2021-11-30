@@ -1,12 +1,16 @@
-use std::ops::Deref;
+
 use crate::Parameters;
 use crate::population::brain::NeuralNet;
 use crate::population::brain::sensor_actions::{ENABLED_ACTIONS, ENABLED_SENSORS};
+use crate::population::brain::sensor_actions::action_implementation::get_action_dispatch;
 use crate::population::brain::sensor_actions::sensor_implementation::get_sensor_dispatch;
 use crate::population::genome::gene::{ACTION, SENSOR};
 use crate::population::genome::Genome;
+use crate::simulation::peeps::{DeathQueue, MoveQueue, Peeps};
+use crate::simulation::signals::Signals;
 use crate::simulation::simulation::Simulation;
 use crate::simulation::types::{Coord, Dir};
+use crate::simulation::world::World;
 
 pub struct Individual {
     pub alive: bool,
@@ -43,20 +47,20 @@ impl Individual {
         }
     }
 
-    pub fn get_sensor_value(&self, source_num: u8, simulation: &Simulation) -> f32 {
+    pub fn get_sensor_value(&self, source_num: u8, population_genomes: &Vec<Genome>, world: &World, signals: &Signals, parameters: &Parameters, simulation_step: u32) -> f32 {
         let sensor = &ENABLED_SENSORS[source_num as usize];
         let sensor_function = get_sensor_dispatch(sensor);
-        return sensor_function(&self, simulation.peeps.borrow().deref(), &simulation.parameters, simulation.simulation_step);
+        return sensor_function(&self, population_genomes, world, signals, parameters, simulation_step);
     }
 
-    pub fn feed_forward(&mut self, simulation: &Simulation) -> [f32; ENABLED_ACTIONS.len()] {
+    pub fn feed_forward(&self, population_genomes: &Vec<Genome>, world: &World, signals: &Signals, parameters: &Parameters, simulation_step: u32) -> [f32; ENABLED_ACTIONS.len()] {
         // This container is used to return values for all the action outputs. This array
         // contains one value per action neuron, which is the sum of all its weighted
         // input connections. The sum has an arbitrary range.
         let mut output = [0.0; ENABLED_ACTIONS.len()];
 
         // Weighted inputs to each neuron are summed in neuronAccumulators
-        let mut neuron_accumulators = Vec::with_capacity(self.neural_net.neurons.len());
+        let mut neuron_accumulators = vec![0.0f32; self.neural_net.neurons.len()];
 
         // Connections were ordered at birth so that all connections to neurons get
         // processed here before any connections to actions. As soon as we encounter the
@@ -70,11 +74,11 @@ impl Individual {
                 // We've handled all the connections from sensors and now we are about to
                 // start on the connections to the action outputs, so now it's time to
                 // update and latch all the neuron outputs to their proper range (-1.0..1.0)
-                for (neuron_index, neuron) in self.neural_net.neurons.iter_mut().enumerate() {
-                    if neuron.driven {
+                for (neuron_index, neuron) in self.neural_net.neurons.iter().enumerate() {
+                    if neuron.borrow().driven {
                         let neuron_output = neuron_accumulators[neuron_index];
                         let neuron_output = f32::tanh(neuron_output);
-                        neuron.output = neuron_output;
+                        neuron.borrow_mut().output = neuron_output;
                     }
                 }
                 neuron_outputs_computed = true;
@@ -84,10 +88,10 @@ impl Individual {
             // The values are summed for now, later passed through a transfer function
             let input_value=
             if gene.get_source_type() == SENSOR {
-                self.get_sensor_value(gene.get_source_num(), simulation)
+                self.get_sensor_value(gene.get_source_num(), population_genomes, world, signals, parameters, simulation_step)
             } else {
                 let source_neuron = &self.neural_net.neurons[gene.get_source_num() as usize];
-                source_neuron.output
+                source_neuron.borrow().output
             };
 
             // Weight the connection's value and add to neuron accumulator or action accumulator.
@@ -96,8 +100,7 @@ impl Individual {
             if gene.get_sink_type() == ACTION {
                 output[gene.get_sink_num() as usize] += input_value * gene.weight_as_float();
             } else {
-                *neuron_accumulators.get_mut(gene.get_sink_num() as usize).unwrap() +=
-                    input_value * gene.weight_as_float();
+                neuron_accumulators[gene.get_sink_num() as usize] += input_value * gene.weight_as_float();
             }
         }
 
@@ -106,5 +109,21 @@ impl Individual {
 
     pub fn response_curve(value: f32, curve_k_factor: f32) -> f32 {
         return (value - 2.0).powf(-2.0 * curve_k_factor) - (2.0f32).powf(-2.0 * curve_k_factor)*(1.0-value);
+    }
+
+    pub fn simulate(&mut self, population_genomes: &mut Vec<Genome>, world: &mut World, signals: &mut Signals, parameters: &Parameters,
+                                          death_queue: &mut DeathQueue, move_queue: &mut MoveQueue, simulation_step: u32) {
+        self.age += 1;
+        let action_levels = self.feed_forward(population_genomes, world, signals, parameters, simulation_step);
+        for (i, action) in ENABLED_ACTIONS.iter().enumerate() {
+            let action_executor = get_action_dispatch(action);
+            let level = action_levels[i];
+            action_executor(
+                self,
+                move_queue,
+                parameters,
+                level
+            );
+        }
     }
 }

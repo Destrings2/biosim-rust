@@ -1,6 +1,6 @@
 use std::mem::size_of;
 use strsim::generic_jaro_winkler;
-use crate::Genome;
+use crate::population::genome::Genome;
 use crate::population::genome::gene::Gene;
 
 pub enum SimilarityMetric {

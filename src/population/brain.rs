@@ -1,5 +1,6 @@
 pub mod sensor_actions;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use crate::population::brain::sensor_actions::{ENABLED_ACTIONS, ENABLED_SENSORS};
 use crate::population::genome::{Genome, get_connection_map_from_genome, Node, remove_useless_neurons_from_genome, renumber_genome};
@@ -42,7 +43,7 @@ impl Neuron {
 /// assigned sequentially starting at 0.
 pub struct NeuralNet {
     pub connections: Genome,
-    pub neurons: Vec<Neuron>,
+    pub neurons: Vec<RefCell<Neuron>>,
 }
 
 impl NeuralNet {
@@ -51,7 +52,7 @@ impl NeuralNet {
         let mut connection_map: HashMap<u8, Node> = get_connection_map_from_genome(&renumbered_genome);
 
         let mut neural_connections: Genome = vec![];
-        let mut neural_neurons: Vec<Neuron> = vec![];
+        let mut neural_neurons: Vec<RefCell<Neuron>> = vec![];
 
         remove_useless_neurons_from_genome(&mut renumbered_genome, &mut connection_map);
 
@@ -92,10 +93,10 @@ impl NeuralNet {
         }
 
         for key in connection_map.keys() {
-            neural_neurons.push(Neuron {
+            neural_neurons.push(RefCell::new(Neuron {
                 output: Neuron::initial_neuron_output(),
                 driven: (connection_map.get(key).unwrap().other_inputs != 0)
-            });
+            }));
         }
 
         return NeuralNet {

@@ -66,7 +66,7 @@ impl Dir {
     }
 
     pub fn random() -> Dir {
-        return Dir(COORD_DIR_CONVERSION[rand::thread_rng().gen_range(0..=8) as usize]);
+        return Dir(COORD_DIR_CONVERSION[rand::thread_rng().gen_range(0..8) as usize]);
     }
 }
 
@@ -182,7 +182,7 @@ impl std::ops::Add<Dir> for Coord {
     type Output = Coord;
 
     fn add(self, rhs: Dir) -> Coord {
-        let coord_dir : Dir = rhs.into();
+        let coord_dir : Coord = rhs.into();
         return self + coord_dir
     }
 }
