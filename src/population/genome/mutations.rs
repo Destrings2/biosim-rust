@@ -1,6 +1,6 @@
 use rand::Rng;
 use crate::Parameters;
-use crate::population::genome::{make_random_genome, Genome};
+use crate::population::genome::{Genome, empty_genome};
 use crate::population::genome::gene::Gene;
 
 pub fn random_bit_flip(genome: &mut Genome) {
@@ -38,9 +38,34 @@ pub fn random_insertion_deletion(genome: &mut Genome, p: &Parameters) {
 
 pub fn apply_point_mutation_to_genome(genome: &mut Genome, p: &Parameters) {
     let mut rng = rand::thread_rng();
-    for i in 0..genome.len() {
+    for _ in 0..genome.len() {
         if rng.gen_range(0.0..1.0) < p.point_mutation_rate {
             random_bit_flip(genome);
         }
     }
+}
+
+pub fn breed_from_parents(parent_a: &Genome, parent_b: &Genome, p: &Parameters) -> Genome {
+    let mut rng = rand::thread_rng();
+
+    let (biggest_parent, smallest_parent) = if parent_a.len() > parent_b.len() {
+        (parent_a, parent_b)
+    } else {
+        (parent_b, parent_a)
+    };
+
+    let mut child = empty_genome(biggest_parent.len());
+    let crossover_point = rng.gen_range(0..smallest_parent.len());
+    for i in 0..crossover_point {
+        child[i] = smallest_parent[i];
+    }
+
+    for i in crossover_point..biggest_parent.len() {
+        child[i] = biggest_parent[i];
+    }
+
+    // apply random mutations
+    random_insertion_deletion(&mut child, p);
+    apply_point_mutation_to_genome(&mut child, p);
+    return child;
 }

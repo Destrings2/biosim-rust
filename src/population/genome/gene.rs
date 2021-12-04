@@ -70,6 +70,13 @@ impl Gene {
     }
     //</editor-fold>
 
+    pub fn empty() -> Gene {
+        return Gene {
+            encoding: 0,
+            weight: 0
+        };
+    }
+
     pub fn make_encoding(source_type: bool, source_num: u8, sink_type: bool, sink_num: u8) -> u16 {
         return (source_type as u16) << 15 | (source_num as u16) << 8 | (sink_type as u16) << 7 | (sink_num as u16);
     }

@@ -9,7 +9,7 @@ use serde::{Serialize, Deserialize};
 // To add a parameter, add it to the `Parameters` struct below.
 // Then, add a function returning its default value to the `parameter_defaults` module.
 // Finally, use the serde default attribute to point to the function.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct Parameters {
     #[serde(default = "parameter_defaults::size_x")]
     pub size_x: u16,
@@ -57,7 +57,7 @@ pub struct Parameters {
     pub choose_parents_by_fitness: bool,
 
     #[serde(default = "parameter_defaults::population_sensor_radius")]
-    pub population_sensor_radius: f32,
+    pub population_sensor_radius: i16,
 
     #[serde(default = "parameter_defaults::signal_sensor_radius")]
     pub signal_sensor_radius: u16,
@@ -70,6 +70,9 @@ pub struct Parameters {
 
     #[serde(default = "parameter_defaults::long_probe_distance")]
     pub long_probe_distance: u32,
+
+    #[serde(default = "parameter_defaults::long_probe_distance")]
+    pub short_probe_distance: u32,
 
     #[serde(default = "parameter_defaults::valence_saturation_magnitude")]
     pub valence_saturation_magnitude: f32,

@@ -1,14 +1,88 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use std::f32::consts::PI;
+
+use rand::{thread_rng, Rng};
+
 use crate::Parameters;
 use crate::population::genome::similarity::{genome_similarity, SimilarityMetric};
 use crate::population::brain::sensor_actions::Sensor;
 use crate::population::genome::Genome;
 use crate::population::individual::Individual;
-use crate::simulation::peeps::Peeps;
 use crate::simulation::signals::Signals;
+use crate::simulation::types::{Coord, Dir};
 use crate::simulation::world::World;
+
+fn long_probe_population_forward_sensor(start_location: Coord, direction: Dir, range: u32, world: &World) -> u32 {
+    let mut location = start_location;
+    let mut count = 0;
+    while count < range && world.is_in_bounds(location) && world.is_empty_at(location) {
+        location = location + direction;
+        count += 1;
+    }
+    if !world.is_in_bounds(location) || world.is_barrier_at(location) {
+        return range;
+    } else {
+        return count;
+    }
+}
+
+fn long_probe_barrier_forward_sensor(start_location: Coord, direction: Dir, range: u32, world: &World) -> u32 {
+    let mut location = start_location;
+    let mut count = 0;
+    while count < range && world.is_in_bounds(location) && !world.is_barrier_at(location) {
+        location = location + direction;
+        count += 1;
+    }
+    if !world.is_in_bounds(location) {
+        return range;
+    } else {
+        return count;
+    }
+}
+
+fn population_density(start_location: Coord, direction: Dir, range: u32, world: &World) -> f32 {
+    let mut sum = 0.0;
+    world.apply_neighborhood_to_f(start_location, range as i16, |coord: Coord| {
+        if start_location != coord && world.is_occupied_at(coord) {
+            let offset = coord - start_location;
+            let angle = offset.ray_sameness_dir(direction);
+            let distance = f32::sqrt((offset.0*offset.0 + offset.1*offset.1) as f32);
+            let scaled = (1.0 / distance) * angle;
+            sum += scaled as f32;
+        }
+    });
+    let max_sum = 6.0 * range as f32;
+    let sensor_val = sum/max_sum;
+    return (sensor_val + 1.0) / 2.0;
+}
+
+fn short_probe_barrier_distance(location: Coord, dir: Dir, range: u32, world: &World) -> f32 {
+    let mut count_forward = 0u32;
+    let mut current_location = location + dir;
+    while count_forward < range && world.is_in_bounds(current_location) && !world.is_barrier_at(current_location) {
+        count_forward += 1;
+        current_location = current_location + dir;
+    }
+
+    if !world.is_in_bounds(current_location) {
+        count_forward = range;
+    }
+
+    let mut count_backward = 0u32;
+    current_location = location - dir;
+    while count_backward < range && world.is_in_bounds(current_location) && !world.is_barrier_at(current_location) {
+        count_backward += 1;
+        current_location = current_location - dir;
+    }
+    if !world.is_in_bounds(current_location) {
+        count_backward = range;
+    }
+
+    let sensor_value = ((count_forward - count_backward) + range) as f32;
+    return sensor_value / (2.0 * range as f32);
+}
 
 pub fn get_sensor_dispatch(sensor: &Sensor) -> fn(&Individual, &Vec<Genome>, &World, &Signals, &Parameters, u32) -> f32 {
     match sensor {
@@ -78,32 +152,90 @@ fn genetic_similitude_fwd(individual: &Individual, population_genomes: &Vec<Geno
     return 0.0;
 }
 
-fn last_move_dir_x(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn last_move_dir_x(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    let last_x: Coord = individual.last_move_direction.into();
+    match last_x.0 {
+        0 => 0.5,
+        1 => 1.0,
+        -1 => 0.0,
+        _ => panic!("Invalid last move direction")
+    }
+}
 
-fn last_move_dir_y(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn last_move_dir_y(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    let last_y: Coord = individual.last_move_direction.into();
+    match last_y.1 {
+        0 => 0.5,
+        1 => 1.0,
+        -1 => 0.0,
+        _ => panic!("Invalid last move direction")
+    }
+}
 
-fn long_probe_population_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn long_probe_population_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    let direction = individual.last_move_direction;
+    return long_probe_population_forward_sensor(individual.location, direction, p.long_probe_distance, world) as f32;
+}
 
-fn long_probe_barrier_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn long_probe_barrier_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    let direction = individual.last_move_direction;
+    return long_probe_barrier_forward_sensor(individual.location, direction, p.long_probe_distance, world) as f32;
+}
 
-fn population(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn population(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    let location = individual.location;
+    let mut occupied= 0;
+    let mut checked = 0;
+    world.apply_neighborhood_to_f(location, p.population_sensor_radius, |coord: Coord| {
+        checked += 1;
+        if world.is_occupied_at(coord) {
+            occupied += 1;
+        }
+    });
+    return occupied as f32/checked as f32;
+}
 
-fn population_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn population_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    return population_density(individual.location, individual.last_move_direction, p.long_probe_distance, world);
+}
 
-fn population_lr(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn population_lr(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    return population_density(individual.location, individual.last_move_direction.rotate90deg_cw(), p.long_probe_distance, world);
+}
 
-fn oscillation(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn oscillation(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    let phase = (simulation_step % individual.oscillation_period) as f32 / individual.oscillation_period as f32;
+    let mut factor = -f32::cos(phase * 2.0 * PI);
+    factor += 1.0;
+    factor /= 2.0;
+    //Clip any round off errors
+    return factor.clamp(0.0, 1.0);
+}
 
-fn age(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn age(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    return (individual.age / p.steps_per_generation as u32) as f32;
+}
 
-fn barrier_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn barrier_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    return short_probe_barrier_distance(individual.location, individual.last_move_direction, p.long_probe_distance, world);
+}
 
-fn barrier_lr(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn barrier_lr(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    return short_probe_barrier_distance(individual.location, individual.last_move_direction.rotate90deg_cw(), p.long_probe_distance, world);
+}
 
-fn random(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn random(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    return thread_rng().gen_range(0.0..=1.0);
+}
 
-fn signal(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn signal(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    0.0
+}
 
-fn signal_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn signal_fwd(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    0.0
+}
 
-fn signal_lr(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {0.0}
+fn signal_lr(individual: &Individual, population_genomes: &Vec<Genome>,  world: &World, signals: &Signals, p: &Parameters, simulation_step: u32) -> f32 {
+    0.0
+}

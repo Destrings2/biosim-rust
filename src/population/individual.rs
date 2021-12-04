@@ -6,9 +6,8 @@ use crate::population::brain::sensor_actions::action_implementation::get_action_
 use crate::population::brain::sensor_actions::sensor_implementation::get_sensor_dispatch;
 use crate::population::genome::gene::{ACTION, SENSOR};
 use crate::population::genome::Genome;
-use crate::simulation::peeps::{DeathQueue, MoveQueue, Peeps};
+use crate::simulation::peeps::{DeathQueue, MoveQueue};
 use crate::simulation::signals::Signals;
-use crate::simulation::simulation::Simulation;
 use crate::simulation::types::{Coord, Dir};
 use crate::simulation::world::World;
 
@@ -121,6 +120,7 @@ impl Individual {
             action_executor(
                 self,
                 move_queue,
+                death_queue,
                 parameters,
                 level
             );

@@ -68,7 +68,7 @@ impl Grid {
 
     #[inline]
     pub fn is_in_bounds(&self, location: Coord) -> bool {
-        return location.0 < self.width as i16 && location.1 < self.height as i16;
+        return location.0 < self.width as i16 && location.1 < self.height as i16 && location.0 >= 0 && location.1 >= 0;
     }
 
     #[inline]
@@ -82,7 +82,16 @@ impl Grid {
             || location.1 == 0 || location.1 == self.height as i16 - 1;
     }
 
-    pub fn apply_neighborhood_to_f(&self, location: Coord, radius: i16, f: &mut dyn FnMut(&Grid, Coord)) {
+    pub fn zero_fill(&mut self) {
+        for column in self.data.iter_mut() {
+            for cell in column.data.iter_mut() {
+                *cell = EMPTY_CELL;
+            }
+        }
+    }
+
+    pub fn apply_neighborhood_to_f<F>(&self, location: Coord, radius: i16, mut f: F) 
+        where F: FnMut(Coord) {
         // Visits the Von Neumann neighborhood of the given location.
         // Then calls the given function on each of the visited locations.
         let mut x = location.0 - radius;
@@ -91,7 +100,7 @@ impl Grid {
             while y <= location.1 + radius {
                 let neighbor = Coord(x, y);
                 if self.is_in_bounds(neighbor) {
-                    f(&self, neighbor);
+                    f(neighbor);
                 }
                 y += 1;
             }

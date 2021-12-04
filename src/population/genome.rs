@@ -21,6 +21,14 @@ pub fn genome_to_string(genome: &Genome) -> String {
     return string;
 }
 
+pub fn empty_genome(length: usize) -> Genome {
+    let mut genome = Vec::with_capacity(length);
+    for _ in 0..length {
+        genome.push(Gene::empty());
+    }
+    return genome;
+}
+
 pub fn genome_to_hex(genome: &Genome) -> String {
     let mut string = String::new();
     for gene in genome {

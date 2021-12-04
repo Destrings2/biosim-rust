@@ -192,7 +192,7 @@ impl std::ops::Sub<Dir> for Coord {
     type Output = Coord;
 
     fn sub(self, rhs: Dir) -> Coord {
-        let coord_dir : Dir = rhs.into();
+        let coord_dir : Coord = rhs.into();
         return self - coord_dir;
     }
 }
