@@ -5,6 +5,7 @@
 import { useEffect, useMemo } from "react";
 import type { Simulator } from "../../pkg/biosim4_wasm.js";
 import type { NetEdge, NetNode, NetworkSnapshot } from "../types";
+import { Modal } from "./Modal";
 
 interface Props {
   agentId: number;
@@ -48,6 +49,7 @@ export function AgentInspector({ agentId, simulator, onClose }: Props) {
 
   if (!net) {
     return (
+      <Modal>
       <div className="modal-back" onClick={onClose}>
         <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 360 }}>
           <div className="modal-head">
@@ -62,6 +64,7 @@ export function AgentInspector({ agentId, simulator, onClose }: Props) {
           </div>
         </div>
       </div>
+      </Modal>
     );
   }
 
@@ -102,6 +105,7 @@ export function AgentInspector({ agentId, simulator, onClose }: Props) {
   const glow = `rgb(${net.color[0]},${net.color[1]},${net.color[2]})`;
 
   return (
+    <Modal>
     <div className="modal-back" onClick={onClose}>
       <div className="modal inspector-modal" onClick={(e) => e.stopPropagation()}>
         <div className="ins-head">
@@ -190,6 +194,7 @@ export function AgentInspector({ agentId, simulator, onClose }: Props) {
         </div>
       </div>
     </div>
+    </Modal>
   );
 }
 

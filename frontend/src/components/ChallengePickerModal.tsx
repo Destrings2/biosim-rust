@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChallengeComposition, ChallengeConfig, ChallengeSchema } from "../types";
 import { ChallengeArt, challengeArtKind } from "./ChallengeArt";
 import { IcSearch } from "./Icons";
+import { Modal } from "./Modal";
 
 interface SchemaProperty {
   type: "number" | "boolean" | "string";
@@ -74,6 +75,7 @@ export function ChallengePickerModal({ schemas, activeId, onClose, onApply }: Pr
   }, [schemas, query]);
 
   return (
+    <Modal>
     <div className="modal-back" onClick={onClose}>
       <div className="modal picker-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
@@ -172,6 +174,7 @@ export function ChallengePickerModal({ schemas, activeId, onClose, onApply }: Pr
         </div>
       </div>
     </div>
+    </Modal>
   );
 }
 

@@ -337,13 +337,16 @@ function ConfigPanel({
   return (
     <>
       <DrawerHead title="World config" />
-      <div className="drawer-body">
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--line)", marginBottom: 12 }}>
-          <span style={{ fontSize: 11, color: "var(--text-2)" }}>Painted barriers</span>
-          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text)" }}>{paintedCount}</span>
+      <div className="drawer-body cfg">
+        <div className="cfg-paint">
+          <div>
+            <div className="cfg-paint-k">Painted barriers</div>
+            <div className="cfg-paint-help">Persist across generations.</div>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span className="cfg-paint-v">{paintedCount}</span>
             <button className="drawer-action" onClick={onClearPaint} disabled={paintedCount === 0}>CLEAR</button>
-          </span>
+          </div>
         </div>
 
         <CfgGroup title="World" summary={`${cfg.size_x}² · ${cells.toLocaleString()} cells`}>

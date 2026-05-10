@@ -255,15 +255,16 @@ export function App() {
 
   const frameWidth = useMemo(() => {
     const sx = simulator?.size_x() ?? 128;
-    // Headroom for the floating toolbar (54px above) and playback (52px below)
-    // and a bit of breathing room.
-    const vSlack = 200;
+    // Headroom for the floating toolbar (54px above) and playback (52px below).
+    const vSlack = 116; // 54 + 52 + 10 breathing
     const hSlack = 60;
     const target = pixelSize * sx;
-    const maxByH = Math.max(360, stageBox.h - vSlack);
-    const maxByW = Math.max(360, stageBox.w - hSlack);
-    // Minimum 480px so the floating toolbar — which is ~470px wide — fits.
-    return Math.max(480, Math.min(target, maxByH, maxByW));
+    const maxByH = Math.max(300, stageBox.h - vSlack);
+    const maxByW = Math.max(300, stageBox.w - hSlack);
+    // Cap by the tightest axis. Then enforce a 480px WIDTH minimum so the
+    // floating toolbar (~470px wide) fits — but only if width allows it.
+    const capped = Math.min(target, maxByH, maxByW);
+    return maxByW >= 480 ? Math.max(480, capped) : capped;
   }, [pixelSize, simulator, stageBox]);
 
   // Expose canvas width via CSS var for the telemetry overlay alignment
