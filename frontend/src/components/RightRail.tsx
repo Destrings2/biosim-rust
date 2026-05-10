@@ -537,6 +537,23 @@ function ConfigPanel({
               <CfgRow label="Kill enable" help="Agents can kill neighbours">
                 <Toggle checked={bool("kill_enable")} onChange={(v)=>set("kill_enable", v)}/>
               </CfgRow>
+              <CfgRow label="Energy system" help="Agents deplete energy each step; stepping on food replenishes it">
+                <Toggle checked={bool("enable_energy")} onChange={(v)=>set("enable_energy", v)}/>
+              </CfgRow>
+              {bool("enable_energy") && (<>
+                <CfgRow label="Food density" help="Fraction of cells seeded with food at generation start">
+                  <SliderNum value={num("food_initial_density")} min={0.05} max={1} step={0.05}
+                    onChange={(v)=>set("food_initial_density", v)} format={(v)=>`${Math.round(v*100)}%`}/>
+                </CfgRow>
+                <CfgRow label="Food regen rate" help="Food added per cell per step (higher = faster regrowth)">
+                  <SliderNum value={num("food_regen_rate")} min={0} max={0.005} step={0.0001}
+                    onChange={(v)=>set("food_regen_rate", v)} format={(v)=>v.toFixed(4)}/>
+                </CfgRow>
+                <CfgRow label="Energy cost / step" help="Energy drained from each agent per simulation step">
+                  <SliderNum value={num("energy_per_step_cost")} min={0.001} max={0.02} step={0.001}
+                    onChange={(v)=>set("energy_per_step_cost", v)} format={(v)=>v.toFixed(3)}/>
+                </CfgRow>
+              </>)}
             </CfgGroup>
           </>
         )}

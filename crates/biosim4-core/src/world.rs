@@ -10,6 +10,7 @@
 //! reference copies). Challenge hooks that need mutation receive `WorldMut`
 //! (from `crate::registry::challenge`) instead.
 
+use crate::food_layer::FoodLayer;
 use crate::grid::Grid;
 use crate::population::Population;
 use crate::signals_layer::Signals;
@@ -18,6 +19,7 @@ use crate::signals_layer::Signals;
 pub struct World<'a> {
     pub grid: &'a Grid,
     pub signals: &'a Signals,
+    pub food: &'a FoodLayer,
     pub population: &'a Population,
     pub size_x: u16,
     pub size_y: u16,
@@ -30,6 +32,7 @@ impl<'a> World<'a> {
     pub fn new(
         grid: &'a Grid,
         signals: &'a Signals,
+        food: &'a FoodLayer,
         population: &'a Population,
         steps_per_generation: u32,
         generation: u32,
@@ -37,6 +40,6 @@ impl<'a> World<'a> {
     ) -> Self {
         let size_x = grid.size_x;
         let size_y = grid.size_y;
-        Self { grid, signals, population, size_x, size_y, steps_per_generation, generation, step }
+        Self { grid, signals, food, population, size_x, size_y, steps_per_generation, generation, step }
     }
 }

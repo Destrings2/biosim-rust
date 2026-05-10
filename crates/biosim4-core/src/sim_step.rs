@@ -67,7 +67,12 @@ pub fn step_one(state: &mut SimulationState, step: u32) {
     step_all_agents(state);
     state.population.drain_death_queue(&mut state.grid);
     state.population.drain_move_queue(&mut state.grid);
-    state.signals.fade(0);
+    for layer in 0..state.signals.layer_count() {
+        state.signals.fade(layer);
+    }
+    if state.config.enable_energy {
+        state.food.regenerate(state.config.food_regen_rate, &state.grid);
+    }
 }
 
 fn run_challenge_step_hooks(state: &mut SimulationState) {
@@ -146,6 +151,7 @@ fn step_one_agent(state: &mut SimulationState, id: AgentId) {
 
     let grid_ptr = &state.grid as *const _;
     let signals_ptr = &state.signals as *const _;
+    let food_ptr = &state.food as *const _;
     let pop_ptr = &state.population as *const _;
     let action_accum_ptr: *mut Vec<f32> = &mut state.scratch.action_accum;
     let neuron_accum_ptr: *mut Vec<f32> = &mut state.scratch.neuron_accum;
@@ -153,6 +159,7 @@ fn step_one_agent(state: &mut SimulationState, id: AgentId) {
     let world = World {
         grid: unsafe { &*grid_ptr },
         signals: unsafe { &*signals_ptr },
+        food: unsafe { &*food_ptr },
         population: unsafe { &*pop_ptr },
         size_x,
         size_y,
@@ -239,5 +246,22 @@ fn step_one_agent(state: &mut SimulationState, id: AgentId) {
 
     if let Some(agent) = state.population.get_mut(id) {
         agent.age += 1;
+    }
+
+    if state.config.enable_energy {
+        if let Some(agent) = state.population.get_mut(id) {
+            let loc = agent.loc;
+            let food_val = state.food.get(loc);
+            if food_val > 0.0 {
+                let absorbed = food_val.min(state.config.energy_per_step_cost * 3.0);
+                state.food.set(loc, food_val - absorbed);
+                agent.energy = (agent.energy + absorbed).clamp(0.0, 1.0);
+            }
+            agent.energy -= state.config.energy_per_step_cost;
+            if agent.energy <= 0.0 {
+                agent.energy = 0.0;
+                state.population.death_queue.push(id);
+            }
+        }
     }
 }

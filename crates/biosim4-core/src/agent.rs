@@ -56,6 +56,7 @@ pub struct Agent {
 
     // Life state
     pub age: u32,
+    pub energy: f32,
 
     // Neural state
     pub genome: Genome,
@@ -71,6 +72,9 @@ pub struct Agent {
 
     // Challenge tracking
     pub challenge_bits: u32,
+
+    // Memory registers — persist across steps, reset to 0 each generation
+    pub memory: [f32; 4],
 
     // Breed and extensible properties
     pub breed_id: BreedId,
@@ -88,6 +92,7 @@ impl Agent {
             heading: Dir::default(),
             color,
             age: 0,
+            energy: 1.0,
             genome,
             nnet,
             responsiveness: 0.5,
@@ -95,6 +100,7 @@ impl Agent {
             long_probe_dist: 16,
             last_move_dir: Dir::default(),
             challenge_bits: 0,
+            memory: [0.0; 4],
             breed_id: DEFAULT_BREED,
             props: HashMap::new(),
         }

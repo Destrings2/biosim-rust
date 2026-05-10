@@ -21,6 +21,7 @@
 use biosim4_core::{
     actions::register_builtin_actions,
     agent::{Agent, AgentId},
+    food_layer::FoodLayer,
     genome::{
         ops::make_random_genome,
         neural_net::{create_wiring, WiringConfig},
@@ -66,10 +67,10 @@ fn make_test_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> A
 }
 
 fn build_world<'a>(
-    grid: &'a Grid, signals: &'a Signals, population: &'a Population, cfg: &SimConfig,
+    grid: &'a Grid, signals: &'a Signals, food: &'a FoodLayer, population: &'a Population, cfg: &SimConfig,
 ) -> World<'a> {
     World {
-        grid, signals, population,
+        grid, signals, food, population,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -94,6 +95,7 @@ fn with_action_ctx<R>(
     let mut move_q: Vec<(AgentId, Coord)> = Vec::new();
     let mut death_q: Vec<AgentId> = Vec::new();
 
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
     let grid_ptr: *const Grid = grid;
     let signals_const_ptr: *const Signals = signals;
     let signals_mut_ptr: *mut Signals = signals;
@@ -103,6 +105,7 @@ fn with_action_ctx<R>(
     let world = World {
         grid: unsafe { &*grid_ptr },
         signals: unsafe { &*signals_const_ptr },
+        food: &food,
         population: unsafe { &*pop_ptr },
         size_x: cfg.size_x,
         size_y: cfg.size_y,
@@ -261,7 +264,8 @@ fn disabled_sensor_returns_zero_before_commit() {
 
     let agent = make_test_agent(population.next_id(), Coord::new(8, 8), &cfg, &mut rng);
     population.spawn(agent);
-    let world = build_world(&grid, &signals, &population, &cfg);
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
+    let world = build_world(&grid, &signals, &food, &population, &cfg);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
@@ -345,9 +349,15 @@ fn disabled_action_is_not_executed_before_commit() {
 #[test]
 fn wiring_config_sensor_count_uses_enabled_count_after_commit() {
     let mut state = SimulationState::new(small_cfg());
-    let total_sensors = state.sensors.count();
 
-    // Disable two sensors and advance a generation (triggers commit inside spawn)
+    // Run one generation first so apply_feature_enables fires and establishes
+    // the feature-gated baseline (food/energy and signal-layer sensors disabled
+    // by default config before any user overrides).
+    step_generation(&mut state);
+    spawn_new_generation(&mut state);
+    let baseline = state.sensors.enabled_count();
+
+    // Now disable two more user-chosen sensors and advance another generation.
     state.sensors.set_enabled("loc_x", false);
     state.sensors.set_enabled("loc_y", false);
     step_generation(&mut state);
@@ -355,7 +365,7 @@ fn wiring_config_sensor_count_uses_enabled_count_after_commit() {
 
     let wcfg = state.wiring_config();
     assert_eq!(
-        wcfg.sensor_count, total_sensors - 2,
+        wcfg.sensor_count, baseline - 2,
         "wiring_config.sensor_count should equal enabled_count after commit"
     );
 }
@@ -363,7 +373,11 @@ fn wiring_config_sensor_count_uses_enabled_count_after_commit() {
 #[test]
 fn wiring_config_action_count_uses_enabled_count_after_commit() {
     let mut state = SimulationState::new(small_cfg());
-    let total_actions = state.actions.count();
+
+    // Establish baseline after apply_feature_enables runs for the first time.
+    step_generation(&mut state);
+    spawn_new_generation(&mut state);
+    let baseline = state.actions.enabled_count();
 
     state.actions.set_enabled("move_east", false);
     state.actions.set_enabled("move_west", false);
@@ -373,7 +387,7 @@ fn wiring_config_action_count_uses_enabled_count_after_commit() {
 
     let wcfg = state.wiring_config();
     assert_eq!(
-        wcfg.action_count, total_actions - 3,
+        wcfg.action_count, baseline - 3,
         "wiring_config.action_count should equal enabled_count after commit"
     );
 }
@@ -494,14 +508,15 @@ fn all_actions_disabled_agents_remain_alive() {
 fn remaining_sensors_still_return_unit_interval_when_some_are_disabled() {
     let cfg = SimConfig { size_x: 32, size_y: 32, population: 4, steps_per_generation: 100, ..SimConfig::default() };
     let grid = Grid::new(cfg.size_x, cfg.size_y);
-    let signals = Signals::new(1, cfg.size_x, cfg.size_y);
+    let signals = Signals::new(3, cfg.size_x, cfg.size_y);
     let mut population = Population::new(cfg.population);
     let mut rng = Rng::seeded(55);
 
     let agent = make_test_agent(population.next_id(), Coord::new(16, 16), &cfg, &mut rng);
     population.spawn(agent);
 
-    let world = build_world(&grid, &signals, &population, &cfg);
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
+    let world = build_world(&grid, &signals, &food, &population, &cfg);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);

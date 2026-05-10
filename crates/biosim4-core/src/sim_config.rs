@@ -50,6 +50,12 @@ pub struct SimConfig {
     pub choose_parents_by_fitness: bool,
     pub kill_enable: bool,
 
+    // Energy system
+    pub enable_energy: bool,
+    pub energy_per_step_cost: f32,
+    pub food_regen_rate: f32,
+    pub food_initial_density: f32,
+
     // Agent defaults
     pub responsiveness: f32,
     pub responsiveness_curve_k_factor: f32,
@@ -91,6 +97,10 @@ impl Default for SimConfig {
             sexual_reproduction: false,
             choose_parents_by_fitness: true,
             kill_enable: false,
+            enable_energy: false,
+            energy_per_step_cost: 0.003,
+            food_regen_rate: 0.0005,
+            food_initial_density: 0.3,
             responsiveness: 0.5,
             responsiveness_curve_k_factor: 2.0,
             population_sensor_radius: 2.5,

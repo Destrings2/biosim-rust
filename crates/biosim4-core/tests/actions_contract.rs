@@ -7,6 +7,7 @@
 use biosim4_core::{
     actions::{prob2bool, register_builtin_actions, response_curve},
     agent::{Agent, AgentId},
+    food_layer::FoodLayer,
     grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
     genome::ops::make_random_genome,
@@ -47,6 +48,7 @@ fn with_action_ctx<R>(
     let grid_ptr: *const Grid = grid;
     let signals_const_ptr: *const Signals = signals;
     let signals_mut_ptr: *mut Signals = signals;
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
     let pop_ptr: *const Population = population;
     let agent_ptr: *mut Agent = population.get_mut(agent_id).expect("agent exists");
 
@@ -57,6 +59,7 @@ fn with_action_ctx<R>(
     let world = World {
         grid: unsafe { &*grid_ptr },
         signals: unsafe { &*signals_const_ptr },
+        food: &food,
         population: unsafe { &*pop_ptr },
         size_x: cfg.size_x,
         size_y: cfg.size_y,
@@ -78,10 +81,10 @@ fn with_action_ctx<R>(
 }
 
 #[test]
-fn registry_has_all_17_builtin_actions() {
+fn registry_has_all_builtin_actions() {
     let mut reg = ActionRegistry::new();
     register_builtin_actions(&mut reg);
-    assert_eq!(reg.count(), 17, "expected 17 built-in actions");
+    assert_eq!(reg.count(), 23, "expected 23 built-in actions");
 }
 
 #[test]
@@ -95,6 +98,8 @@ fn registry_has_known_action_ids() {
         "move_left", "move_right", "move_random", "move_rl",
         "set_responsiveness", "set_oscillator_period", "set_longprobe_dist",
         "emit_signal0", "kill_forward",
+        "emit_signal1", "emit_signal2",
+        "write_memory_0", "write_memory_1", "write_memory_2", "write_memory_3",
     ] {
         assert!(ids.contains(&required), "missing action id: {required}");
     }
@@ -334,12 +339,14 @@ fn with_kill_ctx<R>(
     let grid_ptr: *const Grid = grid;
     let signals_const_ptr: *const Signals = signals;
     let signals_mut_ptr: *mut Signals = signals;
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
     let pop_ptr: *const Population = population;
     let agent_ptr: *mut Agent = population.get_mut(agent_id).expect("agent exists");
 
     let world = World {
         grid: unsafe { &*grid_ptr },
         signals: unsafe { &*signals_const_ptr },
+        food: &food,
         population: unsafe { &*pop_ptr },
         size_x: cfg.size_x,
         size_y: cfg.size_y,

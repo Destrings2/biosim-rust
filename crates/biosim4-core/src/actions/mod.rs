@@ -44,6 +44,8 @@ pub fn register_builtin_actions(registry: &mut ActionRegistry) {
     registry.register(Box::new(SetLongprobeDist));
     registry.register(Box::new(SetResponsiveness));
     registry.register(Box::new(EmitSignal0));
+    registry.register(Box::new(EmitSignal1));
+    registry.register(Box::new(EmitSignal2));
     registry.register(Box::new(MoveEast));
     registry.register(Box::new(MoveWest));
     registry.register(Box::new(MoveNorth));
@@ -52,6 +54,10 @@ pub fn register_builtin_actions(registry: &mut ActionRegistry) {
     registry.register(Box::new(MoveRight));
     registry.register(Box::new(MoveReverse));
     registry.register(Box::new(KillForward));
+    registry.register(Box::new(WriteMemory0));
+    registry.register(Box::new(WriteMemory1));
+    registry.register(Box::new(WriteMemory2));
+    registry.register(Box::new(WriteMemory3));
 }
 
 // ── Utility functions ─────────────────────────────────────────────────────
@@ -121,6 +127,28 @@ impl Action for EmitSignal0 {
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         if prob2bool(level, ctx.rng) {
             ctx.signals.increment(0, ctx.agent.loc, ctx.world.grid);
+        }
+    }
+}
+
+struct EmitSignal1;
+impl Action for EmitSignal1 {
+    fn id(&self) -> &str { "emit_signal1" }
+    fn name(&self) -> &str { "emit signal 1" }
+    fn execute(&self, level: f32, ctx: &mut ActionContext) {
+        if prob2bool(level, ctx.rng) {
+            ctx.signals.increment(1, ctx.agent.loc, ctx.world.grid);
+        }
+    }
+}
+
+struct EmitSignal2;
+impl Action for EmitSignal2 {
+    fn id(&self) -> &str { "emit_signal2" }
+    fn name(&self) -> &str { "emit signal 2" }
+    fn execute(&self, level: f32, ctx: &mut ActionContext) {
+        if prob2bool(level, ctx.rng) {
+            ctx.signals.increment(2, ctx.agent.loc, ctx.world.grid);
         }
     }
 }
@@ -218,3 +246,23 @@ impl Action for MoveY {
         if ctx.rng.gen_bool(v.abs()) { try_move(ctx, dir); }
     }
 }
+
+// ── Memory write actions ──────────────────────────────────────────────────
+
+macro_rules! write_memory {
+    ($name:ident, $id:literal, $label:literal, $reg:literal) => {
+        struct $name;
+        impl Action for $name {
+            fn id(&self)   -> &str { $id }
+            fn name(&self) -> &str { $label }
+            fn execute(&self, level: f32, ctx: &mut ActionContext) {
+                ctx.agent.memory[$reg] = (level.tanh() + 1.0) / 2.0;
+            }
+        }
+    };
+}
+
+write_memory!(WriteMemory0, "write_memory_0", "write memory 0", 0);
+write_memory!(WriteMemory1, "write_memory_1", "write memory 1", 1);
+write_memory!(WriteMemory2, "write_memory_2", "write memory 2", 2);
+write_memory!(WriteMemory3, "write_memory_3", "write memory 3", 3);

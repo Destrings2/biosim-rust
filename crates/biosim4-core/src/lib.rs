@@ -5,6 +5,7 @@ pub mod registry;
 pub mod genome;
 pub mod grid;
 pub mod signals_layer;
+pub mod food_layer;
 pub mod barriers;
 pub mod agent;
 pub mod population;

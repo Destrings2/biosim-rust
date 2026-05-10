@@ -65,6 +65,5 @@ pub fn register_builtin_challenges(registry: &mut ChallengeRegistry) {
     // Dynamic / time-varying
     registry.register(Box::new(SunTrackerChallenge::default()));
     registry.register(Box::new(DiasporaChallenge::default()));
-    registry.register(Box::new(FoodForagingChallenge::default()));
     registry.register(Box::new(SurvivorChallenge::default()));
 }

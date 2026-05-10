@@ -34,6 +34,7 @@ use crate::registry::challenge::{ChallengeConfig, ChallengeRegistry};
 use crate::registry::sensor::SensorRegistry;
 use crate::rng::Rng;
 use crate::sim_config::SimConfig;
+use crate::food_layer::FoodLayer;
 use crate::signals_layer::Signals;
 use crate::world::World;
 use crate::genome::neural_net::WiringConfig;
@@ -59,6 +60,7 @@ pub struct SimulationState {
     pub config: SimConfig,
     pub grid: Grid,
     pub signals: Signals,
+    pub food: FoodLayer,
     pub population: Population,
     pub generation: u32,
     pub sim_step: u32,
@@ -120,7 +122,8 @@ impl SimulationState {
         let mut grid = Grid::new(config.size_x, config.size_y);
         create_barrier(&mut grid, config.barrier_type);
 
-        let signals = Signals::new(1, config.size_x, config.size_y);
+        let signals = Signals::new(config.signal_layers, config.size_x, config.size_y);
+        let food = FoodLayer::new(config.size_x, config.size_y);
         let population = Population::new(config.population);
         let rng = if config.rng_seed == 0 {
             Rng::from_entropy()
@@ -132,6 +135,7 @@ impl SimulationState {
             config,
             grid,
             signals,
+            food,
             population,
             generation: 0,
             sim_step: 0,
@@ -158,10 +162,11 @@ impl SimulationState {
         self.challenges.apply_config(cfg)
     }
 
-    pub fn world(&self) -> World {
+    pub fn world(&self) -> World<'_> {
         World {
             grid: &self.grid,
             signals: &self.signals,
+            food: &self.food,
             population: &self.population,
             size_x: self.config.size_x,
             size_y: self.config.size_y,

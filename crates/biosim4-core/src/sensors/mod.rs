@@ -61,6 +61,20 @@ pub fn register_builtin_sensors(registry: &mut SensorRegistry) {
     registry.register(Box::new(Signal0));
     registry.register(Box::new(Signal0Fwd));
     registry.register(Box::new(Signal0LR));
+    registry.register(Box::new(Signal1));
+    registry.register(Box::new(Signal1Fwd));
+    registry.register(Box::new(Signal1LR));
+    registry.register(Box::new(Signal2));
+    registry.register(Box::new(Signal2Fwd));
+    registry.register(Box::new(Signal2LR));
+    registry.register(Box::new(Memory0));
+    registry.register(Box::new(Memory1));
+    registry.register(Box::new(Memory2));
+    registry.register(Box::new(Memory3));
+    registry.register(Box::new(EnergyLevel));
+    registry.register(Box::new(FoodHere));
+    registry.register(Box::new(FoodFwd));
+    registry.register(Box::new(FoodLR));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,36 +316,115 @@ impl Sensor for RandomSensor {
 // Signal sensors
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct Signal0;
-impl Sensor for Signal0 {
-    fn id(&self) -> &str { "signal0" }
-    fn name(&self) -> &str { "signal layer 0" }
+macro_rules! signal_sensors {
+    ($s:ident, $sf:ident, $slr:ident, $layer:literal, $id:literal, $idf:literal, $idlr:literal, $name:literal, $namef:literal, $namelr:literal) => {
+        struct $s;
+        impl Sensor for $s {
+            fn id(&self)   -> &str { $id }
+            fn name(&self) -> &str { $name }
+            fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+                ctx.world.signals.get_density($layer, ctx.agent.loc, 2.0, ctx.world.grid)
+            }
+        }
+        struct $sf;
+        impl Sensor for $sf {
+            fn id(&self)   -> &str { $idf }
+            fn name(&self) -> &str { $namef }
+            fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+                signal_density_along_axis(
+                    $layer, ctx.agent.loc, ctx.agent.last_move_dir,
+                    2.0, ctx.world.grid, ctx.world.signals,
+                )
+            }
+        }
+        struct $slr;
+        impl Sensor for $slr {
+            fn id(&self)   -> &str { $idlr }
+            fn name(&self) -> &str { $namelr }
+            fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+                let left  = signal_density_along_axis($layer, ctx.agent.loc,
+                    ctx.agent.last_move_dir.rotate90ccw(), 2.0, ctx.world.grid, ctx.world.signals);
+                let right = signal_density_along_axis($layer, ctx.agent.loc,
+                    ctx.agent.last_move_dir.rotate90cw(),  2.0, ctx.world.grid, ctx.world.signals);
+                ((left + right) / 2.0).clamp(0.0, 1.0)
+            }
+        }
+    };
+}
+
+
+signal_sensors!(Signal0, Signal0Fwd, Signal0LR,
+    0, "signal0", "signal0_fwd", "signal0_lr",
+    "signal layer 0", "signal 0 fwd", "signal 0 LR");
+signal_sensors!(Signal1, Signal1Fwd, Signal1LR,
+    1, "signal1", "signal1_fwd", "signal1_lr",
+    "signal layer 1", "signal 1 fwd", "signal 1 LR");
+signal_sensors!(Signal2, Signal2Fwd, Signal2LR,
+    2, "signal2", "signal2_fwd", "signal2_lr",
+    "signal layer 2", "signal 2 fwd", "signal 2 LR");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Memory sensors
+// ─────────────────────────────────────────────────────────────────────────────
+
+macro_rules! read_memory {
+    ($name:ident, $id:literal, $label:literal, $reg:literal) => {
+        struct $name;
+        impl Sensor for $name {
+            fn id(&self)   -> &str { $id }
+            fn name(&self) -> &str { $label }
+            fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+                ctx.agent.memory[$reg]
+            }
+        }
+    };
+}
+
+read_memory!(Memory0, "memory_0", "memory 0", 0);
+read_memory!(Memory1, "memory_1", "memory 1", 1);
+read_memory!(Memory2, "memory_2", "memory 2", 2);
+read_memory!(Memory3, "memory_3", "memory 3", 3);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Energy / food sensors
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct EnergyLevel;
+impl Sensor for EnergyLevel {
+    fn id(&self)   -> &str { "energy_level" }
+    fn name(&self) -> &str { "energy level" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        ctx.world.signals.get_density(0, ctx.agent.loc, 2.0, ctx.world.grid)
+        ctx.agent.energy.clamp(0.0, 1.0)
     }
 }
 
-struct Signal0Fwd;
-impl Sensor for Signal0Fwd {
-    fn id(&self) -> &str { "signal0_fwd" }
-    fn name(&self) -> &str { "signal 0 fwd" }
+struct FoodHere;
+impl Sensor for FoodHere {
+    fn id(&self)   -> &str { "food_here" }
+    fn name(&self) -> &str { "food here" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        signal_density_along_axis(
-            0, ctx.agent.loc, ctx.agent.last_move_dir,
-            2.0, ctx.world.grid, ctx.world.signals,
-        )
+        ctx.world.food.get(ctx.agent.loc)
     }
 }
 
-struct Signal0LR;
-impl Sensor for Signal0LR {
-    fn id(&self) -> &str { "signal0_lr" }
-    fn name(&self) -> &str { "signal 0 LR" }
+struct FoodFwd;
+impl Sensor for FoodFwd {
+    fn id(&self)   -> &str { "food_fwd" }
+    fn name(&self) -> &str { "food fwd" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        let left  = signal_density_along_axis(0, ctx.agent.loc,
-            ctx.agent.last_move_dir.rotate90ccw(), 2.0, ctx.world.grid, ctx.world.signals);
-        let right = signal_density_along_axis(0, ctx.agent.loc,
-            ctx.agent.last_move_dir.rotate90cw(),  2.0, ctx.world.grid, ctx.world.signals);
+        ctx.world.food.get_density_fwd(ctx.agent.loc, ctx.agent.last_move_dir, 3.0, ctx.world.grid)
+    }
+}
+
+struct FoodLR;
+impl Sensor for FoodLR {
+    fn id(&self)   -> &str { "food_lr" }
+    fn name(&self) -> &str { "food LR" }
+    fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+        let left  = ctx.world.food.get_density_fwd(ctx.agent.loc,
+            ctx.agent.last_move_dir.rotate90ccw(), 3.0, ctx.world.grid);
+        let right = ctx.world.food.get_density_fwd(ctx.agent.loc,
+            ctx.agent.last_move_dir.rotate90cw(),  3.0, ctx.world.grid);
         ((left + right) / 2.0).clamp(0.0, 1.0)
     }
 }

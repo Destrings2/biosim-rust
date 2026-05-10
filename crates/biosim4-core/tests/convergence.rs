@@ -72,10 +72,3 @@ fn sun_tracker_population_converges() {
     let rates = run_and_collect_survival("sun_tracker", 80, 99);
     assert_improves("sun_tracker", &rates, 0.02);
 }
-
-#[test]
-fn food_foraging_population_converges() {
-    let rates = run_and_collect_survival("food_foraging", 40, 555);
-    let tail = rates[rates.len() - 5..].iter().sum::<f32>() / 5.0;
-    assert!(tail > 0.05, "food_foraging never lifted off (tail={:.3})", tail);
-}

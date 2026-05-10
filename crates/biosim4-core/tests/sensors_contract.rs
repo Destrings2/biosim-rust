@@ -11,6 +11,7 @@
 
 use biosim4_core::{
     agent::{Agent, AgentId},
+    food_layer::FoodLayer,
     grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
     genome::ops::make_random_genome,
@@ -27,12 +28,14 @@ use biosim4_core::{
 fn build_world<'a>(
     grid: &'a Grid,
     signals: &'a Signals,
+    food: &'a FoodLayer,
     population: &'a Population,
     cfg: &SimConfig,
 ) -> World<'a> {
     World {
         grid,
         signals,
+        food,
         population,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
@@ -49,10 +52,10 @@ fn make_test_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> A
 }
 
 #[test]
-fn registry_has_all_21_builtin_sensors() {
+fn registry_has_all_builtin_sensors() {
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
-    assert_eq!(reg.count(), 21, "expected 21 built-in sensors");
+    assert_eq!(reg.count(), 35, "expected 35 built-in sensors");
 }
 
 #[test]
@@ -65,7 +68,7 @@ fn every_sensor_returns_in_unit_interval() {
 
     // Set up a world with a few agents and some signals so density sensors have data
     let grid = Grid::new(cfg.size_x, cfg.size_y);
-    let mut signals = Signals::new(1, cfg.size_x, cfg.size_y);
+    let mut signals = Signals::new(3, cfg.size_x, cfg.size_y);
     let mut population = Population::new(cfg.population);
 
     // Spawn a "self" agent at center
@@ -77,8 +80,10 @@ fn every_sensor_returns_in_unit_interval() {
     let neighbor = make_test_agent(population.next_id(), Coord::new(18, 16), &cfg, &mut rng);
     population.spawn(neighbor);
 
-    // Drop a signal at center
+    // Drop a signal on each layer so density sensors have data
     signals.increment(0, center, &grid);
+    signals.increment(1, center, &grid);
+    signals.increment(2, center, &grid);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
@@ -87,7 +92,8 @@ fn every_sensor_returns_in_unit_interval() {
     let ids: Vec<String> = (0..reg.count()).map(|i| reg.id(i).to_string()).collect();
     let _ = &ids;  // suppress unused warning if loop branches change
 
-    let world = build_world(&grid, &signals, &population, &cfg);
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
+    let world = build_world(&grid, &signals, &food, &population, &cfg);
 
     let agent_ref = population.get(1).unwrap();
     let mut sensor_rng = Rng::seeded(7);
@@ -118,7 +124,8 @@ fn loc_x_sensor_at_extremes() {
     let right = make_test_agent(population.next_id(), Coord::new(15, 8), &cfg, &mut rng);
     population.spawn(right);
 
-    let world = build_world(&grid, &signals, &population, &cfg);
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
+    let world = build_world(&grid, &signals, &food, &population, &cfg);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
@@ -147,7 +154,8 @@ fn boundary_dist_at_corner_is_zero_at_center_is_one() {
     let center = make_test_agent(population.next_id(), Coord::new(16, 16), &cfg, &mut rng);
     population.spawn(center);
 
-    let world = build_world(&grid, &signals, &population, &cfg);
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
+    let world = build_world(&grid, &signals, &food, &population, &cfg);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
@@ -175,7 +183,8 @@ fn osc1_oscillates_with_step() {
     agent.osc_period = 32;  // fixed period for predictability
     population.spawn(agent);
 
-    let world = build_world(&grid, &signals, &population, &cfg);
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
+    let world = build_world(&grid, &signals, &food, &population, &cfg);
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
     let osc_idx = (0..reg.count()).find(|&i| reg.id(i) == "osc1").unwrap();
@@ -207,7 +216,8 @@ fn random_sensor_produces_varied_output() {
     let agent = make_test_agent(population.next_id(), Coord::new(8, 8), &cfg, &mut rng);
     population.spawn(agent);
 
-    let world = build_world(&grid, &signals, &population, &cfg);
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
+    let world = build_world(&grid, &signals, &food, &population, &cfg);
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
     let r_idx = (0..reg.count()).find(|&i| reg.id(i) == "random").unwrap();

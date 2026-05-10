@@ -35,9 +35,17 @@ pub fn render_frame_into(state: &SimulationState, buf: &mut Vec<u8>) {
         let world_y = sy - 1 - y;
         let row_base = y * sx * 4;
         for x in 0..sx {
-            let cell = state.grid.at(Coord::new(x as i16, world_y as i16));
+            let coord = Coord::new(x as i16, world_y as i16);
+            let cell = state.grid.at(coord);
             let rgb = match cell {
-                EMPTY   => COLOR_EMPTY,
+                EMPTY   => {
+                    let food = state.food.get(coord);
+                    if food > 0.01 {
+                        [0, (food * 120.0) as u8, 0]
+                    } else {
+                        COLOR_EMPTY
+                    }
+                }
                 BARRIER => COLOR_BARRIER,
                 id      => state
                     .population

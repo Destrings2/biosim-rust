@@ -35,6 +35,32 @@ use crate::genome::neural_net::create_wiring;
 use crate::sim_state::SimulationState;
 use crate::registry::challenge::WorldMut;
 
+/// Apply sensor/action enabled state derived from the current config.
+/// Must be called before `commit_enabled()` at each generation boundary.
+fn apply_feature_enables(state: &mut SimulationState) {
+    let cfg = &state.config;
+
+    // Energy/food sensors — meaningful only when energy system is on
+    let energy = cfg.enable_energy;
+    for id in &["energy_level", "food_here", "food_fwd", "food_lr"] {
+        state.sensors.set_enabled(id, energy);
+    }
+
+    // Signal layer 1 sensors/actions — meaningful only when signal_layers >= 2
+    let s1 = cfg.signal_layers >= 2;
+    for id in &["signal1", "signal1_fwd", "signal1_lr"] {
+        state.sensors.set_enabled(id, s1);
+    }
+    state.actions.set_enabled("emit_signal1", s1);
+
+    // Signal layer 2 sensors/actions — meaningful only when signal_layers >= 3
+    let s2 = cfg.signal_layers >= 3;
+    for id in &["signal2", "signal2_fwd", "signal2_lr"] {
+        state.sensors.set_enabled(id, s2);
+    }
+    state.actions.set_enabled("emit_signal2", s2);
+}
+
 /// Populate generation 0 with agents carrying random genomes, placed randomly.
 pub fn initialize_generation_0(state: &mut SimulationState) {
     state.population.clear();
@@ -42,8 +68,13 @@ pub fn initialize_generation_0(state: &mut SimulationState) {
     crate::barriers::create_barrier(&mut state.grid, state.config.barrier_type);
     state.reapply_user_barriers();
     state.signals.zero_fill();
+    if state.config.enable_energy {
+        state.food.randomize(state.config.food_initial_density, &state.grid, &mut state.rng);
+    } else {
+        state.food.zero_fill();
+    }
 
-    // Commit any pending sensor/action enable-disable changes before wiring.
+    apply_feature_enables(state);
     state.sensors.commit_enabled();
     state.actions.commit_enabled();
     let wiring_cfg = state.wiring_config();
@@ -103,6 +134,7 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     let new_pop = state.config.population as usize;
     // Commit pending enable/disable changes: from this generation on, new nnets
     // are wired against the updated active sensor/action set.
+    apply_feature_enables(state);
     state.sensors.commit_enabled();
     state.actions.commit_enabled();
     let wiring_cfg = state.wiring_config();
@@ -144,6 +176,11 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     crate::barriers::create_barrier(&mut state.grid, cfg.barrier_type);
     state.reapply_user_barriers();
     state.signals.zero_fill();
+    if state.config.enable_energy {
+        state.food.randomize(state.config.food_initial_density, &state.grid, &mut state.rng);
+    } else {
+        state.food.zero_fill();
+    }
     state.generation += 1;
 
     for genome in new_genomes {

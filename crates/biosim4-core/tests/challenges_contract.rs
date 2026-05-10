@@ -4,6 +4,7 @@
 
 use biosim4_core::{
     agent::{Agent, AgentId},
+    food_layer::FoodLayer,
     grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
     genome::ops::make_random_genome,
@@ -26,15 +27,16 @@ fn make_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> Agent 
 }
 
 fn world_with_agent(agent_loc: Coord, cfg: &SimConfig)
-    -> (Grid, Signals, Population)
+    -> (Grid, Signals, FoodLayer, Population)
 {
     let grid = Grid::new(cfg.size_x, cfg.size_y);
     let signals = Signals::new(1, cfg.size_x, cfg.size_y);
+    let food = FoodLayer::new(cfg.size_x, cfg.size_y);
     let mut pop = Population::new(1);
     let mut rng = Rng::seeded(0xCAFE);
     let a = make_agent(pop.next_id(), agent_loc, cfg, &mut rng);
     pop.spawn(a);
-    (grid, signals, pop)
+    (grid, signals, food, pop)
 }
 
 #[test]
@@ -77,9 +79,9 @@ fn schema_list_entries_have_required_fields() {
 #[test]
 fn empty_active_set_passes_everyone() {
     let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
-    let (grid, signals, pop) = world_with_agent(Coord::new(0, 0), &cfg);
+    let (grid, signals, food, pop) = world_with_agent(Coord::new(0, 0), &cfg);
     let world = World {
-        grid: &grid, signals: &signals, population: &pop,
+        grid: &grid, signals: &signals, food: &food, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
         generation: 0, step: 0,
     };
@@ -95,9 +97,9 @@ fn right_half_pass_left_fails() {
     let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
 
     // Agent on the right
-    let (grid, signals, pop) = world_with_agent(Coord::new(12, 8), &cfg);
+    let (grid, signals, food, pop) = world_with_agent(Coord::new(12, 8), &cfg);
     let world = World {
-        grid: &grid, signals: &signals, population: &pop,
+        grid: &grid, signals: &signals, food: &food, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
         generation: 0, step: 0,
     };
@@ -109,9 +111,9 @@ fn right_half_pass_left_fails() {
     assert!((score - 1.0).abs() < 1e-6);
 
     // Agent on the left should fail
-    let (grid, signals, pop) = world_with_agent(Coord::new(2, 8), &cfg);
+    let (grid, signals, food, pop) = world_with_agent(Coord::new(2, 8), &cfg);
     let world = World {
-        grid: &grid, signals: &signals, population: &pop,
+        grid: &grid, signals: &signals, food: &food, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
         generation: 0, step: 0,
     };
@@ -126,9 +128,9 @@ fn right_half_pass_left_fails() {
 #[test]
 fn circle_challenge_configure_changes_evaluation() {
     let cfg = SimConfig { size_x: 17, size_y: 17, ..SimConfig::default() };  // mid = 8
-    let (grid, signals, pop) = world_with_agent(Coord::new(8, 8), &cfg);
+    let (grid, signals, food, pop) = world_with_agent(Coord::new(8, 8), &cfg);
     let world = World {
-        grid: &grid, signals: &signals, population: &pop,
+        grid: &grid, signals: &signals, food: &food, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
         generation: 0, step: 0,
     };
@@ -170,9 +172,9 @@ fn configure_with_bad_param_value_returns_err() {
 fn apply_config_with_any_composition_passes_if_any_active_passes() {
     let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
     // Agent on left half (so right_half fails) but in left_eighth → at least one passes
-    let (grid, signals, pop) = world_with_agent(Coord::new(1, 8), &cfg);
+    let (grid, signals, food, pop) = world_with_agent(Coord::new(1, 8), &cfg);
     let world = World {
-        grid: &grid, signals: &signals, population: &pop,
+        grid: &grid, signals: &signals, food: &food, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
         generation: 0, step: 0,
     };
@@ -191,9 +193,9 @@ fn apply_config_with_any_composition_passes_if_any_active_passes() {
 #[test]
 fn apply_config_with_all_composition_fails_if_any_active_fails() {
     let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
-    let (grid, signals, pop) = world_with_agent(Coord::new(1, 8), &cfg);
+    let (grid, signals, food, pop) = world_with_agent(Coord::new(1, 8), &cfg);
     let world = World {
-        grid: &grid, signals: &signals, population: &pop,
+        grid: &grid, signals: &signals, food: &food, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
         generation: 0, step: 0,
     };
@@ -242,9 +244,9 @@ fn evaluate_score_always_in_unit_interval() {
             register_builtin_challenges(&mut reg);
             if reg.set_single(id, None).is_err() { continue; }
 
-            let (grid, signals, pop) = world_with_agent(p, &cfg);
+            let (grid, signals, food, pop) = world_with_agent(p, &cfg);
             let world = World {
-                grid: &grid, signals: &signals, population: &pop,
+                grid: &grid, signals: &signals, food: &food, population: &pop,
                 size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
                 generation: 0, step: 0,
             };
@@ -267,9 +269,9 @@ fn weighted_sum_composition_evaluates_correctly() {
 
     // Agent at x=12 is in the right half (passes right_half, score=1.0)
     // but NOT in the left eighth (fails left_eighth, score=0.0).
-    let (grid, signals, pop) = world_with_agent(Coord::new(12, 8), &cfg);
+    let (grid, signals, food, pop) = world_with_agent(Coord::new(12, 8), &cfg);
     let world = World {
-        grid: &grid, signals: &signals, population: &pop,
+        grid: &grid, signals: &signals, food: &food, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
         generation: 0, step: 0,

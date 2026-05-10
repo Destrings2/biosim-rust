@@ -4,10 +4,8 @@
 
 use crate::agent::Agent;
 use crate::registry::challenge::{Challenge, ChallengeOverlay, WorldMut};
-use crate::types::Coord;
 use crate::world::World;
 use serde_json::{json, Value};
-use std::collections::HashSet;
 
 // ── Sun Tracker ─────────────────────────────────────────────────────────
 
@@ -161,104 +159,6 @@ impl Challenge for DiasporaChallenge {
         let pass = nearest >= self.min_distance;
         let max = self.min_distance * 2.0;
         (pass, (nearest / max).clamp(0.0, 1.0))
-    }
-}
-
-// ── Food Foraging ────────────────────────────────────────────────────────
-
-/// Food pellets are placed at gen-start. Stepping onto a pellet consumes it
-/// (incrementing the agent's eat counter, low 6 bits of `challenge_bits`).
-/// Survive by eating at least `min_food`. Pellets do not respawn within a
-/// generation, so this strongly selects for exploration.
-pub struct FoodForagingChallenge {
-    pub food_density: f32,
-    pub min_food: u32,
-    /// Pellet positions for the current generation. Reseeded in
-    /// `on_generation_start`.
-    pellets: HashSet<(i16, i16)>,
-}
-
-impl Default for FoodForagingChallenge {
-    fn default() -> Self {
-        Self { food_density: 0.05, min_food: 3, pellets: HashSet::new() }
-    }
-}
-
-impl Challenge for FoodForagingChallenge {
-    fn id(&self) -> &str { "food_foraging" }
-    fn name(&self) -> &str { "Food Foraging" }
-    fn description(&self) -> &str {
-        "Pellets are scattered at gen-start; stepping onto one consumes it. Survive by eating at least `min_food`."
-    }
-    fn params_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "food_density": { "type": "number", "minimum": 0.005, "maximum": 0.2,  "default": 0.05,
-                                  "description": "Fraction of cells seeded with food" },
-                "min_food":     { "type": "number", "minimum": 1.0,   "maximum": 63.0, "default": 3.0 }
-            }
-        })
-    }
-    fn configure(&mut self, p: Value) -> Result<(), String> {
-        if let Some(v) = p.get("food_density") { self.food_density = v.as_f64().ok_or("food_density")? as f32; }
-        if let Some(v) = p.get("min_food")     { self.min_food     = v.as_f64().ok_or("min_food")? as u32; }
-        Ok(())
-    }
-    fn evaluate(&self, agent: &Agent, _world: &World) -> (bool, f32) {
-        let eaten = agent.challenge_bits & 0x3F;
-        let pass = eaten >= self.min_food;
-        (pass, (eaten as f32 / 63.0).min(1.0))
-    }
-    fn on_generation_start(&mut self, ctx: &mut WorldMut) {
-        // Reset eat counter for everybody
-        for a in ctx.population.iter_alive_mut() {
-            a.challenge_bits &= !0x3F;
-        }
-        // Reseed pellets at empty cells.
-        self.pellets.clear();
-        let sx = ctx.config.size_x;
-        let sy = ctx.config.size_y;
-        let n = ((sx as usize * sy as usize) as f32 * self.food_density) as usize;
-        let mut placed = 0;
-        let mut tries = 0;
-        let cap = (n * 10).max(1);
-        while placed < n && tries < cap {
-            tries += 1;
-            let x = ctx.rng.gen_range_u32(0, sx as u32) as i16;
-            let y = ctx.rng.gen_range_u32(0, sy as u32) as i16;
-            let loc = Coord::new(x, y);
-            if ctx.grid.is_empty_at(loc) && self.pellets.insert((x, y)) {
-                placed += 1;
-            }
-        }
-    }
-    fn on_sim_step(&mut self, ctx: &mut WorldMut) {
-        if self.pellets.is_empty() { return; }
-        let alive_ids: Vec<u32> = ctx.population.alive_ids().to_vec();
-        for id in alive_ids {
-            let loc = match ctx.population.get(id) {
-                Some(a) if a.alive => a.loc,
-                _ => continue,
-            };
-            let key = (loc.x, loc.y);
-            if self.pellets.remove(&key) {
-                if let Some(a) = ctx.population.get_mut(id) {
-                    let eaten = a.challenge_bits & 0x3F;
-                    if eaten < 63 {
-                        a.challenge_bits = (a.challenge_bits & !0x3F) | (eaten + 1);
-                    }
-                }
-            }
-        }
-    }
-    fn overlays(&self, _world: &World) -> Vec<ChallengeOverlay> {
-        let points = self.pellets.iter().map(|&(x, y)| (x as f32, y as f32)).collect();
-        vec![ChallengeOverlay::Points {
-            points,
-            color: [0, 255, 100, 255], // bright green for food
-            size: 1.0,
-        }]
     }
 }
 
