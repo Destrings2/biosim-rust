@@ -69,3 +69,7 @@ export const IcKeyboard = (p: P) => (
     <path d="M7 11 H7.01 M11 11 H11.01 M15 11 H15.01 M7 14 H17"/>
   </Icon>
 );
+
+export const IcChevron = (p: P) => (
+  <Icon {...p}><path d="M6 9 L12 15 L18 9" /></Icon>
+);
