@@ -1,3 +1,10 @@
+//! Shared helper functions for sensor implementations.
+//!
+//! These are free functions used by multiple sensors in `mod.rs`.
+//! `population_density_along_axis` computes the weighted density difference
+//! between the forward and backward (or left and right) half of a neighborhood,
+//! enabling directional population and signal sensors.
+
 use crate::grid::{Grid, visit_neighborhood};
 use crate::population::Population;
 use crate::signals_layer::Signals;

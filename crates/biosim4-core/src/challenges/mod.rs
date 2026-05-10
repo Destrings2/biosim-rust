@@ -1,3 +1,22 @@
+//! Built-in challenge implementations (26 challenges across 7 submodules).
+//!
+//! - `spatial` — challenges based on agent location at generation end:
+//!   `circle`, `right_half`, `right_quarter`, `left_eighth`,
+//!   `east_west_eighths`, `center_weighted`, `center_unweighted`,
+//!   `corner`, `corner_weighted`, `against_any_wall`, `near_barrier`.
+//! - `social` — challenges based on proximity to other agents:
+//!   `pairs`, `center_sparse`, `string`.
+//! - `migration` — `migrate_distance`: rewards traveling far from birth location.
+//! - `sequential` — challenges requiring ordered behavior during the generation:
+//!   `touch_any_wall` (uses `challenge_bits`), `location_sequence`.
+//! - `radioactive` — `radioactive_walls`: lethal border zones.
+//! - `altruism` — `altruism`, `altruism_sacrifice`: proximity-based group fitness.
+//! - `dynamic` — time-varying challenges with `on_sim_step` and
+//!   `on_generation_start` hooks: `sun_tracker`, `diaspora`,
+//!   `food_foraging`, `survivor`.
+//!
+//! All built-in challenges are registered by `register_builtin_challenges`.
+
 mod spatial;
 mod migration;
 mod social;

@@ -1,3 +1,9 @@
+//! Social challenges: evaluate based on agent proximity to other agents.
+//!
+//! `pairs` — passes if at least one neighbor is within radius 1. `center_sparse`
+//! — passes if in the center zone with few neighbors within a configurable
+//! radius. `string` — passes if the agent forms part of a connected chain.
+
 use crate::agent::Agent;
 use crate::grid::visit_neighborhood;
 use crate::registry::challenge::Challenge;

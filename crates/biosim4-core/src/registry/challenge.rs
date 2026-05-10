@@ -1,3 +1,40 @@
+//! Challenge trait, registry, and composition logic.
+//!
+//! A challenge evaluates each alive agent once per generation and returns
+//! `(pass: bool, fitness: f32)`. The `pass` flag determines whether the agent
+//! enters the survivor pool. The `fitness` score (0.0..1.0) is used to bias
+//! parent selection and, as a fallback, to rank agents when no one passes.
+//!
+//! # `ChallengeComposition`
+//!
+//! Multiple active challenges are combined by the registry before returning:
+//!
+//! - `Any` — passes if at least one challenge passes; fitness = max score.
+//! - `All` — passes only if all challenges pass; fitness = min score.
+//! - `WeightedSum { weights, threshold }` — fitness = weighted average of
+//!   all scores; passes if that average ≥ threshold.
+//!
+//! The default composition is `Any`.
+//!
+//! # `WorldMut`
+//!
+//! Challenge hooks (`on_sim_step`, `on_generation_start`) receive a
+//! [`WorldMut`] rather than the read-only [`World`] so they can mutate
+//! agent `challenge_bits`, queue deaths, or write signals. Sensors and the
+//! `evaluate` method always receive `&World` (read-only).
+//!
+//! # `ChallengeConfig` JSON format
+//!
+//! ```json
+//! {
+//!   "active": ["circle", "right_half"],
+//!   "composition": { "type": "Any" },
+//!   "params": {
+//!     "circle": { "cx": 0.5, "cy": 0.5, "radius": 0.25, "weighted": false }
+//!   }
+//! }
+//! ```
+
 use crate::agent::Agent;
 use crate::world::World;
 use crate::grid::Grid;

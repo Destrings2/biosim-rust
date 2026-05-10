@@ -1,3 +1,9 @@
+//! Radioactive walls challenge.
+//!
+//! `radioactive_walls` — kills agents that enter configurable lethal border
+//! zones via `on_sim_step`. The border width and lethality probability are
+//! configurable. Agents that survive all steps in a non-lethal zone pass.
+
 use crate::agent::Agent;
 use crate::registry::challenge::{Challenge, WorldMut};
 use crate::world::World;

@@ -1,3 +1,47 @@
+//! Per-step simulation execution engine.
+//!
+//! # Entry points
+//!
+//! [`step_generation`] runs all steps in one generation.
+//! [`step_one`] runs a single step and is also exported for embedders (e.g.
+//! the WASM frontend) that drive the simulation incrementally.
+//!
+//! # Two-phase per-agent design
+//!
+//! Each agent is ticked in two phases to satisfy Rust's aliasing rules.
+//!
+//! **Phase 1 — sensor evaluation → neural feed-forward.**
+//! Requires `&mut agent.nnet` (to write neuron outputs in-place) alongside
+//! `&Population` (for neighbor-scanning sensors). These alias at the type
+//! level — both live inside `SimulationState` — so raw pointers are used.
+//! Sensors read only `loc`, `heading`, `age`, `osc_period`,
+//! `long_probe_dist`, `genome`, `responsiveness`, and `last_move_dir`;
+//! they never read `nnet`. No two live references reach the same memory.
+//! `sensor_rng` is forked from `state.rng` before any raw pointer is
+//! derived, making it a completely independent object.
+//!
+//! **Phase 2 — action execution.**
+//! `action_accum` (written in Phase 1) is read as `&[f32]` via the same raw
+//! pointer while `ActionContext` holds `&mut` to `agent`, the move/death
+//! queues, `signals`, and `rng`. `action_accum` lives in `scratch`, which is
+//! disjoint from all of those fields.
+//!
+//! # Alive-IDs snapshot
+//!
+//! `step_all_agents` snapshots `population.alive_ids()` into
+//! `scratch.alive_ids` at the start of each step (no allocation — the
+//! buffer is reused). The loop walks the snapshot by index rather than
+//! holding a borrow on `scratch`, so `step_one_agent(state, id)` can take
+//! `&mut state` without borrow-checker conflict. See [`SIMULATION_LOOP.md`]
+//! for the full rationale.
+//!
+//! # Deferred queues
+//!
+//! Actions push to `population.move_queue` and `population.death_queue`.
+//! These are drained at end-of-step in order: deaths first (freeing cells),
+//! then moves (entering freed cells). Immediate mutation would corrupt the
+//! alive-IDs snapshot being iterated.
+
 use crate::agent::AgentId;
 use crate::genome::neural_net::feed_forward;
 use crate::registry::action::ActionContext;

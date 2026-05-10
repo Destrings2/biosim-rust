@@ -1,3 +1,10 @@
+//! Native CLI binary.
+//!
+//! Accepts an optional path to a JSON config file as the first argument.
+//! Falls back to `SimConfig::default()` if none is given. Runs
+//! `step_generation` + `spawn_new_generation` in a loop for
+//! `max_generations`, printing per-generation statistics to stdout.
+
 use biosim4_core::{
     SimConfig, SimulationState,
     analysis::{collect_epoch_stats, print_epoch_stats, display_sample_genomes},

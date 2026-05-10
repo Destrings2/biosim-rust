@@ -1,3 +1,15 @@
+//! Read-only world view passed to sensors and challenge evaluators.
+//!
+//! [`World`] holds immutable references into `SimulationState` fields. It
+//! exists to give sensors and challenge `evaluate` methods a coherent,
+//! borrow-safe view of the simulation without exposing mutation. The lifetime
+//! `'a` is borrowed from `SimulationState`, so a `World` cannot outlive the
+//! state that produced it.
+//!
+//! `SimulationState::world()` creates a `World` on demand; it is cheap (just
+//! reference copies). Challenge hooks that need mutation receive `WorldMut`
+//! (from `crate::registry::challenge`) instead.
+
 use crate::grid::Grid;
 use crate::population::Population;
 use crate::signals_layer::Signals;

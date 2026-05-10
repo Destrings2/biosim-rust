@@ -1,3 +1,20 @@
+//! Procedural barrier placement.
+//!
+//! [`create_barrier`] stamps a preset obstacle layout onto the grid based on
+//! `SimConfig.barrier_type` (0..7; values ≥ 8 are no-ops). Type 0 places no
+//! barriers. Types 1–7 place rectangles, bars, staggered blocks, and strips.
+//!
+//! All placed cells are recorded in `grid.barrier_locations` and cluster
+//! centers in `grid.barrier_centers` for use by sensors and challenges.
+//!
+//! # `user_barriers` override
+//!
+//! After every `create_barrier` call, `SimulationState::reapply_user_barriers`
+//! re-stamps the user's manual overrides (painted via the frontend). This is
+//! necessary because `initialize_generation_0` and `spawn_new_generation` both
+//! call `grid.zero_fill()` followed by `create_barrier`, which would erase
+//! any previously painted cells.
+
 use crate::grid::{Grid, BARRIER};
 use crate::types::Coord;
 

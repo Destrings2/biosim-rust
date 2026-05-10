@@ -1,3 +1,19 @@
+//! Gene encoding and accessors.
+//!
+//! A `Gene` is a 32-bit packed value representing one synaptic connection:
+//!
+//! ```text
+//! bit  31:    source_type  (0 = neuron, 1 = sensor)
+//! bits 30-24: source_num   (7 bits, 0..127)
+//! bit  23:    sink_type    (0 = neuron, 1 = action)
+//! bits 22-16: sink_num     (7 bits, 0..127)
+//! bits 15-0:  weight       (signed i16, scaled to ≈ -4.0..4.0 by ÷ 8192)
+//! ```
+//!
+//! Raw indices are remapped modulo `sensor_count`/`action_count`/`max_neurons`
+//! during `create_wiring`, so the 7-bit range is irrelevant to the actual
+//! registry size. A random `u32` is a valid (if arbitrary) gene.
+
 /// A single synaptic connection gene encoded in 4 bytes:
 ///   bits 31:   source type (0=neuron, 1=sensor)
 ///   bits 30-24: source num (7 bits)

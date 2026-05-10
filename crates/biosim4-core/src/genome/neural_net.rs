@@ -1,3 +1,49 @@
+//! Neural network compilation and feed-forward evaluation.
+//!
+//! # Network representation
+//!
+//! A [`NeuralNet`] is compiled from a [`Genome`](super::ops::Genome) by
+//! [`create_wiring`]. It holds a flat list of resolved [`Gene`] connections
+//! and a list of internal [`Neuron`] states. Connections are sorted:
+//! neuron→neuron first, neuron/sensor→action last. This ordering is required
+//! by [`feed_forward`]'s single-pass tanh strategy (see below).
+//!
+//! # `create_wiring` algorithm (6 steps)
+//!
+//! 1. **Remap indices** — raw gene source/sink numbers are taken modulo
+//!    `sensor_count`, `action_count`, or `max_neurons` so the genome is valid
+//!    regardless of the current registry configuration.
+//!
+//! 2. **Build node map** — for each unique neuron index, count its total
+//!    outputs, self-inputs, and other-inputs.
+//!
+//! 3. **Iterative cull** — neurons with `num_outputs == 0` are removed.
+//!    When a neuron is removed, the `num_outputs` of neurons that fed into it
+//!    are decremented. The loop repeats until stable. This eliminates hidden
+//!    neurons that produce no effect on any action.
+//!
+//! 4. **Assign sequential indices** — surviving neurons receive compact
+//!    indices 0..N (sorted by original ID for determinism).
+//!
+//! 5. **Build connection list** — connections referencing culled neurons are
+//!    dropped. Remaining connections are split into neuron→neuron and →action
+//!    lists and concatenated in that order.
+//!
+//! 6. **Build neuron list** — each surviving neuron initializes `output = 0.5`
+//!    and `driven = true` if it receives any non-self input.
+//!
+//! # `feed_forward` ordering invariant
+//!
+//! The connection list is walked once. Before the first action-sink connection
+//! is processed, `tanh()` is applied to the accumulated sum of every driven
+//! neuron; those outputs are then available when action connections are
+//! evaluated. Un-driven neurons skip `tanh` and keep their persistent `output`
+//! (initialized to `0.5`, never updated), contributing a constant bias to any
+//! action they connect to.
+//!
+//! Applying `tanh` mid-loop (e.g., neuron-by-neuron) would produce incorrect
+//! results — each neuron's accumulator must be fully summed before clamping.
+
 use std::collections::HashMap;
 use crate::genome::gene::Gene;
 

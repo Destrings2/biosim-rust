@@ -1,3 +1,11 @@
+//! Spatial challenges: evaluate agent position at generation end.
+//!
+//! Predicates: `circle` (configurable center/radius/weighted), `right_half`,
+//! `right_quarter`, `left_eighth`, `east_west_eighths`, `center_weighted`,
+//! `center_unweighted`, `corner`, `corner_weighted`, `against_any_wall`,
+//! `near_barrier`. Most return overlays (circles or rectangles) for
+//! visualization.
+
 use crate::agent::Agent;
 use crate::registry::challenge::{Challenge, ChallengeOverlay};
 use crate::world::World;

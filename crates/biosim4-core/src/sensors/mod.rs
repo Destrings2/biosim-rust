@@ -1,3 +1,38 @@
+//! Built-in sensor implementations (21 sensors).
+//!
+//! Every sensor implements [`Sensor`] and returns a value in \[0.0, 1.0\].
+//! The registry enforces the clamp at `evaluate()` time.
+//!
+//! # Sensor catalogue
+//!
+//! **Location (5):** `loc_x`, `loc_y` — normalized position (0 = left/bottom,
+//! 1 = right/top). `boundary_dist_x`, `boundary_dist_y` — normalized distance
+//! to the nearest wall on that axis. `boundary_dist` — nearest wall overall.
+//!
+//! **Genetic (1):** `genetic_sim_fwd` — Jaro-Winkler similarity to the nearest
+//! agent within `long_probe_dist` ahead.
+//!
+//! **Movement (2):** `last_move_dir_x`, `last_move_dir_y` — last move direction
+//! components, normalized to \[0, 1\] (0.5 = stationary/center).
+//!
+//! **Population density (3):** `population` — fraction occupied within
+//! `population_sensor_radius`. `population_fwd` / `population_lr` — forward
+//! vs backward / left vs right half-density comparison.
+//!
+//! **Barrier probes (2):** `barrier_fwd` — proximity of nearest barrier ahead.
+//! `barrier_lr` — left vs right barrier comparison.
+//!
+//! **Long probes (2):** `longprobe_pop_fwd`, `longprobe_bar_fwd` — distance
+//! along heading to nearest occupied cell or barrier, normalized by
+//! `long_probe_dist`.
+//!
+//! **Internal (3):** `osc1` — oscillator (sine wave keyed to `age` and
+//! `osc_period`). `age` — `age / steps_per_generation`. `random` — uniform
+//! random in \[0, 1\] via the per-agent forked RNG.
+//!
+//! **Signals (3):** `signal0` — local pheromone density. `signal0_fwd` /
+//! `signal0_lr` — forward vs backward / left vs right density comparison.
+
 pub mod helpers;
 
 use crate::registry::{Sensor, SensorContext, SensorRegistry};

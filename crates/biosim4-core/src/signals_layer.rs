@@ -1,3 +1,29 @@
+//! Multi-layer pheromone grid.
+//!
+//! Each cell in each layer stores a `u8` magnitude (0..255). Currently the
+//! simulation initializes one layer.
+//!
+//! # Increment pattern
+//!
+//! `increment(layer, center)` deposits: +2 at `center`, +1 at all 8
+//! neighbors within radius 1.5 (the 4 cardinals; diagonals are at distance
+//! √2 ≈ 1.41, which is ≤ 1.5 so they also receive +1). Values saturate at
+//! 255.
+//!
+//! # Fade
+//!
+//! `fade(layer)` decrements every cell by 1 (saturating at 0), called once
+//! per step. This simulates pheromone evaporation with a fixed decay rate.
+//!
+//! # Mid-step aliasing note
+//!
+//! During Phase 2 of `step_one_agent`, `ActionContext` holds `&mut Signals`
+//! (for `EmitSignal0`) while `World` holds `&Signals` (for sensor reads).
+//! This is acknowledged in the `SAFETY` comments in `sim_step.rs`: no
+//! built-in action reads `world.signals` during Phase 2, making the alias
+//! benign in practice. A future refactor should remove `signals` from the
+//! Phase 2 `World` view to eliminate the technical unsoundness.
+
 use crate::types::Coord;
 use crate::grid::{visit_neighborhood, Grid};
 

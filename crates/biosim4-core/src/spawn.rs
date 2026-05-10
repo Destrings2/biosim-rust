@@ -1,3 +1,34 @@
+//! Generation initialization and reproduction.
+//!
+//! # `initialize_generation_0`
+//!
+//! Clears the world, places barriers, commits pending registry changes, then
+//! fills the population with agents carrying random genomes. Neural nets are
+//! compiled against the committed sensor/action set (`wiring_config()`).
+//!
+//! # `spawn_new_generation`
+//!
+//! Implements the full selection-and-reproduction cycle:
+//!
+//! 1. **Evaluate** all alive agents against active challenges; each returns
+//!    `(pass: bool, fitness: f32)`.
+//! 2. **Build survivor pool** from agents where `pass == true`.
+//! 3. **Bootstrap fallback** — if no agents pass (common on hard challenges in
+//!    early generations), take the top 10% (minimum 2) by raw fitness score
+//!    regardless of `pass`. Without this, a generation with zero survivors
+//!    would re-randomize the entire population, destroying any gradient the
+//!    GA had accumulated.
+//! 4. **Sort** the pool ascending by fitness so `generate_child_genome`'s
+//!    fitness-biased parent selection works correctly (higher index = fitter).
+//! 5. **Elitism** — copy the two fittest survivors unchanged into the next
+//!    generation before reproduction. Protects hard-won genomes from
+//!    being overwritten by mutation, especially valuable when few agents pass.
+//! 6. **Reproduce** — fill the rest of the population via
+//!    `generate_child_genome`, applying crossover and mutation.
+//! 7. **Commit** pending sensor/action changes and compile new neural nets
+//!    against the updated `wiring_config()`.
+//! 8. **Run** `on_generation_start` hooks.
+
 use crate::agent::Agent;
 use crate::genome::ops::{make_random_genome, generate_child_genome, Genome, ReproductionParams};
 use crate::genome::neural_net::create_wiring;

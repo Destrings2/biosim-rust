@@ -1,3 +1,12 @@
+//! Altruism challenges.
+//!
+//! `altruism` — fitness is the fraction of neighbors within `radius` that
+//! passed the inner (location-based) challenge. Rewards agents that cluster
+//! near successful neighbors.
+//!
+//! `altruism_sacrifice` — like `altruism` but agents in the sacrificial zone
+//! fail their own evaluation while boosting neighbors' fitness.
+
 use crate::agent::Agent;
 use crate::registry::challenge::Challenge;
 use crate::world::World;

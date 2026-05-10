@@ -1,3 +1,30 @@
+//! Master simulation state container.
+//!
+//! [`SimulationState`] owns every piece of mutable simulation state. Its
+//! public fields are intentionally public so that `sim_step` can perform
+//! split borrows (e.g., `&mut population` alongside `&grid`) without needing
+//! wrapper methods for every combination.
+//!
+//! # Key methods
+//!
+//! - `new(config)` — initializes all registries with built-in sensors,
+//!   actions, and challenges, then calls `initialize_generation_0`.
+//! - `world()` — constructs a [`World`] read-only snapshot on demand.
+//!   `World` does not own any data; it borrows from `self`.
+//! - `wiring_config()` — derives `{sensor_count, action_count, max_neurons}`
+//!   from the committed active registry sets. Call this after
+//!   `commit_enabled()` so the counts reflect any pending changes.
+//! - `reapply_user_barriers()` — stamps `user_barriers` overrides on top of
+//!   whatever `create_barrier` produced. Must be called after every
+//!   `grid.zero_fill() + create_barrier(...)` sequence to preserve
+//!   manually-painted walls across generation resets.
+//!
+//! # `StepScratch`
+//!
+//! Holds three reusable buffers that carry no semantic state between steps.
+//! They are public so `sim_step` can split-borrow them alongside `population`
+//! and other fields. See the `StepScratch` doc comment for details.
+
 use crate::barriers::create_barrier;
 use crate::grid::Grid;
 use crate::population::Population;

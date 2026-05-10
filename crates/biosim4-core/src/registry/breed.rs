@@ -1,3 +1,10 @@
+//! Breed system (NetLogo-style agent classes).
+//!
+//! A [`Breed`] defines a named class of agents with a default color, a
+//! subset of sensor/action IDs to use (empty = all), and default property
+//! values. All agents start with `breed_id = DEFAULT_BREED = 0`, which is
+//! always registered and uses all sensors and actions.
+
 use crate::agent::PropValue;
 use serde::{Deserialize, Serialize};
 
