@@ -1,0 +1,265 @@
+use std::collections::HashMap;
+use crate::genome::gene::{Gene, SOURCE_SENSOR, SOURCE_NEURON, SINK_ACTION, SINK_NEURON};
+
+/// Parameters needed to wire a genome into a NeuralNet.
+#[derive(Clone, Copy, Debug)]
+pub struct WiringConfig {
+    pub sensor_count: u16,
+    pub action_count: u16,
+    pub max_neurons: u16,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Neuron {
+    /// Current activation, persisted across simulation steps.
+    pub output: f32,
+    /// True if this neuron receives at least one non-self input.
+    pub driven: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NeuralNet {
+    /// Resolved connections (neuron→neuron first, then neuron/sensor→action).
+    pub connections: Vec<Gene>,
+    /// Active internal neurons, indexed sequentially 0..N.
+    pub neurons: Vec<Neuron>,
+}
+
+/// Compile a genome into a NeuralNet.
+pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
+    if genome.is_empty() || cfg.sensor_count == 0 || cfg.action_count == 0 {
+        return NeuralNet::default();
+    }
+    let max_n = cfg.max_neurons as u8;
+
+    // Step 1: remap raw indices via modulo
+    let remapped: Vec<Gene> = genome.iter().map(|g| {
+        let sn = if g.is_sensor_source() {
+            g.source_num() % cfg.sensor_count as u8
+        } else {
+            g.source_num() % max_n
+        };
+        let sk = if g.is_action_sink() {
+            g.sink_num() % cfg.action_count as u8
+        } else {
+            g.sink_num() % max_n
+        };
+        Gene::new(g.source_type(), sn, g.sink_type(), sk, g.weight_raw())
+    }).collect();
+
+    // Step 2: build node map — count inputs/outputs per neuron index
+    #[derive(Default)]
+    struct NodeInfo {
+        num_outputs: u32,
+        num_self_inputs: u32,
+        num_other_inputs: u32,
+        remapped_idx: u16, // assigned after culling
+    }
+    let mut nodes: HashMap<u8, NodeInfo> = HashMap::new();
+
+    for g in &remapped {
+        if !g.is_sensor_source() {
+            // neuron as source
+            let e = nodes.entry(g.source_num()).or_default();
+            if !g.is_action_sink() && g.source_num() == g.sink_num() {
+                e.num_self_inputs += 1;
+            } else {
+                e.num_outputs += 1;
+            }
+        }
+        if !g.is_action_sink() {
+            // neuron as sink
+            let e = nodes.entry(g.sink_num()).or_default();
+            if !g.is_sensor_source() && g.source_num() == g.sink_num() {
+                // already counted above
+            } else {
+                e.num_other_inputs += 1;
+            }
+        }
+    }
+
+    // Step 3: iteratively cull useless neurons.
+    // A neuron is useless if it has no outputs (nothing it connects to that survives).
+    // When we remove a neuron, we decrement the output count of neurons that fed into it.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let culled: Vec<u8> = nodes.iter()
+            .filter(|(_, n)| n.num_outputs == 0)
+            .map(|(&k, _)| k)
+            .collect();
+        for culled_id in culled {
+            nodes.remove(&culled_id);
+            changed = true;
+            // Decrement num_outputs for every neuron that was feeding into culled_id
+            for g in &remapped {
+                if !g.is_action_sink() && g.sink_num() == culled_id && !g.is_sensor_source() {
+                    let src = g.source_num();
+                    if src != culled_id {
+                        if let Some(src_node) = nodes.get_mut(&src) {
+                            src_node.num_outputs = src_node.num_outputs.saturating_sub(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 4: assign sequential indices to surviving neurons
+    let mut sorted_ids: Vec<u8> = nodes.keys().copied().collect();
+    sorted_ids.sort_unstable();
+    for (new_idx, &old_id) in sorted_ids.iter().enumerate() {
+        nodes.get_mut(&old_id).unwrap().remapped_idx = new_idx as u16;
+    }
+    let neuron_count = sorted_ids.len();
+
+    // Step 5: build connection list — neuron→neuron first, then →action
+    let mut neuron_to_neuron: Vec<Gene> = Vec::new();
+    let mut to_action: Vec<Gene> = Vec::new();
+
+    for g in &remapped {
+        let src_valid = if g.is_sensor_source() {
+            true // sensors always valid
+        } else {
+            nodes.contains_key(&g.source_num())
+        };
+        let sink_valid = if g.is_action_sink() {
+            true
+        } else {
+            nodes.contains_key(&g.sink_num())
+        };
+        if !src_valid || !sink_valid { continue; }
+
+        let new_src = if g.is_sensor_source() {
+            g.source_num()
+        } else {
+            nodes[&g.source_num()].remapped_idx as u8
+        };
+        let new_sink = if g.is_action_sink() {
+            g.sink_num()
+        } else {
+            nodes[&g.sink_num()].remapped_idx as u8
+        };
+        let wired = Gene::new(g.source_type(), new_src, g.sink_type(), new_sink, g.weight_raw());
+        if g.is_action_sink() {
+            to_action.push(wired);
+        } else {
+            neuron_to_neuron.push(wired);
+        }
+    }
+
+    let mut connections = neuron_to_neuron;
+    connections.extend(to_action);
+
+    // Step 6: build neuron list
+    let neurons = (0..neuron_count).map(|i| {
+        let old_id = sorted_ids[i];
+        let info = &nodes[&old_id];
+        Neuron {
+            output: 0.5,
+            driven: info.num_other_inputs > 0 || info.num_self_inputs > 0,
+        }
+    }).collect();
+
+    NeuralNet { connections, neurons }
+}
+
+/// Allocating wrapper around [`feed_forward`]. Convenient for tests and
+/// one-off use; the hot path should use [`feed_forward`] with reused scratch.
+pub fn feed_forward_alloc(
+    nnet: &mut NeuralNet,
+    action_count: u16,
+    get_sensor: impl FnMut(u16) -> f32,
+) -> Vec<f32> {
+    let mut action_accum: Vec<f32> = Vec::new();
+    let mut neuron_accum: Vec<f32> = Vec::new();
+    feed_forward(nnet, action_count, &mut action_accum, &mut neuron_accum, get_sensor);
+    action_accum
+}
+
+/// Run one feedforward pass, writing action levels into `action_accum` and
+/// using `neuron_accum` as scratch. Both buffers are resized to fit and
+/// zero-cleared in-place — pass the same buffers across calls to avoid
+/// per-call heap allocations.
+pub fn feed_forward(
+    nnet: &mut NeuralNet,
+    action_count: u16,
+    action_accum: &mut Vec<f32>,
+    neuron_accum: &mut Vec<f32>,
+    mut get_sensor: impl FnMut(u16) -> f32,
+) {
+    action_accum.clear();
+    action_accum.resize(action_count as usize, 0.0);
+    neuron_accum.clear();
+    neuron_accum.resize(nnet.neurons.len(), 0.0);
+
+    let mut neuron_outputs_computed = false;
+
+    for conn in &nnet.connections {
+        // Once we hit the first action-sink connection, apply tanh to all neuron accumulators.
+        if conn.is_action_sink() && !neuron_outputs_computed {
+            for (i, neuron) in nnet.neurons.iter_mut().enumerate() {
+                if neuron.driven {
+                    neuron.output = neuron_accum[i].tanh();
+                }
+                // un-driven neurons keep their previous output (constant bias)
+            }
+            neuron_outputs_computed = true;
+        }
+
+        let weight = conn.weight_as_float();
+        let src_val = if conn.is_sensor_source() {
+            get_sensor(conn.source_num() as u16)
+        } else {
+            nnet.neurons[conn.source_num() as usize].output
+        };
+
+        if conn.is_action_sink() {
+            action_accum[conn.sink_num() as usize] += weight * src_val;
+        } else {
+            neuron_accum[conn.sink_num() as usize] += weight * src_val;
+        }
+    }
+
+    // If no action connections were encountered, still update neurons
+    if !neuron_outputs_computed {
+        for (i, neuron) in nnet.neurons.iter_mut().enumerate() {
+            if neuron.driven {
+                neuron.output = neuron_accum[i].tanh();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_gene(src_t: u8, src_n: u8, sink_t: u8, sink_n: u8, w: i16) -> Gene {
+        Gene::new(src_t, src_n, sink_t, sink_n, w)
+    }
+
+    #[test]
+    fn single_sensor_to_action() {
+        let cfg = WiringConfig { sensor_count: 1, action_count: 1, max_neurons: 2 };
+        // sensor 0 → action 0, weight = +4096 (≈ 0.5 float)
+        let genome = vec![make_gene(1, 0, 1, 0, 4096)];
+        let mut nnet = create_wiring(&genome, cfg);
+        let mut levels = Vec::new();
+        let mut scratch = Vec::new();
+        feed_forward(&mut nnet, 1, &mut levels, &mut scratch, |_| 1.0);
+        assert!(levels[0].abs() > 0.0, "expected non-zero action level");
+    }
+
+    #[test]
+    fn neuron_culled_when_no_output() {
+        let cfg = WiringConfig { sensor_count: 1, action_count: 1, max_neurons: 4 };
+        // neuron 0 → neuron 1 (no action output from either) — both should be culled
+        let genome = vec![
+            make_gene(0, 0, 0, 1, 1000), // neuron 0 → neuron 1
+        ];
+        let nnet = create_wiring(&genome, cfg);
+        assert_eq!(nnet.connections.len(), 0);
+        assert_eq!(nnet.neurons.len(), 0);
+    }
+}

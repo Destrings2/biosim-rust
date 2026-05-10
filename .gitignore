@@ -1,0 +1,17 @@
+# Rust build artifacts
+target/
+
+# Frontend / Node
+frontend/node_modules/
+frontend/dist/
+frontend/pkg/
+
+# wasm-pack scratch
+wasm-pack.log
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/

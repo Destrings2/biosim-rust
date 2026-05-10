@@ -1,0 +1,8 @@
+[package]
+name = "biosim4-native"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+biosim4-core = { path = "../biosim4-core", features = ["parallel"] }
+serde_json = { workspace = true }

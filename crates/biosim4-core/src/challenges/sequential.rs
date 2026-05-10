@@ -1,0 +1,110 @@
+use crate::agent::Agent;
+use crate::registry::challenge::{Challenge, WorldMut};
+use crate::world::World;
+use serde_json::{json, Value};
+
+/// Survive iff the agent touched any border cell during the generation.
+/// Tracked via `agent.challenge_bits` bit 0.
+pub struct TouchAnyWallChallenge;
+impl Challenge for TouchAnyWallChallenge {
+    fn id(&self) -> &str { "touch_any_wall" }
+    fn name(&self) -> &str { "Touch Any Wall" }
+    fn description(&self) -> &str { "Survive iff you touched any border cell during the generation." }
+    fn params_schema(&self) -> Value { json!({ "type": "object", "properties": {} }) }
+    fn configure(&mut self, _: Value) -> Result<(), String> { Ok(()) }
+    fn evaluate(&self, agent: &Agent, _world: &World) -> (bool, f32) {
+        let pass = agent.challenge_bits & 1 != 0;
+        (pass, if pass { 1.0 } else { 0.0 })
+    }
+    fn on_generation_start(&mut self, ctx: &mut WorldMut) {
+        // Clear our bit at the start of each generation
+        for a in ctx.population.iter_alive_mut() {
+            a.challenge_bits &= !1;
+        }
+    }
+    fn on_sim_step(&mut self, ctx: &mut WorldMut) {
+        let sx = ctx.config.size_x as i16;
+        let sy = ctx.config.size_y as i16;
+        for a in ctx.population.iter_alive_mut() {
+            let on_border = a.loc.x == 0 || a.loc.y == 0
+                || a.loc.x == sx - 1 || a.loc.y == sy - 1;
+            if on_border { a.challenge_bits |= 1; }
+        }
+    }
+}
+
+/// Survive by visiting a sequence of waypoints in order. Each waypoint is a
+/// disc of radius `radius` (normalized 0-1) at a normalized centre. Bit `i`
+/// of `challenge_bits` is set when waypoint `i` is reached AND all earlier
+/// waypoints have already been reached. Score = bits_set / waypoint_count.
+pub struct LocationSequenceChallenge {
+    pub radius: f32,
+    pub waypoints: Vec<(f32, f32)>, // normalized centres
+    pub min_visits: usize,           // must visit at least this many in order
+}
+
+impl Default for LocationSequenceChallenge {
+    fn default() -> Self {
+        // 4-corner tour: NW → NE → SE → SW
+        Self {
+            radius: 0.12,
+            waypoints: vec![(0.15, 0.85), (0.85, 0.85), (0.85, 0.15), (0.15, 0.15)],
+            min_visits: 3,
+        }
+    }
+}
+
+impl Challenge for LocationSequenceChallenge {
+    fn id(&self) -> &str { "location_sequence" }
+    fn name(&self) -> &str { "Location Sequence" }
+    fn description(&self) -> &str {
+        "Visit a sequence of waypoint discs in order (defaults: NW → NE → SE → SW). Survival requires reaching at least `min_visits` checkpoints in order."
+    }
+    fn params_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "radius":     { "type": "number", "minimum": 0.05, "maximum": 0.3,  "default": 0.12 },
+                "min_visits": { "type": "number", "minimum": 1.0,  "maximum": 8.0,  "default": 3.0 }
+            }
+        })
+    }
+    fn configure(&mut self, p: Value) -> Result<(), String> {
+        if let Some(v) = p.get("radius")     { self.radius = v.as_f64().ok_or("radius")? as f32; }
+        if let Some(v) = p.get("min_visits") { self.min_visits = v.as_f64().ok_or("min_visits")? as usize; }
+        Ok(())
+    }
+    fn evaluate(&self, agent: &Agent, _world: &World) -> (bool, f32) {
+        let count = (agent.challenge_bits & ((1u32 << self.waypoints.len()) - 1)).count_ones() as usize;
+        let pass = count >= self.min_visits.min(self.waypoints.len());
+        let score = count as f32 / self.waypoints.len() as f32;
+        (pass, score)
+    }
+    fn on_generation_start(&mut self, ctx: &mut WorldMut) {
+        let mask = (1u32 << self.waypoints.len()) - 1;
+        for a in ctx.population.iter_alive_mut() {
+            a.challenge_bits &= !mask;
+        }
+    }
+    fn on_sim_step(&mut self, ctx: &mut WorldMut) {
+        let sx = ctx.config.size_x as f32;
+        let sy = ctx.config.size_y as f32;
+        let r2 = (self.radius * sx.max(sy)).powi(2);
+        let centres: Vec<(f32, f32)> = self.waypoints.iter()
+            .map(|(nx, ny)| (nx * (sx - 1.0), ny * (sy - 1.0)))
+            .collect();
+
+        for a in ctx.population.iter_alive_mut() {
+            // Find next checkpoint to claim (lowest unset bit within mask)
+            let next = (0..centres.len()).find(|&i| a.challenge_bits & (1 << i) == 0);
+            if let Some(i) = next {
+                let (cx, cy) = centres[i];
+                let dx = a.loc.x as f32 - cx;
+                let dy = a.loc.y as f32 - cy;
+                if dx * dx + dy * dy <= r2 {
+                    a.challenge_bits |= 1 << i;
+                }
+            }
+        }
+    }
+}

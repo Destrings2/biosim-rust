@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "crates/biosim4-core",
+    "crates/biosim4-wasm",
+    "crates/biosim4-native",
+]
+resolver = "2"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = { version = "0.8", features = ["small_rng"] }
