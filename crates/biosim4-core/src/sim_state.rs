@@ -146,8 +146,8 @@ impl SimulationState {
 
     pub fn wiring_config(&self) -> WiringConfig {
         WiringConfig {
-            sensor_count: self.sensors.count(),
-            action_count: self.actions.count(),
+            sensor_count: self.sensors.enabled_count(),
+            action_count: self.actions.enabled_count(),
             max_neurons: self.config.max_number_neurons,
         }
     }

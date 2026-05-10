@@ -39,6 +39,7 @@ export interface RegistryEntry {
   index: number;
   id: string;
   name: string;
+  enabled: boolean;
 }
 
 export interface ChallengeSchema {

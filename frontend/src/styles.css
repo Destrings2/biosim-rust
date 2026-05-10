@@ -302,11 +302,27 @@ input[type="range"]::-moz-range-thumb {
   padding: 6px 12px;
   border-bottom: 1px solid var(--line);
   font-size: 11px;
+  transition: opacity 0.15s;
 }
+.reg-list li.reg-disabled { opacity: 0.4; }
 .reg-list li:last-child { border-bottom: none; }
 .reg-idx { font-family: var(--mono); color: var(--muted); width: 22px; text-align: right; }
 .reg-name { color: var(--text); flex: 1; }
 .reg-kind { font-family: var(--mono); font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.reg-toggle {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  padding: 2px 6px; border-radius: 3px; border: 1px solid;
+  cursor: pointer; letter-spacing: 0.06em; transition: all 0.12s;
+}
+.reg-toggle.on  { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.reg-toggle.off { background: transparent; color: var(--muted); border-color: var(--line); }
+.reg-toggle.off:hover { border-color: var(--accent); color: var(--accent); }
+.reg-pending {
+  font-size: 11px; color: var(--text-2);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 6px; padding: 7px 10px; margin-bottom: 10px;
+}
 
 /* Param block (challenge panel) */
 .param-block { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }

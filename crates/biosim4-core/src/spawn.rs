@@ -12,6 +12,9 @@ pub fn initialize_generation_0(state: &mut SimulationState) {
     state.reapply_user_barriers();
     state.signals.zero_fill();
 
+    // Commit any pending sensor/action enable-disable changes before wiring.
+    state.sensors.commit_enabled();
+    state.actions.commit_enabled();
     let wiring_cfg = state.wiring_config();
 
     for _ in 0..state.config.population {
@@ -67,6 +70,10 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     let parent_genomes: Vec<Genome> = survivor_pool.into_iter().map(|(g, _)| g).collect();
 
     let new_pop = state.config.population as usize;
+    // Commit pending enable/disable changes: from this generation on, new nnets
+    // are wired against the updated active sensor/action set.
+    state.sensors.commit_enabled();
+    state.actions.commit_enabled();
     let wiring_cfg = state.wiring_config();
     let cfg = state.config.clone();
 

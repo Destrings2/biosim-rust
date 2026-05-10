@@ -59,7 +59,7 @@ fn step_one_agent(state: &mut SimulationState, id: AgentId) {
     }
 
     let sim_step = state.sim_step;
-    let action_count = state.actions.count();
+    let action_count = state.actions.enabled_count();
 
     // Phase 1: evaluate sensors → action levels.
     //

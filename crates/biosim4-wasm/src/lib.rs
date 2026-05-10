@@ -101,6 +101,7 @@ struct RegistryEntry {
     index: u16,
     id: String,
     name: String,
+    enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -506,11 +507,11 @@ impl Simulator {
         // Build label maps from registries
         let sensor_names: Vec<String> = self.inner.sensors
             .iter()
-            .map(|(_, s)| s.name().to_string())
+            .map(|(_, s, _)| s.name().to_string())
             .collect();
         let action_names: Vec<String> = self.inner.actions
             .iter()
-            .map(|(_, a)| a.name().to_string())
+            .map(|(_, a, _)| a.name().to_string())
             .collect();
 
         // Collect unique sensor and action indices used in this net
@@ -630,10 +631,11 @@ impl Simulator {
             .inner
             .sensors
             .iter()
-            .map(|(i, s)| RegistryEntry {
+            .map(|(i, s, enabled)| RegistryEntry {
                 index: i,
                 id: s.id().to_string(),
                 name: s.name().to_string(),
+                enabled,
             })
             .collect();
         to_js(&entries)
@@ -644,13 +646,27 @@ impl Simulator {
             .inner
             .actions
             .iter()
-            .map(|(i, a)| RegistryEntry {
+            .map(|(i, a, enabled)| RegistryEntry {
                 index: i,
                 id: a.id().to_string(),
                 name: a.name().to_string(),
+                enabled,
             })
             .collect();
         to_js(&entries)
+    }
+
+    /// Enable or disable a sensor by its stable ID. The change takes effect at
+    /// the next `spawn_next_generation` call (genome size only changes at
+    /// generation boundaries). Mid-generation the sensor immediately returns 0.0.
+    pub fn set_sensor_enabled(&mut self, id: &str, enabled: bool) {
+        self.inner.sensors.set_enabled(id, enabled);
+    }
+
+    /// Enable or disable an action by its stable ID. Same lifecycle as
+    /// `set_sensor_enabled`.
+    pub fn set_action_enabled(&mut self, id: &str, enabled: bool) {
+        self.inner.actions.set_enabled(id, enabled);
     }
 
     // ── Custom JS sensors / actions ───────────────────────────────────────
