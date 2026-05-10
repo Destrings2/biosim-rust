@@ -1,3 +1,15 @@
+//! Action trait, context, and registry.
+//!
+//! The lifecycle mirrors [`SensorRegistry`](super::sensor::SensorRegistry):
+//! `set_enabled` marks changes pending; `commit_enabled` rebuilds `active_map`
+//! at generation boundaries. During a generation, disabled actions are silently
+//! skipped by `execute()` rather than shifting any enabled indices.
+//!
+//! `ActionContext` provides mutable access to the acting agent, the deferred
+//! move and death queues, the signal layer, and the RNG. Actions must not
+//! modify the grid or population directly — moves and deaths are queued and
+//! applied at end-of-step in `drain_move_queue` / `drain_death_queue`.
+
 use std::collections::HashSet;
 use crate::agent::{Agent, AgentId};
 use crate::rng::Rng;

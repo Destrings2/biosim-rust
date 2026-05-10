@@ -1,3 +1,27 @@
+//! Global simulation configuration.
+//!
+//! [`SimConfig`] is a flat, fully JSON-serializable struct. The WASM frontend
+//! serializes it for handoff; `from_json` / `patch_json` handle deserialization.
+//!
+//! # Field groups
+//!
+//! - **World**: `size_x`, `size_y`, `population`, `num_threads`,
+//!   `rng_seed` (0 = from entropy), `signal_layers`.
+//! - **Evolution**: `steps_per_generation`, `max_generations`,
+//!   `genome_initial_length_{min,max}`, `genome_max_length`, `max_number_neurons`,
+//!   `point_mutation_rate`, `gene_insertion_deletion_rate`, `deletion_ratio`,
+//!   `sexual_reproduction`, `choose_parents_by_fitness`, `kill_enable`.
+//! - **Agent defaults**: `responsiveness`, `responsiveness_curve_k_factor`,
+//!   `population_sensor_radius`, `signal_sensor_radius`,
+//!   `long_probe_distance`, `short_probe_barrier_distance`.
+//! - **Environment**: `barrier_type` (0 = none, 1–7 = preset layouts).
+//! - **Analysis/output**: `genome_analysis_stride`, `display_sample_genomes`,
+//!   `genome_comparison_method` (0 = Jaro-Winkler, 1 = Hamming bits,
+//!   2 = Hamming bytes), `save_video`, `video_stride`.
+//!
+//! `patch_json` applies a partial JSON object — only the keys present in the
+//! patch are updated. This is how the frontend applies per-session overrides.
+
 use serde::{Deserialize, Serialize};
 
 /// Full simulation configuration. Serializable so the WASM frontend can set/get it as JSON.

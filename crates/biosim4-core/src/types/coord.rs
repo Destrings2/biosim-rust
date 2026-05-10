@@ -1,3 +1,15 @@
+//! 2D integer coordinate and polar form.
+//!
+//! `as_dir` classifies a displacement vector into one of 9 [`Dir`] values
+//! using integer arithmetic instead of `atan2`. It applies a rational
+//! approximation of tan(22.5°) ≈ 13860/33461 to determine whether the angle
+//! is within 22.5° of a cardinal axis (E/W/N/S) or falls in a diagonal
+//! octant (NE/NW/SE/SW).
+//!
+//! `ray_sameness` computes the normalized dot product of two displacement
+//! vectors, returning a value in [-1, 1] where 1 means same direction and
+//! -1 means opposite. Used by directional population and signal sensors.
+
 use super::dir::{Compass, Dir};
 use serde::{Deserialize, Serialize};
 

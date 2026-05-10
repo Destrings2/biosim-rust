@@ -1,3 +1,13 @@
+//! Per-generation statistics.
+//!
+//! [`EpochStats`] collects generation number, survivor count, population size,
+//! and genetic diversity. `survival_rate()` is `survivors / population`.
+//!
+//! `genetic_diversity` samples up to 1000 random pairs from the genome pool
+//! and averages their pairwise similarity (Jaro-Winkler, Hamming-bits, or
+//! Hamming-bytes per `SimConfig.genome_comparison_method`). Sampling avoids
+//! the O(N²) cost of exhaustive pair enumeration at large population sizes.
+
 use crate::genome::ops::{genetic_diversity, Genome};
 use crate::sim_state::SimulationState;
 

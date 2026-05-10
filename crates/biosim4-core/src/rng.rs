@@ -1,3 +1,15 @@
+//! Seedable RNG wrapper.
+//!
+//! Wraps `rand::rngs::SmallRng` (a fast, non-cryptographic PRNG). When
+//! `SimConfig.rng_seed != 0`, the simulation uses `Rng::seeded(seed)` for
+//! full reproducibility. When `rng_seed == 0`, `Rng::from_entropy()` pulls
+//! from OS entropy.
+//!
+//! `fork(offset)` derives a child `Rng` by XORing the parent's next `u64`
+//! with `offset`. In `step_one_agent`, each agent forks the simulation's
+//! main `Rng` using its `AgentId` as the offset, giving every agent a
+//! per-step independent stochastic stream without locks or shared state.
+
 use rand::{Rng as RandRng, SeedableRng};
 use rand::rngs::SmallRng;
 

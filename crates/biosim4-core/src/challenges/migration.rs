@@ -1,3 +1,9 @@
+//! Migration challenge: reward distance traveled from birth location.
+//!
+//! `migrate_distance` — fitness proportional to `(loc - birth_loc).length()`
+//! normalized by grid diagonal. Passes if distance exceeds a configurable
+//! threshold.
+
 use crate::agent::Agent;
 use crate::registry::challenge::Challenge;
 use crate::world::World;

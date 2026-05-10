@@ -1,3 +1,29 @@
+//! Genome type and mutation/reproduction operators.
+//!
+//! `Genome = Vec<Gene>`. A genome is a flat sequence of connection genes with
+//! no inherent ordering; `create_wiring` determines which connections survive.
+//!
+//! # Mutation operators
+//!
+//! - `apply_point_mutations` — with probability `rate`, flips one random bit
+//!   in each gene independently.
+//! - `random_insert_deletion` — with probability `rate`, either inserts a new
+//!   random gene at a random position or deletes an existing gene. The split
+//!   is controlled by `deletion_ratio`.
+//! - `random_bit_flip` — flips exactly one bit in one random gene (used in
+//!   tests and one-off contexts; the hot path uses `apply_point_mutations`).
+//!
+//! # Reproduction
+//!
+//! `generate_child_genome(parents, params, rng)` assumes `parents` is sorted
+//! ascending by fitness (higher index = fitter). With `choose_by_fitness`,
+//! parent selection uses the transform `idx = (1 - r²) × N` — squaring `r`
+//! concentrates draws near index N-1 (the fittest parent).
+//!
+//! Sexual crossover overlays a contiguous slice of parent B onto a clone of
+//! parent A; the result length is the average of A and B. Both mutation
+//! operators are applied to the child after crossover.
+
 use crate::genome::gene::Gene;
 use crate::rng::Rng;
 use crate::sim_config::SimConfig;

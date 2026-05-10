@@ -1,3 +1,17 @@
+//! Direction type and 9-value compass.
+//!
+//! `Compass` is a 9-variant enum: SW=0, S=1, SE=2, W=3, CENTER=4, E=5,
+//! NW=6, N=7, NE=8. The ordinal layout matches the original C++ implementation
+//! and is relied upon by `ROTATIONS` indexing.
+//!
+//! `Dir::rotate(n)` uses a pre-computed 64-entry lookup table (8 directions ×
+//! 8 step offsets) instead of arithmetic, avoiding the modular arithmetic edge
+//! cases that come with CENTER. Positive `n` is clockwise; 8 steps is a full
+//! circle. `rotate` on `CENTER` is a no-op.
+//!
+//! `as_normalized_coord` returns unit offsets (-1/0/1 per axis) for each of
+//! the 9 compass values.
+
 use super::coord::Coord;
 use serde::{Deserialize, Serialize};
 

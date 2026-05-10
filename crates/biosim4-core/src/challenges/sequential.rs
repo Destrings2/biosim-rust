@@ -1,3 +1,12 @@
+//! Sequential challenges: require ordered behavior during the generation.
+//!
+//! `touch_any_wall` — uses `agent.challenge_bits` to record whether the agent
+//! touched a border cell at any point during the generation. Set via the
+//! `on_sim_step` hook; evaluated at generation end.
+//!
+//! `location_sequence` — requires visiting a sequence of zones in order within
+//! the generation. Zone progress is tracked in `challenge_bits`.
+
 use crate::agent::Agent;
 use crate::registry::challenge::{Challenge, WorldMut};
 use crate::world::World;

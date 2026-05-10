@@ -1,3 +1,9 @@
+//! Genome representation and operations.
+//!
+//! Re-exports the three submodules: [`gene`] (bit encoding), [`ops`]
+//! (mutation, crossover, diversity), and [`neural_net`] (compilation and
+//! feed-forward). Most callers import from this module directly.
+
 pub mod gene;
 pub mod ops;
 pub mod neural_net;

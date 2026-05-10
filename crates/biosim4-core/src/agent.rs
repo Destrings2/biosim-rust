@@ -1,3 +1,26 @@
+//! Agent state struct.
+//!
+//! # Field groups
+//!
+//! - **Identity/lifecycle**: `id`, `alive`.
+//! - **Spatial**: `loc`, `birth_loc`, `heading` (persistent — kept even when
+//!   stationary), `last_move_dir`.
+//! - **Visual**: `color` — derived from the first genome gene by
+//!   `genome_color`. Minimum brightness is enforced (luminance ≥ 60) so
+//!   agents don't disappear on the black background.
+//! - **Life**: `age` — incremented each step in Phase 2 of `step_one_agent`.
+//! - **Neural**: `genome`, `nnet` — the raw genome and its compiled network.
+//! - **Neural modulators**: `responsiveness` (default 0.5), `osc_period`
+//!   (default 34), `long_probe_dist` (default 16). These are written by the
+//!   `set_responsiveness`, `set_oscillator_period`, and `set_longprobe_dist`
+//!   actions at runtime.
+//! - **Challenge tracking**: `challenge_bits` — 32-bit bitmask for challenges
+//!   that require per-agent per-step state (e.g., `touch_any_wall`).
+//! - **Breed/extensibility**: `breed_id`, `props` — a NetLogo-style property
+//!   bag. `PropValue` supports f32, i32, bool, and String.
+//!
+//! `AgentSnapshot` is a lightweight serialization DTO for WASM/frontend use.
+
 use std::collections::HashMap;
 use crate::genome::{Genome, NeuralNet};
 use crate::registry::breed::{BreedId, DEFAULT_BREED};

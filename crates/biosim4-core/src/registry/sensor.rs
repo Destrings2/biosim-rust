@@ -1,3 +1,29 @@
+//! Sensor trait, context, and registry.
+//!
+//! # Enabled/disabled lifecycle
+//!
+//! Every sensor has a stable string ID and a registration index (its position
+//! in the `sensors` vec). Genome genes reference sensors by *enabled index* —
+//! an index into the `active_map`, not the registration index.
+//!
+//! `active_map[enabled_idx] = actual_idx` is a dense vector rebuilt by
+//! `commit_enabled()`. It contains only the registration indices of currently
+//! enabled sensors. `enabled_count()` returns `active_map.len()` and is the
+//! `sensor_count` value used in `WiringConfig` when compiling new neural nets.
+//!
+//! **`set_enabled(id, false)`** marks a sensor pending-disabled. The
+//! `active_map` is NOT rebuilt yet; existing neural nets keep their wiring
+//! indices stable for the rest of the current generation. The disabled sensor
+//! immediately returns `0.0` from `evaluate()`, making its gene connections
+//! inert without shifting any indices.
+//!
+//! **`commit_enabled()`** is called at generation boundaries (inside
+//! `spawn_new_generation`) before `wiring_config()`. It rebuilds `active_map`,
+//! so new neural nets are compiled against the updated enabled set.
+//!
+//! The invariant: within any generation, a given `enabled_idx` always maps to
+//! the same sensor. Across generation boundaries, the mapping may change.
+
 use std::collections::HashSet;
 use crate::agent::Agent;
 use crate::rng::Rng;

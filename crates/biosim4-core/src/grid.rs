@@ -1,3 +1,29 @@
+//! 2D arena grid.
+//!
+//! # Cell encoding
+//!
+//! Each cell stores one of three values:
+//! - `EMPTY = 0` — unoccupied.
+//! - `BARRIER = 0xFFFF_FFFF` — static obstacle.
+//! - Agent ID (1..population) — occupied by a live agent.
+//!
+//! Zero maps to `EMPTY` (not an agent), which is why `INVALID_AGENT = 0` in
+//! `population`. The sentinel `0xFFFF_FFFF` is safely distinct from any
+//! plausible population size.
+//!
+//! # Layout
+//!
+//! Cells are stored column-major: `cells[x][y]`. Indexing is `grid.at(Coord{x, y})`.
+//!
+//! # `visit_neighborhood`
+//!
+//! Iterates all in-bounds cells within a circular radius of a center cell.
+//! Uses `dx² + dy² ≤ radius²` with an explicit per-cell check to guard
+//! against rounding artifacts from the `floor` on `dy_max`.
+//!
+//! `find_empty_location` spin-loops until a random empty cell is found.
+//! The caller must ensure population < grid area to avoid an infinite loop.
+
 use crate::types::Coord;
 
 pub const EMPTY:   u32 = 0;

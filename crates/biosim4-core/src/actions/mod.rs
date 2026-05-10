@@ -1,3 +1,36 @@
+//! Built-in action implementations (17 actions).
+//!
+//! # Conversion helpers
+//!
+//! `prob2bool(level, rng)` converts a raw neural activation to a stochastic
+//! boolean: `p = tanh(level).abs()`, then compare against a uniform random
+//! draw. A level of 0.0 gives p=0 (never moves); large magnitude gives p≈1.
+//!
+//! `response_curve(r, k)` applies a non-linear transform that makes the agent's
+//! `responsiveness` modulator affect how sharply action levels translate to
+//! behavior. Default responsiveness is 0.5 (`k` defaults from config).
+//!
+//! # Action catalogue
+//!
+//! **Directional movement (8):** `move_east`, `move_west`, `move_north`,
+//! `move_south` — unconditional cardinal moves (probabilistic via `prob2bool`).
+//! `move_left`, `move_right` — relative to `heading`. `move_forward`,
+//! `move_reverse` — along/against `heading`.
+//!
+//! **Composite movement (4):** `move_x`, `move_y` — axis-aligned probabilistic
+//! moves (positive vs negative hemisphere). `move_rl` — left/right binary
+//! split. `move_random` — uniform random among 8 directions.
+//!
+//! **Internal modulators (3):** `set_responsiveness`, `set_oscillator_period`,
+//! `set_longprobe_dist` — update agent fields directly (not queued).
+//!
+//! **Interaction (2):** `emit_signal0` — deposits pheromone at agent location
+//! via `signals.increment`. `kill_forward` — queues death of the agent
+//! directly ahead (only if `config.kill_enable`).
+//!
+//! All movement actions push to `move_queue`; actual grid updates happen in
+//! `drain_move_queue` at end-of-step.
+
 use crate::registry::{Action, ActionContext, ActionRegistry};
 use crate::types::{Coord, Dir};
 

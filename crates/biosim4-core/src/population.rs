@@ -1,3 +1,22 @@
+//! Agent storage and deferred action queues.
+//!
+//! # Slot stability
+//!
+//! Agents are stored in a `Vec<Option<Agent>>`. Slot 0 is permanently reserved
+//! (`INVALID_AGENT = 0`), so a zero-valued grid cell unambiguously means empty.
+//! `spawn()` always appends — slots are never reused or relocated. An `AgentId`
+//! returned by `spawn()` remains valid for the lifetime of the population.
+//!
+//! # Deferred queues
+//!
+//! Actions do not mutate the grid or population directly during agent stepping.
+//! Instead they push to `move_queue` and `death_queue`, which are drained at
+//! end-of-step by `drain_death_queue` (runs first) and `drain_move_queue`.
+//!
+//! Death runs before move so that a cell freed by a killed agent can be entered
+//! by a moving agent in the same step. `drain_move_queue` silently skips any
+//! agent that was killed in the same drain cycle.
+
 use crate::agent::{Agent, AgentId};
 use crate::grid::Grid;
 use crate::types::Coord;
