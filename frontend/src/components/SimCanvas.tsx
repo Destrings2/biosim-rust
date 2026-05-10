@@ -12,6 +12,31 @@ import type { Simulator } from "../../pkg/biosim4_wasm.js";
 import type { EpochResult, SimStats } from "../types";
 import type { Tool } from "./FloatingToolbar";
 
+// Overlay shapes returned by simulator.get_challenge_overlays().
+// These are plain JS objects from serde-wasm-bindgen, not typed by the WASM
+// bindings, so we define a discriminated union here.
+type ChallengeOverlay =
+  | { type: "circle";    color: [number, number, number, number]; cx: number; cy: number; radius: number }
+  | { type: "rectangle"; color: [number, number, number, number]; x: number;  y: number;  w: number; h: number }
+  | { type: "points";    color: [number, number, number, number]; points: [number, number][]; size: number };
+
+function renderOverlays(ctx: CanvasRenderingContext2D, overlays: ChallengeOverlay[], sy: number) {
+  for (const ol of overlays) {
+    ctx.fillStyle = `rgba(${ol.color[0]}, ${ol.color[1]}, ${ol.color[2]}, ${ol.color[3] / 255})`;
+    if (ol.type === "circle") {
+      ctx.beginPath();
+      ctx.arc(ol.cx, sy - ol.cy, ol.radius, 0, 2 * Math.PI);
+      ctx.fill();
+    } else if (ol.type === "rectangle") {
+      ctx.fillRect(ol.x, sy - ol.y - ol.h, ol.w, ol.h);
+    } else if (ol.type === "points") {
+      for (const pt of ol.points) {
+        ctx.fillRect(pt[0] - ol.size / 2, sy - pt[1] - ol.size / 2, ol.size, ol.size);
+      }
+    }
+  }
+}
+
 interface Props {
   simulator: Simulator;
   running: boolean;
@@ -52,6 +77,14 @@ export function SimCanvas({
   useEffect(() => { pixelSizeRef.current = pixelSize; }, [pixelSize]);
   useEffect(() => { toolRef.current = tool; }, [tool]);
 
+  // Store a stable paint function in a ref so the RAF loop and mouse handlers
+  // can always call the current version without capturing stale closures.
+  const localPaintRef = useRef<(() => void) | null>(null);
+
+  const paint = useCallback(() => {
+    localPaintRef.current?.();
+  }, []);
+
   // CSS pixel → world cell. The canvas backing buffer is sx×sy and is CSS-
   // scaled to whatever the parent gives it; `image-rendering: pixelated`
   // does the visual upscale. We compute the inverse from the live CSS size.
@@ -63,39 +96,6 @@ export function SimCanvas({
     const x = Math.floor((clientX - rect.left) * sx / rect.width);
     const y = sy - 1 - Math.floor((clientY - rect.top) * sy / rect.height);
     return { x, y };
-  }, [simulator]);
-
-  const paint = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const sx = simulator.size_x();
-    const sy = simulator.size_y();
-    const frame = simulator.get_frame();
-    const img = new ImageData(new Uint8ClampedArray(frame.length), sx, sy);
-    img.data.set(frame);
-    ctx.putImageData(img, 0, 0);
-
-    try {
-      const overlays = simulator.get_challenge_overlays() as any[];
-      for (const ol of overlays) {
-        ctx.fillStyle = `rgba(${ol.color[0]}, ${ol.color[1]}, ${ol.color[2]}, ${ol.color[3] / 255})`;
-        if (ol.type === "circle") {
-          ctx.beginPath();
-          ctx.arc(ol.cx, sy - ol.cy, ol.radius, 0, 2 * Math.PI);
-          ctx.fill();
-        } else if (ol.type === "rectangle") {
-          ctx.fillRect(ol.x, sy - ol.y - ol.h, ol.w, ol.h);
-        } else if (ol.type === "points") {
-          for (const pt of ol.points) {
-            ctx.fillRect(pt[0] - ol.size/2, sy - pt[1] - ol.size/2, ol.size, ol.size);
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to render overlays:", err);
-    }
   }, [simulator]);
 
   // ── Mouse event wiring ──────────────────────────────────────────────
@@ -161,7 +161,8 @@ export function SimCanvas({
     lastCellRef.current = null;
   }, []);
 
-  // (re)start the animation loop when simulator instance or resetToken changes
+  // Re-initialize the canvas (size, offscreen ImageData) when the simulator
+  // instance or resetToken changes. Also paints the initial frame.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -174,68 +175,74 @@ export function SimCanvas({
     canvas.height = sy;
 
     const offscreen = ctx.createImageData(sx, sy);
+    const expectedBytes = sx * sy * 4;
 
-    const localPaint = () => {
+    localPaintRef.current = () => {
       const frame = simulator.get_frame();
+      if (frame.length !== expectedBytes) {
+        console.error(`get_frame() returned ${frame.length} bytes, expected ${expectedBytes}`);
+        return;
+      }
       offscreen.data.set(frame);
       ctx.putImageData(offscreen, 0, 0);
 
       try {
-        const overlays = simulator.get_challenge_overlays() as any[];
-        for (const ol of overlays) {
-          ctx.fillStyle = `rgba(${ol.color[0]}, ${ol.color[1]}, ${ol.color[2]}, ${ol.color[3] / 255})`;
-          if (ol.type === "circle") {
-            ctx.beginPath();
-            ctx.arc(ol.cx, sy - ol.cy, ol.radius, 0, 2 * Math.PI);
-            ctx.fill();
-          } else if (ol.type === "rectangle") {
-            ctx.fillRect(ol.x, sy - ol.y - ol.h, ol.w, ol.h);
-          } else if (ol.type === "points") {
-            for (const pt of ol.points) {
-              ctx.fillRect(pt[0] - ol.size/2, sy - pt[1] - ol.size/2, ol.size, ol.size);
-            }
-          }
-        }
+        const overlays = simulator.get_challenge_overlays() as ChallengeOverlay[];
+        renderOverlays(ctx, overlays, sy);
       } catch (err) {
         console.error("Failed to render overlays:", err);
       }
     };
 
-    localPaint();
+    localPaintRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simulator, resetToken]);
+
+  // Start/stop the RAF loop based on running state. When paused the loop exits
+  // and is not rescheduled, eliminating idle frames. It restarts when running
+  // becomes true or when the simulator/resetToken changes (which also sets
+  // running via the runningRef sync above).
+  useEffect(() => {
+    if (!running) return;
 
     const loop = () => {
-      if (runningRef.current) {
-        const stepsPerGen = simulator.steps_per_generation();
-        let stepsTaken = 0;
-        const maxPerFrame = Math.max(1, speedRef.current);
-        while (stepsTaken < maxPerFrame) {
-          if (simulator.sim_step() >= stepsPerGen) {
-            try {
-              const epoch = simulator.spawn_next_generation() as EpochResult;
-              onEpoch(epoch);
-            } catch (err) {
-              console.error("spawn_next_generation failed:", err);
-              runningRef.current = false;
-              break;
-            }
+      if (!runningRef.current) {
+        rafRef.current = null;
+        return;
+      }
+      const stepsPerGen = simulator.steps_per_generation();
+      let stepsTaken = 0;
+      const maxPerFrame = Math.max(1, speedRef.current);
+      while (stepsTaken < maxPerFrame) {
+        if (simulator.sim_step() >= stepsPerGen) {
+          try {
+            const epoch = simulator.spawn_next_generation() as EpochResult;
+            onEpoch(epoch);
+          } catch (err) {
+            console.error("spawn_next_generation failed:", err);
+            runningRef.current = false;
             break;
           }
-          simulator.step();
-          stepsTaken += 1;
+          break;
         }
-        localPaint();
-        try { onStats(simulator.get_stats() as SimStats); } catch { /* ignore */ }
+        simulator.step();
+        stepsTaken += 1;
       }
+      localPaintRef.current?.();
+      try { onStats(simulator.get_stats() as SimStats); } catch { /* ignore */ }
       rafRef.current = requestAnimationFrame(loop);
     };
 
     rafRef.current = requestAnimationFrame(loop);
 
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simulator, resetToken]);
+  }, [running, simulator, resetToken]);
 
   const cursor =
     tool === "inspect"   ? "pointer"

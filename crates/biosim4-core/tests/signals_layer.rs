@@ -106,3 +106,34 @@ fn zero_fill_clears_all_layers() {
         }
     }
 }
+
+#[test]
+fn diffusion_reduces_magnitude_over_time() {
+    // After an increment, repeated fades must bring all cells monotonically
+    // toward zero.  After enough fades every cell must be 0.
+    let grid = Grid::new(10, 10);
+    let mut s = Signals::new(1, 10, 10);
+    let center = Coord::new(5, 5);
+    s.increment(0, center, &grid);
+
+    let initial_center = s.get(0, center);
+    assert_eq!(initial_center, 2, "center should start at 2");
+
+    // First fade: center goes from 2 → 1.
+    s.fade(0);
+    assert_eq!(s.get(0, center), 1);
+
+    // Second fade: center goes from 1 → 0.
+    s.fade(0);
+    assert_eq!(s.get(0, center), 0);
+
+    // All cells must now be 0 (neighbors were at 1, then 0 after two fades).
+    for x in 0..10i16 {
+        for y in 0..10i16 {
+            assert_eq!(
+                s.get(0, Coord::new(x, y)), 0,
+                "cell ({x},{y}) should be 0 after 2 fades"
+            );
+        }
+    }
+}

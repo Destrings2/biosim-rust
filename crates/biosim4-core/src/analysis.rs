@@ -1,4 +1,4 @@
-use crate::genome::genome::{genetic_diversity, Genome};
+use crate::genome::ops::{genetic_diversity, Genome};
 use crate::sim_state::SimulationState;
 
 pub struct EpochStats {

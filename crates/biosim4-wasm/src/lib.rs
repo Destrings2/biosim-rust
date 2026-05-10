@@ -467,22 +467,21 @@ impl Simulator {
         let child_loc = candidates[idx];
 
         // Generate a mutated child genome
-        use biosim4_core::genome::genome::generate_child_genome;
+        use biosim4_core::genome::ops::{generate_child_genome, ReproductionParams};
         use biosim4_core::genome::neural_net::create_wiring;
         use biosim4_core::agent::Agent;
 
         let cfg = self.inner.config.clone();
         let parents = vec![parent_genome];
-        let child_genome = generate_child_genome(
-            &parents,
-            cfg.sexual_reproduction,
-            false, // no fitness bias for a single-parent clone
-            cfg.point_mutation_rate,
-            cfg.gene_insertion_deletion_rate,
-            cfg.deletion_ratio,
-            cfg.genome_max_length,
-            &mut self.inner.rng,
-        );
+        let repro = ReproductionParams {
+            sexual: false,
+            choose_by_fitness: false,
+            mutation_rate: cfg.point_mutation_rate,
+            insertion_deletion_rate: cfg.gene_insertion_deletion_rate,
+            deletion_ratio: cfg.deletion_ratio,
+            max_len: cfg.genome_max_length,
+        };
+        let child_genome = generate_child_genome(&parents, &repro, &mut self.inner.rng);
 
         let nnet = create_wiring(&child_genome, self.inner.wiring_config());
         let id = self.inner.population.next_id();
@@ -524,14 +523,10 @@ impl Simulator {
             let snk_idx = g.sink_num() as u16;
             if g.source_type() == SOURCE_SENSOR {
                 if !used_sensors.contains(&src_idx) { used_sensors.push(src_idx); }
-            } else {
-                if !used_neurons.contains(&src_idx) { used_neurons.push(src_idx); }
-            }
+            } else if !used_neurons.contains(&src_idx) { used_neurons.push(src_idx); }
             if g.sink_type() == SINK_ACTION {
                 if !used_actions.contains(&snk_idx) { used_actions.push(snk_idx); }
-            } else {
-                if !used_neurons.contains(&snk_idx) { used_neurons.push(snk_idx); }
-            }
+            } else if !used_neurons.contains(&snk_idx) { used_neurons.push(snk_idx); }
         }
         used_sensors.sort();
         used_actions.sort();

@@ -8,6 +8,12 @@ use biosim4_core::{
     sim_step::step_generation,
     spawn::spawn_new_generation,
     registry::ChallengeConfig,
+    population::Population,
+    agent::Agent,
+    genome::{make_random_genome, neural_net::{create_wiring, WiringConfig}},
+    grid::Grid,
+    rng::Rng,
+    types::Coord,
 };
 
 fn small_config() -> SimConfig {
@@ -134,4 +140,42 @@ fn set_challenge_via_json_works_end_to_end() {
     state.set_challenge(json).expect("setting challenge from JSON should succeed");
     step_generation(&mut state);
     // Should not panic; challenge applied successfully.
+}
+
+#[test]
+fn move_queue_does_not_move_dead_agent() {
+    // Verify that drain_move_queue silently skips agents that were killed
+    // before the move is applied (deaths are drained first in step_one).
+    let cfg = SimConfig::default();
+    let mut rng = Rng::seeded(0);
+    let genome = make_random_genome(&cfg, &mut rng);
+    let wiring = WiringConfig { sensor_count: 1, action_count: 1, max_neurons: 1 };
+    let nnet = create_wiring(&genome, wiring);
+
+    let mut grid = Grid::new(10, 10);
+    let mut pop = Population::new(2);
+
+    // Spawn two agents at distinct locations.
+    let loc_a = Coord::new(2, 2);
+    let loc_b = Coord::new(5, 5);
+    let id_a = pop.spawn(Agent::new(pop.next_id(), loc_a, genome.clone(), nnet.clone()));
+    let id_b = pop.spawn(Agent::new(pop.next_id(), loc_b, genome, nnet));
+    grid.set(loc_a, id_a);
+    grid.set(loc_b, id_b);
+
+    // Queue agent A for death AND for a move to (3, 3).
+    pop.queue_for_death(id_a);
+    pop.queue_for_move(id_a, Coord::new(3, 3));
+
+    // Drain deaths first (as step_one does), then moves.
+    pop.drain_death_queue(&mut grid);
+    pop.drain_move_queue(&mut grid);
+
+    // Agent A should be dead and still at loc_a (or grid cleared), not at (3,3).
+    let agent_a = pop.get(id_a).unwrap();
+    assert!(!agent_a.alive, "agent A should be dead");
+    // The grid at (3, 3) must be empty — the dead agent's move was not applied.
+    assert!(grid.is_empty_at(Coord::new(3, 3)), "move queue must not relocate a dead agent");
+    // The original cell must also be cleared (death cleared it).
+    assert!(grid.is_empty_at(loc_a), "original cell should be empty after death");
 }

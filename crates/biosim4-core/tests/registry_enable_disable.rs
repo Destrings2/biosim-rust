@@ -22,7 +22,7 @@ use biosim4_core::{
     actions::register_builtin_actions,
     agent::{Agent, AgentId},
     genome::{
-        genome::make_random_genome,
+        ops::make_random_genome,
         neural_net::{create_wiring, WiringConfig},
     },
     grid::Grid,

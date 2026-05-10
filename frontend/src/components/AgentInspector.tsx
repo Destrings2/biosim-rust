@@ -223,11 +223,12 @@ function NetGraph({
       <text x={COL_X.neuron} y={20} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fill="#6b717c" letterSpacing="2">NEURONS</text>
       <text x={COL_X.action} y={20} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fill="#6b717c" letterSpacing="2">ACTIONS</text>
 
-      {net.edges.map((e: NetEdge, i) => {
+      {net.edges.map((e: NetEdge) => {
         const a = positionOf(e.from_kind, e.from_index);
         const b = positionOf(e.to_kind, e.to_index);
         if (!a || !b) return null;
         const isSelf = e.from_kind === "neuron" && e.to_kind === "neuron" && e.from_index === e.to_index;
+        const edgeKey = `${e.from_kind[0]}${e.from_index}-${e.to_kind[0]}${e.to_index}`;
 
         let d: string;
         if (isSelf) {
@@ -243,7 +244,7 @@ function NetGraph({
         const opacity = Math.max(0.18, Math.min(0.85, Math.abs(e.weight) / 4));
         const sw = 0.7 + Math.abs(e.weight) * 0.25;
         return (
-          <path key={i} d={d} fill="none" stroke={stroke} strokeWidth={sw} opacity={opacity}
+          <path key={edgeKey} d={d} fill="none" stroke={stroke} strokeWidth={sw} opacity={opacity}
                 markerEnd={`url(#${positive ? "ai-arr-pos" : "ai-arr-neg"})`} />
         );
       })}

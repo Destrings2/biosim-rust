@@ -54,7 +54,7 @@ fn step_all_agents(state: &mut SimulationState) {
 }
 
 fn step_one_agent(state: &mut SimulationState, id: AgentId) {
-    if state.population.get(id).map_or(true, |a| !a.alive) {
+    if state.population.get(id).is_none_or(|a| !a.alive) {
         return;
     }
 
@@ -70,12 +70,22 @@ fn step_one_agent(state: &mut SimulationState, id: AgentId) {
     //   - `&mut scratch.{action,neuron}_accum` for feed_forward
     //
     // All of these come from `state`, so we use raw pointers to dodge the
-    // borrow checker. SAFETY:
+    // borrow checker. SAFETY invariants for Phase 1:
     //   - `agent.nnet` is a distinct field from anything sensors read on
-    //     `&Agent` (sensors only read loc/heading/age/etc., never `nnet`).
-    //   - `scratch.alive_ids` is unrelated to action_accum/neuron_accum,
-    //     and the action_accum/neuron_accum fields are disjoint pubs.
-    //   - The pointers' lifetimes are bounded by this function scope.
+    //     `&Agent` (sensors read loc/heading/age/osc_period/long_probe_dist/
+    //     genome/responsiveness/last_move_dir — never `nnet`). No aliasing
+    //     between `nnet: &mut NeuralNet` and the `&Agent` view sensors receive.
+    //   - `pop_ptr` is `*const Population`. The shared `&Population` derived
+    //     from it is used only to call `population.get(id)` (immutable). The
+    //     mutation path through `agent_ptr` targets `population.agents[id].nnet`,
+    //     a distinct sub-field; no two &mut references overlap.
+    //   - `scratch.alive_ids` is a separate field from `action_accum` /
+    //     `neuron_accum` — all three fields are accessed through disjoint paths.
+    //   - `sensor_rng` is forked from `state.rng` before any raw pointer is
+    //     created; it is a completely independent RNG object and does not alias
+    //     `state.rng`.
+    //   - All raw pointers are derived from live, valid references and are used
+    //     only within this function scope, so they cannot dangle.
     let agent_ptr: *mut crate::agent::Agent = match state.population.get_mut(id) {
         Some(a) if a.alive => a as *mut _,
         _ => return,
@@ -122,17 +132,50 @@ fn step_one_agent(state: &mut SimulationState, id: AgentId) {
     });
 
     // Phase 2: execute actions (mutable access to agent, queues, signals)
-    if state.population.get(id).map_or(true, |a| !a.alive) {
+    if state.population.get(id).is_none_or(|a| !a.alive) {
         return;
     }
 
     let kill_enable = state.config.kill_enable;
 
     // Reuse `agent_ptr` from phase 1 (still valid; agent slot didn't move).
-    // SAFETY: agent_ptr came from get_mut and the population's storage is
-    // index-stable. We re-check `alive` above, so the agent is still valid.
+    // SAFETY: `agent_ptr` was obtained from `population.get_mut(id)` at the
+    // top of this function. `Population` uses a `Vec<Option<Agent>>` that only
+    // ever grows (via `spawn`) — slots are never relocated or removed — so the
+    // pointer remains valid and non-dangling. The alive re-check above confirms
+    // the slot still contains a live agent; no other code path can free or move
+    // this slot while we hold `&mut SimulationState`.
     let agent: &mut crate::agent::Agent = unsafe { &mut *agent_ptr };
 
+    // SAFETY notes for the ActionContext construction:
+    //
+    // (a) `agent` vs `world.population`:
+    //     `agent` is a `&mut Agent` into `population.agents[id]`. `world.population`
+    //     is a `&Population` (via `pop_ptr`). These overlap at the type level:
+    //     `*pop_ptr` logically contains `*agent_ptr`. However:
+    //       - No action implementation reads `world.population.agents` directly;
+    //         they call `world.grid.at(loc)` to get an AgentId, then stop.
+    //         The aliased slot (`agents[id]`) is never accessed through `world`
+    //         during Phase 2.
+    //       - `ctx.move_queue` and `ctx.death_queue` are `&mut` into
+    //         `population.move_queue` / `population.death_queue` — fields
+    //         entirely separate from `population.agents`.
+    //     Conclusion: no two live references reach the same memory location.
+    //
+    // (b) `ctx.signals` vs `world.signals`:
+    //     `ctx.signals` is `&mut state.signals` and `world.signals` is
+    //     `&*signals_ptr = &state.signals`. These are aliased `&mut T` / `&T`
+    //     of the same object, which is technically unsound under Stacked Borrows.
+    //     It is safe in practice because NO built-in action reads `world.signals`
+    //     during Phase 2; `EmitSignal0` writes via `ctx.signals` and reads the
+    //     grid (not signals) from `ctx.world`. A future refactor should split
+    //     `ActionContext.world` into separate `grid` and `population` refs so
+    //     signals can be dropped from the read-only world view in Phase 2.
+    //
+    // (c) `action_accum_ptr` / `action_levels` vs ActionContext:
+    //     `action_accum` lives in `state.scratch`, a field completely disjoint
+    //     from `population`, `signals`, and `rng`. Reading it as `&[f32]` while
+    //     ActionContext holds `&mut` to the other fields is safe.
     let mut ctx = ActionContext {
         agent,
         world: &world,
@@ -143,9 +186,8 @@ fn step_one_agent(state: &mut SimulationState, id: AgentId) {
         config_kill_enable: kill_enable,
     };
 
-    // SAFETY: action_accum lives in `state.scratch`, distinct from population
-    // queues / signals / rng. We borrow it as &Vec while ActionContext holds
-    // disjoint &mut references — no overlap.
+    // SAFETY: see note (c) above — action_accum is disjoint from all fields
+    // held by ActionContext.
     let action_levels: &[f32] = unsafe { &*action_accum_ptr };
     for (action_idx, &level) in action_levels.iter().enumerate() {
         state.actions.execute(action_idx as u16, level, &mut ctx);

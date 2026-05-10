@@ -54,7 +54,8 @@ pub fn render_frame_into(state: &SimulationState, buf: &mut Vec<u8>) {
     }
 }
 
-/// Allocating wrapper around [`render_frame_into`].
+/// Allocating wrapper around [`render_frame_into`]. Used in tests.
+#[cfg(test)]
 pub fn render_frame(state: &SimulationState) -> Vec<u8> {
     let mut buf = Vec::new();
     render_frame_into(state, &mut buf);
@@ -91,6 +92,7 @@ pub fn render_signal_layer_into(state: &SimulationState, layer: u8, tint: [u8; 3
     }
 }
 
+#[cfg(test)]
 pub fn render_signal_layer(state: &SimulationState, layer: u8, tint: [u8; 3]) -> Vec<u8> {
     let mut buf = Vec::new();
     render_signal_layer_into(state, layer, tint, &mut buf);
@@ -165,7 +167,7 @@ mod tests {
 
         // Manually inject an agent at (0,0) — bottom-left in world coords.
         use biosim4_core::agent::Agent;
-        use biosim4_core::genome::genome::make_random_genome;
+        use biosim4_core::genome::ops::make_random_genome;
         use biosim4_core::genome::neural_net::create_wiring;
         use biosim4_core::types::Coord;
 

@@ -41,7 +41,7 @@ pub fn apply_point_mutations(genome: &mut Genome, rate: f32, rng: &mut Rng) {
 /// With probability `rate`, insert or delete a gene. `deletion_ratio` controls the split.
 pub fn random_insert_deletion(genome: &mut Genome, rate: f32, deletion_ratio: f32, max_len: u16, rng: &mut Rng) {
     if !rng.gen_bool(rate) { return; }
-    if rng.gen_bool(deletion_ratio as f32) {
+    if rng.gen_bool(deletion_ratio) {
         // deletion
         if !genome.is_empty() {
             let idx = rng.gen_range_usize(0, genome.len());
@@ -58,18 +58,32 @@ pub fn random_insert_deletion(genome: &mut Genome, rate: f32, deletion_ratio: f3
 
 // ── Reproduction ─────────────────────────────────────────────────────────
 
+/// Parameters for [`generate_child_genome`].
+#[derive(Clone, Debug)]
+pub struct ReproductionParams {
+    pub sexual: bool,
+    pub choose_by_fitness: bool,
+    pub mutation_rate: f32,
+    pub insertion_deletion_rate: f32,
+    pub deletion_ratio: f32,
+    pub max_len: u16,
+}
+
 /// Generate a child genome from a pool of parent genomes.
 /// Assumes parents are sorted ascending by fitness (higher index = fitter).
 pub fn generate_child_genome(
     parents: &[Genome],
-    sexual: bool,
-    choose_by_fitness: bool,
-    mutation_rate: f32,
-    insertion_deletion_rate: f32,
-    deletion_ratio: f32,
-    max_len: u16,
+    params: &ReproductionParams,
     rng: &mut Rng,
 ) -> Genome {
+    let ReproductionParams {
+        sexual,
+        choose_by_fitness,
+        mutation_rate,
+        insertion_deletion_rate,
+        deletion_ratio,
+        max_len,
+    } = *params;
     if parents.is_empty() { return vec![]; }
 
     let pick = |rng: &mut Rng| -> usize {
@@ -171,9 +185,12 @@ fn jaro_winkler(a: &Genome, b: &Genome) -> f32 {
     let jaro = (matches as f32 / n as f32
         + matches as f32 / m as f32
         + (matches - transpositions / 2) as f32 / matches as f32) / 3.0;
-    // Winkler prefix bonus (use first 4 common u8 bytes as proxy for prefix)
+    // Winkler prefix bonus (use first 4 common u8 bytes as proxy for prefix).
+    // Clamp to 1.0: float rounding can push jaro slightly above 1.0 (e.g.
+    // 1.0000001), making (1-jaro) negative and the bonus subtractive. The
+    // clamp ensures the result is always in [0, 1].
     let prefix = a.iter().zip(b.iter()).take(4).filter(|(x, y)| x == y).count();
-    jaro + prefix as f32 * 0.1 * (1.0 - jaro)
+    (jaro + prefix as f32 * 0.1 * (1.0 - jaro)).min(1.0)
 }
 
 fn hamming_distance_bits(a: &Genome, b: &Genome) -> f32 {

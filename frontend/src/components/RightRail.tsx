@@ -348,25 +348,31 @@ function RegistryPanel({ simulator }: { simulator: Simulator }) {
 function ConfigPanel({
   paintedCount, onClearPaint, configJson, onApplyConfig,
 }: Pick<Props, "paintedCount" | "onClearPaint" | "configJson" | "onApplyConfig">) {
-  const [cfg, setCfg] = useState<any>(() => JSON.parse(configJson));
+  type CfgMap = Record<string, unknown>;
+  const [cfg, setCfg] = useState<CfgMap>(() => JSON.parse(configJson) as CfgMap);
   const [dirty, setDirty] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [jsonText, setJsonText] = useState(() => JSON.stringify(JSON.parse(configJson), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
 
+  // Typed accessors for known numeric/boolean fields — avoids `any` casts in JSX.
+  const num = (k: string): number => cfg[k] as number;
+  const bool = (k: string): boolean => cfg[k] as boolean;
+
   useEffect(() => {
-    setCfg(JSON.parse(configJson));
-    setJsonText(JSON.stringify(JSON.parse(configJson), null, 2));
+    const parsed = JSON.parse(configJson) as CfgMap;
+    setCfg(parsed);
+    setJsonText(JSON.stringify(parsed, null, 2));
     setDirty(false);
   }, [configJson]);
 
-  const set = (k: string, v: any) => {
-    setCfg((prev: any) => ({ ...prev, [k]: v }));
+  const set = (k: string, v: unknown) => {
+    setCfg((prev) => ({ ...prev, [k]: v }));
     setDirty(true);
   };
 
   const reset = () => {
-    const base = JSON.parse(configJson);
+    const base = JSON.parse(configJson) as CfgMap;
     setCfg(base);
     setJsonText(JSON.stringify(base, null, 2));
     setJsonError(null);
@@ -376,7 +382,7 @@ function ConfigPanel({
   const apply = () => {
     if (showJson) {
       try {
-        const parsed = JSON.parse(jsonText);
+        const parsed = JSON.parse(jsonText) as CfgMap;
         onApplyConfig(jsonText);
         setCfg(parsed);
         setJsonError(null);
@@ -399,7 +405,7 @@ function ConfigPanel({
     } else {
       // JSON → form: try to parse
       try {
-        setCfg(JSON.parse(jsonText));
+        setCfg(JSON.parse(jsonText) as CfgMap);
         setJsonError(null);
       } catch {
         // leave cfg as-is; form will show last valid state
@@ -408,9 +414,9 @@ function ConfigPanel({
     setShowJson(j => !j);
   };
 
-  const cells = cfg.size_x * cfg.size_y;
-  const density = ((cfg.population / cells) * 100).toFixed(1);
-  const totalSteps = cfg.steps_per_generation * cfg.max_generations;
+  const cells = num("size_x") * num("size_y");
+  const density = ((num("population") / cells) * 100).toFixed(1);
+  const totalSteps = num("steps_per_generation") * num("max_generations");
 
   return (
     <>
@@ -446,90 +452,90 @@ function ConfigPanel({
           </div>
         ) : (
           <>
-            <CfgGroup title="World" summary={`${cfg.size_x}\u00b2 \u00b7 ${cells.toLocaleString()} cells`}>
+            <CfgGroup title="World" summary={`${num("size_x")}\u00b2 \u00b7 ${cells.toLocaleString()} cells`}>
               <CfgRow label="Grid size" help={`${cells.toLocaleString()} cells`}>
                 <div className="cfg-grid-row">
-                  <GridPreview size={cfg.size_x} pop={cfg.population} />
+                  <GridPreview size={num("size_x")} pop={num("population")} />
                   <div style={{flex: 1}}>
-                    <Stepper value={cfg.size_x} min={32} max={512} step={32}
+                    <Stepper value={num("size_x")} min={32} max={512} step={32}
                              onChange={(v)=>{ set("size_x", v); set("size_y", v); }} suffix="px"/>
-                    <div className="cfg-hint">Square world \u00b7 {cfg.size_x} \u00d7 {cfg.size_x}</div>
+                    <div className="cfg-hint">Square world \u00b7 {num("size_x")} \u00d7 {num("size_x")}</div>
                   </div>
                 </div>
               </CfgRow>
               <CfgRow label="Barriers">
-                <BarrierPicker value={cfg.barrier_type} onChange={(v)=>set("barrier_type", v)}/>
+                <BarrierPicker value={num("barrier_type")} onChange={(v)=>set("barrier_type", v)}/>
               </CfgRow>
             </CfgGroup>
-            <CfgGroup title="Population" summary={`${cfg.population.toLocaleString()} agents \u00b7 ${density}%`}>
+            <CfgGroup title="Population" summary={`${num("population").toLocaleString()} agents \u00b7 ${density}%`}>
               <CfgRow label="Population" help={`${density}% of grid`}>
-                <SliderNum value={cfg.population} min={100} max={5000} step={50}
+                <SliderNum value={num("population")} min={100} max={5000} step={50}
                            onChange={(v)=>set("population", v)}
                            markers={[500, 1000, 2500, 5000]}/>
               </CfgRow>
               <CfgRow label="Deterministic" help="Reproducible runs from a seed">
-                <Toggle checked={cfg.deterministic} onChange={(v)=>set("deterministic", v)}/>
+                <Toggle checked={bool("deterministic")} onChange={(v)=>set("deterministic", v)}/>
               </CfgRow>
-              {cfg.deterministic && (
+              {bool("deterministic") && (
                 <CfgRow label="RNG seed">
-                  <SeedInput value={cfg.rng_seed} onChange={(v)=>set("rng_seed", v)}/>
+                  <SeedInput value={num("rng_seed")} onChange={(v)=>set("rng_seed", v)}/>
                 </CfgRow>
               )}
             </CfgGroup>
-            <CfgGroup title="Time" summary={`${cfg.steps_per_generation} \u00d7 ${cfg.max_generations} = ${totalSteps.toLocaleString()} steps`}>
+            <CfgGroup title="Time" summary={`${num("steps_per_generation")} \u00d7 ${num("max_generations")} = ${totalSteps.toLocaleString()} steps`}>
               <CfgRow label="Steps / generation">
-                <SliderNum value={cfg.steps_per_generation} min={50} max={500} step={10}
+                <SliderNum value={num("steps_per_generation")} min={50} max={500} step={10}
                            onChange={(v)=>set("steps_per_generation", v)}
                            markers={[100, 200, 300, 500]}/>
               </CfgRow>
               <CfgRow label="Max generations">
-                <SliderNum value={cfg.max_generations} min={10} max={1000} step={10}
+                <SliderNum value={num("max_generations")} min={10} max={1000} step={10}
                            onChange={(v)=>set("max_generations", v)}
                            markers={[100, 200, 500, 1000]}/>
               </CfgRow>
             </CfgGroup>
-            <CfgGroup title="Genetics" summary={`${cfg.genome_initial_length_min === cfg.genome_initial_length_max ? cfg.genome_initial_length_min : `${cfg.genome_initial_length_min}\u2013${cfg.genome_initial_length_max}`} genes \u00b7 ${cfg.max_number_neurons} neurons`}>
+            <CfgGroup title="Genetics" summary={`${num("genome_initial_length_min") === num("genome_initial_length_max") ? num("genome_initial_length_min") : `${num("genome_initial_length_min")}\u2013${num("genome_initial_length_max")}`} genes \u00b7 ${num("max_number_neurons")} neurons`}>
               <CfgRow label="Genome length" help="Initial gene count per agent">
                 <RangeDual
                   min={1} max={64}
-                  low={cfg.genome_initial_length_min} high={cfg.genome_initial_length_max}
+                  low={num("genome_initial_length_min")} high={num("genome_initial_length_max")}
                   onChange={(lo, hi)=>{ set("genome_initial_length_min", lo); set("genome_initial_length_max", hi); }}
                 />
               </CfgRow>
               <CfgRow label="Neurons" help="Hidden layer width">
-                <Stepper value={cfg.max_number_neurons} min={1} max={20} step={1}
+                <Stepper value={num("max_number_neurons")} min={1} max={20} step={1}
                          onChange={(v)=>set("max_number_neurons", v)}/>
               </CfgRow>
-              <CfgRow label="Point mutation" help={`${(cfg.point_mutation_rate * 100).toFixed(2)}% per gene per offspring`}>
-                <SliderNum value={cfg.point_mutation_rate} min={0} max={0.05} step={0.0005}
+              <CfgRow label="Point mutation" help={`${(num("point_mutation_rate") * 100).toFixed(2)}% per gene per offspring`}>
+                <SliderNum value={num("point_mutation_rate")} min={0} max={0.05} step={0.0005}
                            onChange={(v)=>set("point_mutation_rate", v)}
                            format={(v)=>`${(v*100).toFixed(2)}%`}
                            markers={[0, 0.005, 0.02, 0.05]}
                            markerLabels={["0%","0.5%","2%","5%"]}/>
               </CfgRow>
             </CfgGroup>
-            <CfgGroup title="Behavior" summary={`resp ${cfg.responsiveness.toFixed(2)} \u00b7 probe ${cfg.long_probe_distance}`}>
+            <CfgGroup title="Behavior" summary={`resp ${num("responsiveness").toFixed(2)} \u00b7 probe ${num("long_probe_distance")}`}>
               <CfgRow label="Responsiveness" help="0 = ignore neural output \u00b7 1 = fully driven">
-                <SliderNum value={cfg.responsiveness} min={0} max={1} step={0.05}
+                <SliderNum value={num("responsiveness")} min={0} max={1} step={0.05}
                            onChange={(v)=>set("responsiveness", v)}
                            format={(v)=>v.toFixed(2)}/>
               </CfgRow>
               <CfgRow label="Population radius" help="Pop-density sensor sample radius">
-                <SliderNum value={cfg.population_sensor_radius} min={1} max={10} step={0.5}
+                <SliderNum value={num("population_sensor_radius")} min={1} max={10} step={0.5}
                            onChange={(v)=>set("population_sensor_radius", v)}
                            format={(v)=>`${v.toFixed(1)} cells`}/>
               </CfgRow>
               <CfgRow label="Signal radius" help="Pheromone sample radius">
-                <SliderNum value={cfg.signal_sensor_radius} min={1} max={10} step={0.5}
+                <SliderNum value={num("signal_sensor_radius")} min={1} max={10} step={0.5}
                            onChange={(v)=>set("signal_sensor_radius", v)}
                            format={(v)=>`${v.toFixed(1)} cells`}/>
               </CfgRow>
               <CfgRow label="Long-probe distance" help="Forward line-of-sight in cells">
-                <Stepper value={cfg.long_probe_distance} min={1} max={64} step={1}
+                <Stepper value={num("long_probe_distance")} min={1} max={64} step={1}
                          onChange={(v)=>set("long_probe_distance", v)}/>
               </CfgRow>
               <CfgRow label="Kill enable" help="Agents can kill neighbours">
-                <Toggle checked={cfg.kill_enable} onChange={(v)=>set("kill_enable", v)}/>
+                <Toggle checked={bool("kill_enable")} onChange={(v)=>set("kill_enable", v)}/>
               </CfgRow>
             </CfgGroup>
           </>

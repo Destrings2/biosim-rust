@@ -13,7 +13,7 @@ use biosim4_core::{
     agent::{Agent, AgentId},
     grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
-    genome::genome::make_random_genome,
+    genome::ops::make_random_genome,
     population::Population,
     registry::{SensorContext, SensorRegistry},
     rng::Rng,

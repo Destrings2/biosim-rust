@@ -55,15 +55,12 @@ pub trait Challenge: Send + Sync {
     fn overlays(&self, _world: &World) -> Vec<ChallengeOverlay> { Vec::new() }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub enum ChallengeComposition {
+    #[default]
     Any,
     All,
     WeightedSum { weights: Vec<f32>, threshold: f32 },
-}
-
-impl Default for ChallengeComposition {
-    fn default() -> Self { ChallengeComposition::Any }
 }
 
 /// Frontend-facing challenge configuration.

@@ -6,7 +6,7 @@ use biosim4_core::{
     agent::{Agent, AgentId},
     grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
-    genome::genome::make_random_genome,
+    genome::ops::make_random_genome,
     population::Population,
     registry::{ChallengeComposition, ChallengeConfig, ChallengeRegistry},
     rng::Rng,
@@ -255,4 +255,47 @@ fn evaluate_score_always_in_unit_interval() {
             );
         }
     }
+}
+
+#[test]
+fn weighted_sum_composition_evaluates_correctly() {
+    // WeightedSum: score = sum(score_i * weight_i) / sum(weights).
+    // Use right_half (agent on right → score 1.0) and left_eighth (agent on
+    // right at x=12 → fails → score 0.0) with equal weights → combined 0.5.
+    // threshold=0.4 → passes; threshold=0.6 → fails.
+    let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
+
+    // Agent at x=12 is in the right half (passes right_half, score=1.0)
+    // but NOT in the left eighth (fails left_eighth, score=0.0).
+    let (grid, signals, pop) = world_with_agent(Coord::new(12, 8), &cfg);
+    let world = World {
+        grid: &grid, signals: &signals, population: &pop,
+        size_x: cfg.size_x, size_y: cfg.size_y,
+        steps_per_generation: cfg.steps_per_generation,
+        generation: 0, step: 0,
+    };
+
+    let make_reg = |threshold: f32| {
+        let mut reg = ChallengeRegistry::new();
+        register_builtin_challenges(&mut reg);
+        let cfg_json = ChallengeConfig {
+            active: vec!["right_half".into(), "left_eighth".into()],
+            composition: ChallengeComposition::WeightedSum {
+                weights: vec![1.0, 1.0],
+                threshold,
+            },
+            params: Default::default(),
+        };
+        reg.apply_config(cfg_json).unwrap();
+        reg
+    };
+
+    // score = (1.0 * 1.0 + 0.0 * 1.0) / 2.0 = 0.5
+    let (pass_low, score_low) = make_reg(0.4).evaluate(pop.get(1).unwrap(), &world);
+    assert!((score_low - 0.5).abs() < 1e-5, "weighted-sum score should be 0.5, got {}", score_low);
+    assert!(pass_low, "score 0.5 >= threshold 0.4 should pass");
+
+    let (pass_high, score_high) = make_reg(0.6).evaluate(pop.get(1).unwrap(), &world);
+    assert!((score_high - 0.5).abs() < 1e-5, "weighted-sum score should be 0.5, got {}", score_high);
+    assert!(!pass_high, "score 0.5 < threshold 0.6 should fail");
 }

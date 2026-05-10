@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::genome::genome::{make_random_genome, generate_child_genome, Genome};
+use crate::genome::ops::{make_random_genome, generate_child_genome, Genome, ReproductionParams};
 use crate::genome::neural_net::create_wiring;
 use crate::sim_state::SimulationState;
 use crate::registry::challenge::WorldMut;
@@ -92,19 +92,18 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
             .cloned()
             .collect();
 
+        let repro = ReproductionParams {
+            sexual: cfg.sexual_reproduction,
+            choose_by_fitness: cfg.choose_parents_by_fitness,
+            mutation_rate: cfg.point_mutation_rate,
+            insertion_deletion_rate: cfg.gene_insertion_deletion_rate,
+            deletion_ratio: cfg.deletion_ratio,
+            max_len: cfg.genome_max_length,
+        };
         let mut out = Vec::with_capacity(new_pop);
         out.extend(elites);
         while out.len() < new_pop {
-            out.push(generate_child_genome(
-                &parent_genomes,
-                cfg.sexual_reproduction,
-                cfg.choose_parents_by_fitness,
-                cfg.point_mutation_rate,
-                cfg.gene_insertion_deletion_rate,
-                cfg.deletion_ratio,
-                cfg.genome_max_length,
-                &mut state.rng,
-            ));
+            out.push(generate_child_genome(&parent_genomes, &repro, &mut state.rng));
         }
         out
     };
