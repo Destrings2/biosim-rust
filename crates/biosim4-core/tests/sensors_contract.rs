@@ -10,7 +10,7 @@
 //! 3. Agent with old age & with neighbors / signals nearby (state-dependent sensors)
 
 use biosim4_core::{
-    agent::{Agent, AgentId, PropValue},
+    agent::{Agent, AgentId},
     grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
     genome::genome::make_random_genome,
@@ -20,7 +20,7 @@ use biosim4_core::{
     sensors::register_builtin_sensors,
     sim_config::SimConfig,
     signals_layer::Signals,
-    types::{Coord, Dir, Compass},
+    types::Coord,
     world::World,
 };
 

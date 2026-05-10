@@ -3,7 +3,7 @@ use crate::grid::Grid;
 use crate::population::Population;
 use crate::registry::action::ActionRegistry;
 use crate::registry::breed::BreedRegistry;
-use crate::registry::challenge::{ChallengeComposition, ChallengeConfig, ChallengeRegistry, WorldMut};
+use crate::registry::challenge::{ChallengeConfig, ChallengeRegistry};
 use crate::registry::sensor::SensorRegistry;
 use crate::rng::Rng;
 use crate::sim_config::SimConfig;

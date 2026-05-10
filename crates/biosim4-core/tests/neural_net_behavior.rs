@@ -5,7 +5,6 @@
 
 use biosim4_core::genome::{
     gene::Gene,
-    genome::Genome,
     neural_net::{create_wiring, feed_forward_alloc, WiringConfig},
 };
 

@@ -1,4 +1,4 @@
-use crate::agent::{Agent, AgentId, INVALID_AGENT};
+use crate::agent::{Agent, AgentId};
 use crate::grid::Grid;
 use crate::types::Coord;
 

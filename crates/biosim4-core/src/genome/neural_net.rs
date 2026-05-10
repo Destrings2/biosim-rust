@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::genome::gene::{Gene, SOURCE_SENSOR, SOURCE_NEURON, SINK_ACTION, SINK_NEURON};
+use crate::genome::gene::Gene;
 
 /// Parameters needed to wire a genome into a NeuralNet.
 #[derive(Clone, Copy, Debug)]

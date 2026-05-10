@@ -46,12 +46,7 @@ fn try_move(ctx: &mut ActionContext, dir: Dir) {
     }
 }
 
-fn accumulate_move(level: f32, dir: Dir, move_x: &mut f32, move_y: &mut f32) {
-    let unit = dir.as_normalized_coord();
-    let v = level.tanh();
-    *move_x += unit.x as f32 * v;
-    *move_y += unit.y as f32 * v;
-}
+
 
 // ── Internal state modulators ─────────────────────────────────────────────
 

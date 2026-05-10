@@ -147,6 +147,8 @@ pub struct Simulator {
     inner: SimulationState,
     /// Cached config JSON for `reset()` so we re-create with the same params.
     config_json: String,
+    /// Cached challenge JSON for `reset()` so we restore the active challenge.
+    challenge_json: Option<String>,
     /// Reused render buffer — populated by `render_frame_into` each call so
     /// we don't allocate a fresh ~64 KB Vec on every animation frame.
     frame_buf: Vec<u8>,
@@ -172,7 +174,7 @@ impl Simulator {
             (state, config_json.to_string())
         };
 
-        Ok(Self { inner, config_json: json, frame_buf: Vec::new(), signal_buf: Vec::new() })
+        Ok(Self { inner, config_json: json, challenge_json: None, frame_buf: Vec::new(), signal_buf: Vec::new() })
     }
 
     // ── Time advancement ──────────────────────────────────────────────────
@@ -250,6 +252,11 @@ impl Simulator {
         for (id, name, cb) in custom_actions {
             self.inner.actions.register(Box::new(JsAction::new(id, name, cb)));
         }
+
+        if let Some(ref json) = self.challenge_json {
+            let _ = self.inner.set_challenge(json);
+        }
+
         Ok(())
     }
 
@@ -581,7 +588,9 @@ impl Simulator {
     /// { "active": ["circle"], "composition": "Any", "params": { "circle": {...} } }
     /// ```
     pub fn set_challenge(&mut self, json: &str) -> Result<(), JsValue> {
-        self.inner.set_challenge(json).map_err(js_err)
+        self.inner.set_challenge(json).map_err(js_err)?;
+        self.challenge_json = Some(json.to_string());
+        Ok(())
     }
 
     /// Returns an array of `{id, name, description, schema}` describing every

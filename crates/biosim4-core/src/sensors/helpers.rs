@@ -5,9 +5,9 @@ use crate::types::{Coord, Dir};
 
 /// Weighted population density along a direction, normalized 0..1.
 pub fn population_density_along_axis(
-    loc: Coord, dir: Dir, radius: f32, grid: &Grid, population: &Population,
+    loc: Coord, dir: Dir, radius: f32, grid: &Grid, _population: &Population,
 ) -> f32 {
-    let dir_coord = dir.as_normalized_coord();
+    let _dir_coord = dir.as_normalized_coord();
     let mut sum = 0.0f32;
     let mut count = 0u32;
     visit_neighborhood(grid, loc, radius, |nloc| {
@@ -83,7 +83,7 @@ pub fn signal_density_along_axis(
 ) -> f32 {
     let mut fwd_sum = 0.0f32;
     let mut bwd_sum = 0.0f32;
-    let dir_coord = dir.as_normalized_coord();
+    let _dir_coord = dir.as_normalized_coord();
     visit_neighborhood(grid, loc, radius, |nloc| {
         if nloc == loc { return; }
         let offset = nloc - loc;
@@ -98,13 +98,13 @@ pub fn signal_density_along_axis(
 
 /// Genetic similarity to nearest forward neighbor, normalized 0..1.
 pub fn genetic_sim_fwd(
-    loc: Coord, dir: Dir, grid: &Grid, population: &Population, method: u8,
+    loc: Coord, dir: Dir, grid: &Grid, _population: &Population, _method: u8,
 ) -> f32 {
     let step = dir.as_normalized_coord();
     for i in 1..=4i16 {
         let target = Coord::new(loc.x + step.x * i, loc.y + step.y * i);
         if !grid.is_in_bounds(target) { break; }
-        if let Some(neighbor) = population.get_at(grid, target) {
+        if let Some(_neighbor) = _population.get_at(grid, target) {
             // Get the current agent's genome for comparison — passed as arg
             return 0.5; // placeholder; caller fills in proper genome ref
         }

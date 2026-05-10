@@ -4,7 +4,6 @@ use biosim4_core::{
     sim_step::step_generation,
     spawn::spawn_new_generation,
 };
-use std::path::PathBuf;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

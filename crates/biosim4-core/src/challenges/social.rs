@@ -1,6 +1,6 @@
 use crate::agent::Agent;
 use crate::grid::visit_neighborhood;
-use crate::registry::challenge::{Challenge, WorldMut};
+use crate::registry::challenge::Challenge;
 use crate::world::World;
 use serde_json::{json, Value};
 

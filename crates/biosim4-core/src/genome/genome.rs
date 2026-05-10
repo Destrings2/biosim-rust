@@ -1,4 +1,4 @@
-use crate::genome::gene::{Gene, SOURCE_SENSOR, SINK_ACTION, SOURCE_NEURON, SINK_NEURON};
+use crate::genome::gene::Gene;
 use crate::rng::Rng;
 use crate::sim_config::SimConfig;
 

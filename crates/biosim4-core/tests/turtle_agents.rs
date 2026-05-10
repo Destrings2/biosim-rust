@@ -10,7 +10,7 @@ use biosim4_core::{
     population::Population,
     rng::Rng,
     sim_config::SimConfig,
-    types::{Coord, Compass, Dir},
+    types::{Coord, Compass},
 };
 
 fn make_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> Agent {
