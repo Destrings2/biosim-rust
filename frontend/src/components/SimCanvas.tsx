@@ -76,6 +76,26 @@ export function SimCanvas({
     const img = new ImageData(new Uint8ClampedArray(frame.length), sx, sy);
     img.data.set(frame);
     ctx.putImageData(img, 0, 0);
+
+    try {
+      const overlays = simulator.get_challenge_overlays() as any[];
+      for (const ol of overlays) {
+        ctx.fillStyle = `rgba(${ol.color[0]}, ${ol.color[1]}, ${ol.color[2]}, ${ol.color[3] / 255})`;
+        if (ol.type === "circle") {
+          ctx.beginPath();
+          ctx.arc(ol.cx, sy - ol.cy, ol.radius, 0, 2 * Math.PI);
+          ctx.fill();
+        } else if (ol.type === "rectangle") {
+          ctx.fillRect(ol.x, sy - ol.y - ol.h, ol.w, ol.h);
+        } else if (ol.type === "points") {
+          for (const pt of ol.points) {
+            ctx.fillRect(pt[0] - ol.size/2, sy - pt[1] - ol.size/2, ol.size, ol.size);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to render overlays:", err);
+    }
   }, [simulator]);
 
   // ── Mouse event wiring ──────────────────────────────────────────────
@@ -159,6 +179,26 @@ export function SimCanvas({
       const frame = simulator.get_frame();
       offscreen.data.set(frame);
       ctx.putImageData(offscreen, 0, 0);
+
+      try {
+        const overlays = simulator.get_challenge_overlays() as any[];
+        for (const ol of overlays) {
+          ctx.fillStyle = `rgba(${ol.color[0]}, ${ol.color[1]}, ${ol.color[2]}, ${ol.color[3] / 255})`;
+          if (ol.type === "circle") {
+            ctx.beginPath();
+            ctx.arc(ol.cx, sy - ol.cy, ol.radius, 0, 2 * Math.PI);
+            ctx.fill();
+          } else if (ol.type === "rectangle") {
+            ctx.fillRect(ol.x, sy - ol.y - ol.h, ol.w, ol.h);
+          } else if (ol.type === "points") {
+            for (const pt of ol.points) {
+              ctx.fillRect(pt[0] - ol.size/2, sy - pt[1] - ol.size/2, ol.size, ol.size);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to render overlays:", err);
+      }
     };
 
     localPaint();

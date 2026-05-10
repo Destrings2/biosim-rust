@@ -17,7 +17,6 @@ impl Challenge for PairsChallenge {
         let count = neighbor_count(agent.loc, 1.5, world);
         if count != 1 { return (false, 0.0); }
         // Find the one neighbor and check it also has exactly 1 neighbor
-        let step = crate::types::Coord::new(0,0); // placeholder
         let mut partner_ok = false;
         visit_neighborhood(world.grid, agent.loc, 1.5, |nloc| {
             if nloc == agent.loc { return; }

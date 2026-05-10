@@ -600,6 +600,13 @@ impl Simulator {
         to_js(&v)
     }
 
+    /// Returns JSON array of challenge overlays (circles, rects, points).
+    pub fn get_challenge_overlays(&self) -> Result<JsValue, JsValue> {
+        let world = self.inner.world();
+        let overlays = self.inner.challenges.get_overlays(&world);
+        to_js(&overlays)
+    }
+
     /// Patch a subset of config fields without resetting.
     /// Note: dimensional fields (`size_x`, `size_y`, `population`) are best
     /// changed via `new Simulator(...)`; patching them mid-run is allowed but

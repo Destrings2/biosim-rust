@@ -140,6 +140,7 @@ impl SimulationState {
             size_y: self.config.size_y,
             steps_per_generation: self.config.steps_per_generation,
             generation: self.generation,
+            step: self.sim_step,
         }
     }
 

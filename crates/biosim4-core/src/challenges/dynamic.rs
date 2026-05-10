@@ -3,7 +3,7 @@
 //! responsive (rather than static) behaviour.
 
 use crate::agent::Agent;
-use crate::registry::challenge::{Challenge, WorldMut};
+use crate::registry::challenge::{Challenge, ChallengeOverlay, WorldMut};
 use crate::types::Coord;
 use crate::world::World;
 use serde_json::{json, Value};
@@ -104,6 +104,16 @@ impl Challenge for SunTrackerChallenge {
                 }
             }
         }
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let (sx, sy) = sun_pos_at(self, world.step, world.steps_per_generation, world.size_x, world.size_y);
+        let r = self.radius * world.size_x.max(world.size_y) as f32;
+        vec![ChallengeOverlay::Circle {
+            cx: sx,
+            cy: sy,
+            radius: r,
+            color: [255, 200, 0, 80], // Translucent orange/yellow
+        }]
     }
 }
 
@@ -242,6 +252,14 @@ impl Challenge for FoodForagingChallenge {
             }
         }
     }
+    fn overlays(&self, _world: &World) -> Vec<ChallengeOverlay> {
+        let points = self.pellets.iter().map(|&(x, y)| (x as f32, y as f32)).collect();
+        vec![ChallengeOverlay::Points {
+            points,
+            color: [0, 255, 100, 255], // bright green for food
+            size: 1.0,
+        }]
+    }
 }
 
 // ── Survivor (lethal predator pulse) ─────────────────────────────────────
@@ -322,5 +340,14 @@ impl Challenge for SurvivorChallenge {
             if ctx.rng.gen_bool(stress) { Some(a.id) } else { None }
         }).collect();
         for id in victims { ctx.population.queue_for_death(id); }
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let r = self.safe_radius * world.size_x.max(world.size_y) as f32;
+        vec![ChallengeOverlay::Circle {
+            cx: self.centre.0,
+            cy: self.centre.1,
+            radius: r,
+            color: [0, 150, 255, 80], // Translucent blue for safe zone
+        }]
     }
 }

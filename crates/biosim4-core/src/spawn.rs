@@ -2,6 +2,7 @@ use crate::agent::Agent;
 use crate::genome::genome::{make_random_genome, generate_child_genome, Genome};
 use crate::genome::neural_net::create_wiring;
 use crate::sim_state::SimulationState;
+use crate::registry::challenge::WorldMut;
 
 /// Populate generation 0 with agents carrying random genomes, placed randomly.
 pub fn initialize_generation_0(state: &mut SimulationState) {
@@ -120,7 +121,7 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
 
     // Run on_generation_start hooks
     {
-        let mut world_mut = crate::registry::challenge::WorldMut {
+        let mut world_mut = WorldMut {
             grid: &mut state.grid,
             signals: &mut state.signals,
             population: &mut state.population,

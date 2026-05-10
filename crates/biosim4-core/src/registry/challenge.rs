@@ -6,6 +6,17 @@ use crate::signals_layer::Signals;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ChallengeOverlay {
+    #[serde(rename = "circle")]
+    Circle { cx: f32, cy: f32, radius: f32, color: [u8; 4] },
+    #[serde(rename = "rectangle")]
+    Rectangle { x: f32, y: f32, w: f32, h: f32, color: [u8; 4] },
+    #[serde(rename = "points")]
+    Points { points: Vec<(f32, f32)>, color: [u8; 4], size: f32 },
+}
+
 /// Mutable world reference for on_sim_step / on_generation_start side effects.
 /// Challenges can iterate alive agents, mutate their `challenge_bits`, and
 /// queue deaths via `population.queue_for_death(...)`.
@@ -39,6 +50,9 @@ pub trait Challenge: Send + Sync {
 
     /// Called once at the start of each generation. Default: no-op.
     fn on_generation_start(&mut self, _ctx: &mut WorldMut) {}
+
+    /// Return any visual overlays for this challenge. Default: empty.
+    fn overlays(&self, _world: &World) -> Vec<ChallengeOverlay> { Vec::new() }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -142,6 +156,15 @@ impl ChallengeRegistry {
         for &i in &self.active {
             self.challenges[i].on_generation_start(ctx);
         }
+    }
+
+    /// Return overlays from all active challenges.
+    pub fn get_overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let mut overlays = Vec::new();
+        for &i in &self.active {
+            overlays.extend(self.challenges[i].overlays(world));
+        }
+        overlays
     }
 
     /// Return JSON schema list for all registered challenges.

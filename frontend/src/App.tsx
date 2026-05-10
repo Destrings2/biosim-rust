@@ -187,10 +187,8 @@ export function App() {
       const pickedParams = cfg.active[0] ? (cfg.params[cfg.active[0]] ?? {}) : {};
       setChallengeParams(pickedParams);
       setComposition(typeof cfg.composition === "string" ? cfg.composition : "Any");
-      // Reset epoch history so the trend graph shows the new selection cleanly.
-      onReset();
     } catch (err) { console.error("set_challenge failed:", err); }
-  }, [simulator, onReset]);
+  }, [simulator]);
 
   const clearChallenge = useCallback(() => {
     if (!simulator) return;

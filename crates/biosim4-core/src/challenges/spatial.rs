@@ -1,5 +1,5 @@
 use crate::agent::Agent;
-use crate::registry::challenge::Challenge;
+use crate::registry::challenge::{Challenge, ChallengeOverlay};
 use crate::world::World;
 use serde_json::{json, Value};
 
@@ -44,6 +44,16 @@ impl Challenge for CircleChallenge {
         let score = if self.weighted { (self.radius - dist) / self.radius } else { 1.0 };
         (true, score)
     }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        vec![ChallengeOverlay::Circle {
+            cx: self.cx * sx,
+            cy: self.cy * sy,
+            radius: self.radius * sx.max(sy),
+            color: [0, 255, 0, 40],
+        }]
+    }
 }
 
 // ── Right Half ────────────────────────────────────────────────────────────
@@ -57,6 +67,17 @@ impl Challenge for RightHalfChallenge {
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
         let pass = agent.loc.x as u16 > world.size_x / 2;
         (pass, if pass { 1.0 } else { 0.0 })
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        vec![ChallengeOverlay::Rectangle {
+            x: sx / 2.0,
+            y: 0.0,
+            w: sx / 2.0,
+            h: sy,
+            color: [0, 255, 0, 40],
+        }]
     }
 }
 
@@ -72,6 +93,18 @@ impl Challenge for RightQuarterChallenge {
         let pass = agent.loc.x as u16 > world.size_x / 2 + world.size_x / 4;
         (pass, if pass { 1.0 } else { 0.0 })
     }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        let start_x = sx * 0.75;
+        vec![ChallengeOverlay::Rectangle {
+            x: start_x,
+            y: 0.0,
+            w: sx - start_x,
+            h: sy,
+            color: [0, 255, 0, 40],
+        }]
+    }
 }
 
 // ── Left Eighth ───────────────────────────────────────────────────────────
@@ -85,6 +118,17 @@ impl Challenge for LeftEighthChallenge {
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
         let pass = (agent.loc.x as u16) < world.size_x / 8;
         (pass, if pass { 1.0 } else { 0.0 })
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        vec![ChallengeOverlay::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            w: sx / 8.0,
+            h: sy,
+            color: [0, 255, 0, 40],
+        }]
     }
 }
 
@@ -100,6 +144,19 @@ impl Challenge for EastWestEighthsChallenge {
         let x = agent.loc.x as u16;
         let pass = x < world.size_x / 8 || x >= world.size_x - world.size_x / 8;
         (pass, if pass { 1.0 } else { 0.0 })
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        let w = sx / 8.0;
+        vec![
+            ChallengeOverlay::Rectangle {
+                x: 0.0, y: 0.0, w, h: sy, color: [0, 255, 0, 40],
+            },
+            ChallengeOverlay::Rectangle {
+                x: sx - w, y: 0.0, w, h: sy, color: [0, 255, 0, 40],
+            }
+        ]
     }
 }
 
@@ -127,6 +184,16 @@ impl Challenge for CenterWeightedChallenge {
         if dist > self.radius { return (false, 0.0); }
         (true, (self.radius - dist) / self.radius)
     }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        vec![ChallengeOverlay::Circle {
+            cx: sx * 0.5,
+            cy: sy * 0.5,
+            radius: self.radius * sx.max(sy),
+            color: [0, 255, 0, 40],
+        }]
+    }
 }
 
 // ── Center Unweighted ────────────────────────────────────────────────────
@@ -152,6 +219,16 @@ impl Challenge for CenterUnweightedChallenge {
         let dist = (dx * dx + dy * dy).sqrt();
         let pass = dist <= self.radius;
         (pass, if pass { 1.0 } else { 0.0 })
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        vec![ChallengeOverlay::Circle {
+            cx: sx * 0.5,
+            cy: sy * 0.5,
+            radius: self.radius * sx.max(sy),
+            color: [0, 255, 0, 40],
+        }]
     }
 }
 
@@ -180,6 +257,17 @@ impl Challenge for CornerChallenge {
         let pass = min_dist <= self.radius;
         (pass, if pass { 1.0 } else { 0.0 })
     }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        let r = self.radius * sx.max(sy);
+        vec![
+            ChallengeOverlay::Circle { cx: 0.0, cy: 0.0, radius: r, color: [0, 255, 0, 40] },
+            ChallengeOverlay::Circle { cx: 0.0, cy: sy,  radius: r, color: [0, 255, 0, 40] },
+            ChallengeOverlay::Circle { cx: sx,  cy: 0.0, radius: r, color: [0, 255, 0, 40] },
+            ChallengeOverlay::Circle { cx: sx,  cy: sy,  radius: r, color: [0, 255, 0, 40] },
+        ]
+    }
 }
 
 // ── Corner Weighted ───────────────────────────────────────────────────────
@@ -206,6 +294,17 @@ impl Challenge for CornerWeightedChallenge {
             .fold(f32::MAX, f32::min);
         if min_dist > self.radius { return (false, 0.0); }
         (true, (self.radius - min_dist) / self.radius)
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        let r = self.radius * sx.max(sy);
+        vec![
+            ChallengeOverlay::Circle { cx: 0.0, cy: 0.0, radius: r, color: [0, 255, 0, 40] },
+            ChallengeOverlay::Circle { cx: 0.0, cy: sy,  radius: r, color: [0, 255, 0, 40] },
+            ChallengeOverlay::Circle { cx: sx,  cy: 0.0, radius: r, color: [0, 255, 0, 40] },
+            ChallengeOverlay::Circle { cx: sx,  cy: sy,  radius: r, color: [0, 255, 0, 40] },
+        ]
     }
 }
 
@@ -253,5 +352,16 @@ impl Challenge for NearBarrierChallenge {
         if min_dist * world.size_x as f32 > radius_px { return (false, 0.0); }
         let score = (radius_px - min_dist * world.size_x as f32) / radius_px;
         (true, score.clamp(0.0, 1.0))
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let r = self.radius * world.size_x as f32;
+        world.grid.barrier_centers.iter().map(|bc| {
+            ChallengeOverlay::Circle {
+                cx: bc.x as f32,
+                cy: bc.y as f32,
+                radius: r,
+                color: [0, 255, 0, 40],
+            }
+        }).collect()
     }
 }

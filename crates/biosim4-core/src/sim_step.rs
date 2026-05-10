@@ -104,6 +104,7 @@ fn step_one_agent(state: &mut SimulationState, id: AgentId) {
         size_y,
         steps_per_generation: steps_per_gen,
         generation,
+        step: sim_step,
     };
 
     let action_accum: &mut Vec<f32> = unsafe { &mut *action_accum_ptr };
