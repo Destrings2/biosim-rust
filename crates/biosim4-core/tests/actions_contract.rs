@@ -61,7 +61,7 @@ fn with_action_ctx<R>(
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     };
 
     let mut ctx = ActionContext {
@@ -344,7 +344,7 @@ fn with_kill_ctx<R>(
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     };
 
     let mut ctx = ActionContext {

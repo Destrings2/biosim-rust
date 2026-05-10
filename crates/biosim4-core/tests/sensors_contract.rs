@@ -37,7 +37,7 @@ fn build_world<'a>(
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     }
 }
 

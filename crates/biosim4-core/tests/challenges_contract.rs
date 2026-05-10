@@ -81,7 +81,7 @@ fn empty_active_set_passes_everyone() {
     let world = World {
         grid: &grid, signals: &signals, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     };
     let reg = ChallengeRegistry::new();
     let agent = pop.get(1).unwrap();
@@ -99,7 +99,7 @@ fn right_half_pass_left_fails() {
     let world = World {
         grid: &grid, signals: &signals, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     };
     let mut reg = ChallengeRegistry::new();
     register_builtin_challenges(&mut reg);
@@ -113,7 +113,7 @@ fn right_half_pass_left_fails() {
     let world = World {
         grid: &grid, signals: &signals, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     };
     let mut reg = ChallengeRegistry::new();
     register_builtin_challenges(&mut reg);
@@ -130,7 +130,7 @@ fn circle_challenge_configure_changes_evaluation() {
     let world = World {
         grid: &grid, signals: &signals, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     };
 
     // Default circle is centered at (0.25, 0.75) — agent at center (0.5, 0.5) should fail
@@ -174,7 +174,7 @@ fn apply_config_with_any_composition_passes_if_any_active_passes() {
     let world = World {
         grid: &grid, signals: &signals, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     };
     let mut reg = ChallengeRegistry::new();
     register_builtin_challenges(&mut reg);
@@ -195,7 +195,7 @@ fn apply_config_with_all_composition_fails_if_any_active_fails() {
     let world = World {
         grid: &grid, signals: &signals, population: &pop,
         size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
-        generation: 0,
+        generation: 0, step: 0,
     };
     let mut reg = ChallengeRegistry::new();
     register_builtin_challenges(&mut reg);
@@ -246,7 +246,7 @@ fn evaluate_score_always_in_unit_interval() {
             let world = World {
                 grid: &grid, signals: &signals, population: &pop,
                 size_x: cfg.size_x, size_y: cfg.size_y, steps_per_generation: cfg.steps_per_generation,
-                generation: 0,
+                generation: 0, step: 0,
             };
             let (_pass, score) = reg.evaluate(pop.get(1).unwrap(), &world);
             assert!(
