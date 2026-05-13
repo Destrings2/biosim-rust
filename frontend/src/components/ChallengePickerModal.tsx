@@ -1,10 +1,16 @@
 // Gallery-style challenge picker with side detail pane and live param form.
+// When the "Custom" tile is selected, the modal swaps to an editor-dominant
+// layout so the JS code editor gets full width and height.
 
 import { useEffect, useMemo, useState } from "react";
+import type { Simulator } from "../../pkg/biosim4_wasm";
 import type { ChallengeComposition, ChallengeConfig, ChallengeSchema } from "../types";
 import { ChallengeArt, challengeArtKind } from "./ChallengeArt";
+import { CustomChallengeEditor } from "./CustomChallengeEditor";
 import { IcSearch } from "./Icons";
 import { Modal } from "./Modal";
+
+const CUSTOM_ID = "__custom__";
 
 interface SchemaProperty {
   type: "number" | "boolean" | "string";
@@ -27,31 +33,33 @@ function defaultsFor(schema: Record<string, unknown>): Record<string, unknown> {
 interface Props {
   schemas: ChallengeSchema[];
   activeId: string | null;
+  simulator: Simulator;
   onClose: () => void;
   onApply: (cfg: ChallengeConfig) => void;
+  onCustomRegistered: () => void;
 }
 
-export function ChallengePickerModal({ schemas, activeId, onClose, onApply }: Props) {
+export function ChallengePickerModal({ schemas, activeId, simulator, onClose, onApply, onCustomRegistered }: Props) {
   const [selectedId, setSelectedId] = useState<string>(activeId ?? schemas[0]?.id ?? "");
   const [composition, setComposition] = useState<ChallengeComposition>("Any");
   const [params, setParams] = useState<Record<string, unknown>>({});
   const [query, setQuery] = useState("");
 
+  const isCustom = selectedId === CUSTOM_ID;
+
   const selected = useMemo(
-    () => schemas.find((s) => s.id === selectedId) ?? schemas[0] ?? null,
+    () => schemas.find((s) => s.id === selectedId) ?? null,
     [schemas, selectedId],
   );
 
-  // Reset params when the selection changes
   useEffect(() => {
     if (selected) setParams(defaultsFor(selected.schema));
   }, [selected]);
 
-  // Esc closes
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      else if (e.key === "Enter" && selected) {
+      else if (e.key === "Enter" && selected && !isCustom) {
         onApply({
           active: [selected.id],
           composition,
@@ -62,7 +70,7 @@ export function ChallengePickerModal({ schemas, activeId, onClose, onApply }: Pr
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onApply, selected, composition, params]);
+  }, [onClose, onApply, selected, composition, params, isCustom]);
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -74,6 +82,43 @@ export function ChallengePickerModal({ schemas, activeId, onClose, onApply }: Pr
     );
   }, [schemas, query]);
 
+  // ── Editor mode ─────────────────────────────────────────────────────────
+  if (isCustom) {
+    return (
+      <Modal>
+        <div className="modal-back" onClick={onClose}>
+          <div className="modal picker-modal editor-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button className="modal-close" onClick={() => setSelectedId(schemas[0]?.id ?? "")} title="Back to gallery">
+                  ← GALLERY
+                </button>
+                <div>
+                  <div className="modal-eyebrow">Custom challenge · JavaScript</div>
+                  <h2 className="modal-title">Author a challenge</h2>
+                </div>
+              </div>
+              <button className="modal-close" onClick={onClose}>ESC</button>
+            </div>
+
+            <div className="editor-body">
+              <CustomChallengeEditor
+                simulator={simulator}
+                onApply={(id) => {
+                  onCustomRegistered();
+                  onApply({ active: [id], composition, params: {} });
+                  onClose();
+                }}
+                onCancel={onClose}
+              />
+            </div>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // ── Gallery mode ────────────────────────────────────────────────────────
   return (
     <Modal>
     <div className="modal-back" onClick={onClose}>
@@ -101,6 +146,20 @@ export function ChallengePickerModal({ schemas, activeId, onClose, onApply }: Pr
 
         <div className="picker-body">
           <div className="picker-grid">
+            <button
+              key={CUSTOM_ID}
+              className={`ctile ctile-custom ${isCustom ? "sel" : ""}`}
+              onClick={() => setSelectedId(CUSTOM_ID)}
+            >
+              <div className="ctile-art ctile-art-custom">
+                <CustomArt />
+              </div>
+              <div>
+                <div className="ctile-name">✎ Custom (JS)</div>
+              </div>
+              <div className="ctile-id">{CUSTOM_ID}</div>
+              <div className="ctile-desc">Author your own challenge in JavaScript.</div>
+            </button>
             {list.map((c) => (
               <button
                 key={c.id}
@@ -215,4 +274,22 @@ function ParamRow({ name, prop, value, onChange }: {
     );
   }
   return null;
+}
+
+// Distinctive art for the Custom tile so it doesn't read as "no art".
+function CustomArt() {
+  return (
+    <svg viewBox="0 0 100 62" preserveAspectRatio="xMidYMid meet">
+      <rect x="10" y="14" width="80" height="34" rx="3"
+            fill="rgba(125,211,168,0.06)" stroke="rgba(125,211,168,0.55)" />
+      <text x="50" y="36" textAnchor="middle"
+            fontFamily="ui-monospace, Menlo, monospace"
+            fontSize="11" fill="rgba(125,211,168,0.85)">
+        {`{ } => fitness`}
+      </text>
+      <circle cx="18" cy="22" r="1.2" fill="rgba(125,211,168,0.5)" />
+      <circle cx="22" cy="22" r="1.2" fill="rgba(125,211,168,0.5)" />
+      <circle cx="26" cy="22" r="1.2" fill="rgba(125,211,168,0.5)" />
+    </svg>
+  );
 }

@@ -32,7 +32,7 @@ function colY(count: number, h: number, pad: number): number[] {
   return Array.from({ length: count }, (_, i) => pad + (i + 0.5) * (usable / count));
 }
 
-const COL_X = { sensor: PAD + 20, neuron: GRAPH_W / 2, action: GRAPH_W - PAD - 20 };
+const COL_X = { sensor: PAD + 130, neuron: GRAPH_W / 2, action: GRAPH_W - PAD - 20 };
 
 export function AgentInspector({ agentId, simulator, onClose }: Props) {
   useEffect(() => {
@@ -168,8 +168,8 @@ export function AgentInspector({ agentId, simulator, onClose }: Props) {
               return (
                 <div key={`a${a.index}`} className="action-bar">
                   <div className="action-bar-row">
-                    <span style={{ color: "var(--text)" }}>{a.label}</span>
-                    <span>{norm >= 0 ? "+" : ""}{norm.toFixed(2)}</span>
+                    <span className="action-bar-label" style={{ color: "var(--text)" }}>{a.label}</span>
+                    <span className="action-bar-value">{norm >= 0 ? "+" : ""}{norm.toFixed(2)}</span>
                   </div>
                   <div className="action-bar-track">
                     <div className="action-bar-fill" style={{
@@ -253,7 +253,7 @@ function NetGraph({
         <g key={`g-s${n.index}`} transform={`translate(${COL_X.sensor},${sY[i]})`}>
           <circle r="11" fill="#0f1114" stroke="#6ea8e0" strokeWidth="1.2"/>
           <circle r="3" fill="#6ea8e0"/>
-          <text x="-18" y="3" textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#a8aeb9">{n.label}</text>
+          <text x="-18" y="-14" textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#a8aeb9">{n.label}</text>
         </g>
       ))}
       {neurons.map((n, i) => {
@@ -271,7 +271,7 @@ function NetGraph({
         <g key={`g-a${n.index}`} transform={`translate(${COL_X.action},${aY[i]})`}>
           <rect x="-12" y="-9" width="24" height="18" rx="3" fill="#0f1114" stroke="#e0a86e" strokeWidth="1.2"/>
           <circle r="2" fill="#e0a86e"/>
-          <text x="18" y="3" fontFamily="JetBrains Mono" fontSize="10" fill="#a8aeb9">{n.label}</text>
+          <text x="-18" y="-14" textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#a8aeb9">{n.label}</text>
         </g>
       ))}
     </svg>

@@ -558,6 +558,133 @@ input[type="range"]::-moz-range-thumb {
 .picker-foot { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--bg); }
 .picker-comp { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 
+/* Distinctive look for the Custom (JS) tile so it stands apart from
+   geometric built-ins. */
+.ctile-custom { border-style: dashed; border-color: var(--accent-line, var(--line-2)); }
+.ctile-custom:hover { border-style: solid; }
+.ctile-custom.sel { border-style: solid; }
+.ctile-art-custom {
+  background: linear-gradient(160deg, rgba(125,211,168,0.06), rgba(125,211,168,0.02) 60%, transparent);
+}
+
+/* ─ Custom challenge editor (full-modal mode) ─────────────────────────── */
+.editor-modal {
+  width: min(1320px, 96vw);
+  height: min(880px, 92vh);
+}
+.editor-body {
+  display: flex; flex: 1; min-height: 0;
+}
+.custom-editor {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    "main side"
+    "foot foot";
+  min-height: 0;
+  width: 100%;
+}
+.custom-editor-main {
+  grid-area: main;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+.custom-editor-side {
+  grid-area: side;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 16px 16px 20px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.ces-section { margin-bottom: 18px; }
+.ces-section h4 {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--muted); margin: 0 0 10px;
+}
+.ces-api { margin: 0; }
+.ces-api dt {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px;
+}
+.ces-api dt:first-child { margin-top: 0; }
+.ces-api dt code {
+  font-family: var(--mono); font-size: 11px;
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 1px 6px; border-radius: 3px;
+  color: var(--text);
+}
+.ces-api .req {
+  font-family: var(--mono); font-size: 9.5px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: rgba(125, 211, 168, 0.9);
+  border: 1px solid rgba(125, 211, 168, 0.4);
+  border-radius: 3px;
+  padding: 0 5px;
+}
+.ces-api dd {
+  margin: 4px 0 0 4px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.ces-api dd code {
+  font-family: var(--mono); font-size: 10.5px;
+  color: var(--text);
+}
+.ces-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.ces-pills span {
+  font-family: var(--mono); font-size: 10.5px;
+  color: var(--text-2);
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 3px; padding: 2px 7px;
+}
+
+.custom-editor-foot {
+  grid-area: foot;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.custom-editor-diag {
+  flex: 1; min-width: 0;
+  overflow: hidden;
+}
+.custom-editor-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.custom-editor-actions .kbd {
+  font-family: var(--mono); font-size: 10.5px;
+  opacity: 0.7;
+  margin-left: 6px;
+}
+
+.diag-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-2);
+  max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.diag-pill .diag-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.diag-ok { border-color: rgba(125,211,168,0.45); color: #a8e6c1; background: rgba(125,211,168,0.08); }
+.diag-ok .diag-dot { background: rgba(125,211,168,0.95); box-shadow: 0 0 8px rgba(125,211,168,0.5); }
+.diag-error { border-color: rgba(228,110,110,0.5); color: #ff9b9b; background: rgba(228,110,110,0.1); }
+.diag-error .diag-dot { background: rgba(228,110,110,0.95); box-shadow: 0 0 8px rgba(228,110,110,0.5); }
+.diag-info { color: var(--muted); }
+
 /* Inspector */
 .inspector-modal { width: min(1080px, 92vw); height: min(720px, 86vh); }
 .ins-head {
@@ -605,6 +732,8 @@ input[type="range"]::-moz-range-thumb {
 
 .action-bar { padding: 5px 0; }
 .action-bar-row { display: flex; justify-content: space-between; font-size: 10.5px; font-family: var(--mono); color: var(--text-2); }
+.action-bar-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px; }
+.action-bar-value { flex-shrink: 0; }
 .action-bar-track { height: 3px; background: var(--line); border-radius: 2px; margin-top: 3px; position: relative; overflow: hidden; }
 .action-bar-fill { position: absolute; height: 100%; }
 .action-bar-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line-2); }

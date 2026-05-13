@@ -124,6 +124,42 @@ impl ChallengeRegistry {
         self.challenges.push(challenge);
     }
 
+    /// Replace an existing challenge with the same `id` in-place, preserving its
+    /// position in the registry (so any `active` indices stay valid). Returns
+    /// `true` if a replacement happened, `false` if no challenge with that id
+    /// existed (in which case the caller should `register` instead).
+    pub fn replace_by_id(&mut self, id: &str, challenge: Box<dyn Challenge>) -> bool {
+        if let Some(pos) = self.challenges.iter().position(|c| c.id() == id) {
+            self.challenges[pos] = challenge;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Insert if absent, replace if present. Convenience for upsert-style
+    /// flows (e.g., the WASM `register_js_challenge` endpoint).
+    pub fn upsert_by_id(&mut self, id: &str, challenge: Box<dyn Challenge>) {
+        if let Some(pos) = self.challenges.iter().position(|c| c.id() == id) {
+            self.challenges[pos] = challenge;
+        } else {
+            self.challenges.push(challenge);
+        }
+    }
+
+    /// Remove a challenge by id. Also drops it from the `active` list.
+    /// Returns true if removed.
+    pub fn remove_by_id(&mut self, id: &str) -> bool {
+        let Some(pos) = self.challenges.iter().position(|c| c.id() == id) else { return false };
+        self.challenges.remove(pos);
+        // Rebuild `active` since indices have shifted.
+        self.active.retain(|&i| i != pos);
+        for i in self.active.iter_mut() {
+            if *i > pos { *i -= 1; }
+        }
+        true
+    }
+
     /// Apply a ChallengeConfig: set active set, composition, and per-challenge params.
     pub fn apply_config(&mut self, cfg: ChallengeConfig) -> Result<(), String> {
         self.composition = cfg.composition;

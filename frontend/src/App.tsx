@@ -395,8 +395,15 @@ export function App() {
         <ChallengePickerModal
           schemas={schemas}
           activeId={activeChallengeId}
+          simulator={simulator}
           onClose={() => setShowPicker(false)}
           onApply={applyChallenge}
+          onCustomRegistered={() => {
+            try {
+              const list = simulator.get_challenge_schemas() as ChallengeSchema[];
+              setSchemas(list);
+            } catch { /* ignore */ }
+          }}
         />
       )}
       {inspectedAgentId !== null && (

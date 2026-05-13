@@ -45,6 +45,7 @@ use biosim4_core::{
     agent::AgentSnapshot,
     analysis::collect_epoch_stats,
     genome::gene::{SOURCE_SENSOR, SINK_ACTION},
+    registry::challenge::Challenge,
     sim_config::SimConfig,
     sim_state::SimulationState,
     sim_step::step_one,
@@ -57,7 +58,7 @@ use wasm_bindgen::prelude::*;
 mod js_bridge;
 mod render;
 
-use js_bridge::{JsAction, JsSensor};
+use js_bridge::{JsAction, JsChallenge, JsSensor};
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -680,6 +681,44 @@ impl Simulator {
         self.inner
             .actions
             .register(Box::new(JsAction::new(id.to_string(), name.to_string(), callback)));
+    }
+
+    // ── Custom JS challenges ──────────────────────────────────────────────
+
+    /// Register (or replace by `id`) a JavaScript-defined challenge.
+    ///
+    /// The argument is a JS object literal with `id`, `name`, `description`,
+    /// `paramsSchema`, `evaluate(agent, world)`, and optional `configure`,
+    /// `onSimStep`, `onGenerationStart`, `overlays` methods. See
+    /// `frontend/src/customChallenge/api.d.ts` for the full contract.
+    ///
+    /// Returns the registered `id` on success. If a challenge with the same
+    /// `id` already exists it is replaced in-place (preserving registry
+    /// position so any `active` set referring to it stays valid).
+    pub fn register_js_challenge(&mut self, challenge_obj: JsValue) -> Result<String, JsValue> {
+        let jc = JsChallenge::from_object(challenge_obj).map_err(js_err)?;
+        let id = jc.id().to_string();
+        self.inner.challenges.upsert_by_id(&id, Box::new(jc));
+        Ok(id)
+    }
+
+    /// Remove a previously-registered custom challenge.
+    pub fn unregister_js_challenge(&mut self, id: &str) -> Result<(), JsValue> {
+        if self.inner.challenges.remove_by_id(id) { Ok(()) }
+        else { Err(js_err(format!("No challenge with id '{id}'"))) }
+    }
+
+    /// Validate a JS challenge object by smoke-testing its `evaluate` against
+    /// a synthetic agent. Does **not** register. Returns `{ ok, error?, id? }`.
+    pub fn validate_js_challenge(&self, challenge_obj: JsValue) -> Result<JsValue, JsValue> {
+        // Build a JsChallenge purely for shape validation. The smoke-test
+        // happens in JS-land (calling evaluate) because we don't have an
+        // Agent/World handy without running the sim. We just confirm the
+        // required fields exist and evaluate() is callable.
+        match JsChallenge::from_object(challenge_obj) {
+            Ok(jc) => to_js(&serde_json::json!({ "ok": true, "id": jc.id() })),
+            Err(e) => to_js(&serde_json::json!({ "ok": false, "error": e })),
+        }
     }
 }
 

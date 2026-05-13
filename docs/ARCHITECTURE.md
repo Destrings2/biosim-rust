@@ -1,6 +1,6 @@
 # biosim4-rs Architecture
 
-biosim4-rs is a Rust implementation of a genetic neural-net artificial life simulator. Agents evolve over generations on a 2D grid, guided by pluggable sensors, actions, and survival challenges. The workspace targets two deployment surfaces: a native CLI and a WebAssembly module consumed by a React frontend.
+biosim4-rs is a Rust implementation of a genetic neural-net artificial life simulator. Agents evolve over generations on a 2D grid, guided by pluggable sensors, actions, and survival challenges. The workspace targets two deployment surfaces: a native command-line interface (CLI) and a WebAssembly (WASM) module consumed by a React frontend.
 
 ---
 
@@ -14,7 +14,7 @@ biosim4-rs is a Rust implementation of a genetic neural-net artificial life simu
 
 ---
 
-## Module Dependency DAG
+## Module Dependency Directed Acyclic Graph (DAG)
 
 Dependencies flow strictly upward. No cycles.
 
@@ -69,7 +69,7 @@ One generation proceeds as follows:
 - **Mid-generation**: the registry's `evaluate`/`execute` methods check the disabled set and return `0.0` / skip immediately, so existing agents experience the change without any wiring shift.
 - **At generation boundary**: `commit_enabled()` rebuilds `active_map`. New neural nets compiled in `spawn_new_generation` wire against the updated `enabled_count`, so they never contain genes pointing at disabled nodes.
 
-This two-stage approach keeps wiring stable within a generation (no mid-run index shifts) while allowing experiments to toggle sensors/actions between generations.
+This two-stage approach keeps wiring stable within a generation, preventing mid-run index shifts. It also allows experiments to toggle sensors and actions between generations.
 
 ### Deferred move/death queues
 
@@ -78,7 +78,7 @@ Agent actions do not modify the grid or population immediately. Instead:
 - Movement requests go into `population.move_queue: Vec<(AgentId, Coord)>`.
 - Kill requests go into `population.death_queue: Vec<AgentId>`.
 
-At the end of each `step_one()`, `drain_death_queue()` runs first, then `drain_move_queue()`. Death first ensures a killed agent's slot is freed before any move tries to enter it. Immediate mutation would corrupt the `alive_ids` snapshot being iterated and cause borrow-checker conflicts between the agent under evaluation and the population as a whole.
+At the end of each `step_one()`, `drain_death_queue()` runs first, then `drain_move_queue()`. Running death first ensures a killed agent's slot is freed before any move tries to enter it. Immediate mutation would corrupt the `alive_ids` snapshot being iterated. It would also cause borrow-checker conflicts between the agent under evaluation and the population as a whole.
 
 ### Scratch buffers (StepScratch)
 
@@ -88,7 +88,7 @@ At the end of each `step_one()`, `drain_death_queue()` runs first, then `drain_m
 - `action_accum: Vec<f32>` — per-agent action level accumulator passed to `feed_forward`.
 - `neuron_accum: Vec<f32>` — per-agent neuron accumulator passed to `feed_forward`.
 
-These buffers carry no semantic state between steps; they are cleared and resized at the start of each use. They eliminate roughly 600K heap allocations per generation at typical parameters (1000 agents × 300 steps × 2 accumulators).
+These buffers carry no semantic state between steps. The system clears and resizes them at the start of each use. They eliminate roughly 600K heap allocations per generation at typical parameters (1000 agents × 300 steps × 2 accumulators).
 
 ### Raw pointer split in `step_one_agent`
 
@@ -96,18 +96,18 @@ Each agent step requires simultaneous mutable access to `agent.nnet` (to update 
 
 `step_one_agent` uses raw pointers to isolate the two aliasing domains:
 
-- **Phase 1** (sensor eval + feed-forward): `agent_ptr: *mut Agent` is used only to reach `agent.nnet`. Sensors receive a `&Agent` view (via `population.get(id)`) that reads `loc`, `heading`, `age`, `osc_period`, `long_probe_dist`, `genome`, `responsiveness`, and `last_move_dir` — never `nnet`. No two live references reach the same memory.
-- **Phase 2** (action execution): `agent_ptr` is reused to get `&mut Agent`. `Population` slots are index-stable (append-only `Vec`), so the pointer is still valid. The aliasing tension between `ctx.signals: &mut Signals` and `world.signals: &Signals` is acknowledged in the inline SAFETY comments; it is safe in practice because no built-in action reads `world.signals` during Phase 2.
+- **Phase 1** (sensor eval + feed-forward): `step_one_agent` uses `agent_ptr: *mut Agent` only to reach `agent.nnet`. Sensors receive a `&Agent` view (via `population.get(id)`) that reads `loc`, `heading`, `age`, `osc_period`, `long_probe_dist`, `genome`, `responsiveness`, and `last_move_dir` — never `nnet`. No two live references reach the same memory.
+- **Phase 2** (action execution): `agent_ptr` is reused to get `&mut Agent`. `Population` slots are index-stable (append-only `Vec`), so the pointer remains valid. The inline SAFETY comments acknowledge the aliasing tension between `ctx.signals: &mut Signals` and `world.signals: &Signals`. The aliasing is safe in practice because no built-in action reads `world.signals` during Phase 2.
 
 See the inline `SAFETY` comments in `sim_step.rs` for the per-pointer aliasing analysis.
 
 ### Genome modulo wiring
 
-A `Gene`'s `source_num` and `sink_num` fields are raw 7-bit values (0..127). `create_wiring` remaps them modulo `sensor_count` / `action_count` / `max_neurons`, so the same genome is valid for any registry configuration. The implication: changing `enabled_count` shifts all wiring semantics for existing nets. This is exactly why `commit_enabled()` is called at generation boundaries — only nets compiled after the commit use the new counts. Nets from the previous generation (now dead) are never re-wired.
+A `Gene`'s `source_num` and `sink_num` fields are raw 7-bit values (0..127). `create_wiring` remaps them modulo `sensor_count` / `action_count` / `max_neurons`, so the same genome is valid for any registry configuration. Changing `enabled_count` shifts all wiring semantics for existing nets. `commit_enabled()` therefore runs at generation boundaries — only nets compiled after the commit use the new counts. Nets from the previous generation (now dead) are never re-wired.
 
 ### Determinism contract
 
-`SimConfig.rng_seed != 0` produces a fully reproducible simulation: `SimulationState::new` calls `Rng::seeded(rng_seed)`. In `step_one_agent`, each agent's stochastic sensor/action calls use a forked RNG: `state.rng.fork(agent_id)`, which XORs the main RNG's next `u64` with the agent's ID. This gives per-agent independent stochasticity without locks and without affecting the main RNG's sequence for spawn and reproduction decisions.
+`SimConfig.rng_seed != 0` produces a fully reproducible simulation: `SimulationState::new` calls `Rng::seeded(rng_seed)`. In `step_one_agent`, each agent's stochastic sensor/action calls use a forked random number generator (RNG): `state.rng.fork(agent_id)`, which XORs the main RNG's next `u64` with the agent's ID. This gives per-agent independent stochasticity without locks and without affecting the main RNG's sequence for spawn and reproduction decisions.
 
 ---
 
@@ -140,7 +140,7 @@ A `Gene`'s `source_num` and `sink_num` fields are raw 7-bit values (0..127). `cr
 
 The `biosim4-wasm` crate exports a single `Simulator` class via `wasm-bindgen`.
 
-**JS lifecycle:**
+**JavaScript (JS) lifecycle:**
 ```js
 const sim = new Simulator(configJson);       // init + generation 0
 sim.set_challenge(challengeConfigJson);       // optional; must be called before stepping
@@ -149,9 +149,9 @@ sim.step();                                   // advance one simulation step
 const stats = sim.spawn_next_generation();    // end of generation; returns JSON EpochStats
 ```
 
-`get_frame()` produces a row-major RGBA buffer with Y flipped: canvas row 0 is the top of the world, world Y=0 (bottom) is the last canvas row. Pass the buffer directly into `new ImageData(rgba, width, height)`.
+`get_frame()` produces a row-major red-green-blue-alpha (RGBA) buffer with Y flipped: canvas row 0 is the top of the world, world Y=0 (bottom) is the last canvas row. Pass the buffer directly into `new ImageData(rgba, width, height)`.
 
-Custom sensors and actions can be registered from JS:
+Register custom sensors and actions from JS:
 ```js
 sim.register_js_sensor("my_id", "My Sensor", (agentId, worldJson) => 0.5);
 sim.register_js_action("my_id", "My Action", (agentId, level, worldJson) => {});

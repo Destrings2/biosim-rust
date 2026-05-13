@@ -50,7 +50,7 @@ Each agent's tick is split into two phases to satisfy Rust's aliasing rules with
 
 **Phase 1: sensor evaluation → neural feed-forward**
 
-The neural net update writes into `agent.nnet.neurons[*].output` in-place. Sensors read from the rest of the agent (`loc`, `heading`, `age`, `osc_period`, `long_probe_dist`, `genome`, `responsiveness`, `last_move_dir`) and from the population at large (neighbor scanning). These two access paths — `&mut agent.nnet` and `&Agent`/`&Population` — are disjoint, so raw pointers are used to express the split.
+The neural net update writes into `agent.nnet.neurons[*].output` in-place. Sensors read from the rest of the agent (`loc`, `heading`, `age`, `osc_period`, `long_probe_dist`, `genome`, `responsiveness`, `last_move_dir`) and from the population at large (neighbor scanning). These two access paths — `&mut agent.nnet` and `&Agent`/`&Population` — are disjoint, so the implementation uses raw pointers to express the split.
 
 The sensor evaluation callback is a closure passed into `feed_forward`:
 ```
@@ -61,11 +61,11 @@ The sensor evaluation callback is a closure passed into `feed_forward`:
 }
 ```
 
-`sensor_rng` is forked from `state.rng` before any raw pointer is derived, so the sensor RNG and the main RNG are completely independent objects.
+The implementation forks `sensor_rng` from `state.rng` before deriving any raw pointer, keeping the sensor RNG and the main RNG completely independent.
 
 **Phase 2: action execution**
 
-`action_accum` (written during Phase 1) is read as `&[f32]` via a raw pointer while `ActionContext` holds `&mut` references to `agent`, `move_queue`, `death_queue`, `signals`, and `rng`. These fields are disjoint from `action_accum` (which lives in `scratch`), so the aliasing is safe.
+Phase 2 reads `action_accum` (written during Phase 1) as `&[f32]` via a raw pointer while `ActionContext` holds `&mut` references to `agent`, `move_queue`, `death_queue`, `signals`, and `rng`. These fields are disjoint from `action_accum` (which lives in `scratch`), so the aliasing is safe.
 
 **Why the phases cannot collapse:** Phase 1 needs a stable `&Population` for neighbor-scanning sensors. Phase 2 needs `&mut Agent` (to update modulators) and `&mut Vec<...>` move/death queues (which are sub-fields of `Population`). Holding both `&Population` and `&mut Agent` through the same `population` field at the same time requires the raw pointer split.
 
@@ -79,7 +79,7 @@ The sensor evaluation callback is a closure passed into `feed_forward`:
 2. The first time an action-sink connection is encountered, apply `tanh()` to all driven neuron accumulators and write the results back into `neurons[i].output`. Un-driven neurons skip this step and keep their existing `output` value (which initializes to `0.5` and persists across steps), contributing a constant bias.
 3. Continue accumulating into `action_accum`.
 
-Consequence: `tanh` is applied exactly once per step per neuron, regardless of how many connections that neuron has. Applying `tanh` neuron-by-neuron inside the connection loop would produce incorrect outputs (the tanh of a partial sum, not the full sum).
+`tanh` applies exactly once per step per neuron, regardless of how many connections that neuron has. Applying `tanh` neuron-by-neuron inside the connection loop produces incorrect outputs (the tanh of a partial sum, not the full sum).
 
 ---
 
@@ -123,9 +123,9 @@ spawn_new_generation(state) -> survivor_count
 └── challenges.on_generation_start(&mut WorldMut)
 ```
 
-**Bootstrap fallback:** if zero agents pass the challenge (common in generation 0 on hard challenges like `location_sequence`), the algorithm takes the top 10% by raw fitness score as "soft" parents. Without this, all parents would be chosen uniformly at random from the dead population, producing no selection gradient.
+**Bootstrap fallback:** if zero agents pass the challenge (common in generation 0 on hard challenges like `location_sequence`), the algorithm takes the top 10% by raw fitness score as "soft" parents. Without this fallback, the algorithm would select all parents uniformly at random from the dead population, producing no selection gradient.
 
-**Elitism:** the two fittest survivors are copied into the next generation unchanged. This prevents a run of bad mutation from erasing a genome that was hard to evolve. On easy challenges where many agents pass, elitism has negligible effect. On hard challenges where only a handful pass, it provides insurance.
+**Elitism:** the two fittest survivors are copied into the next generation unchanged. This prevents a sequence of harmful mutations from erasing a genome that was hard to evolve. On easy challenges where many agents pass, elitism has negligible effect. On hard challenges where only a handful pass, elitism guards the best-evolved genomes against loss.
 
 ---
 
@@ -144,7 +144,7 @@ for i in 0..state.scratch.alive_ids.len() {
 
 Two design choices here:
 
-1. **Why snapshot into scratch instead of iterating `alive_ids` directly:** `step_one_agent` takes `&mut SimulationState`, which includes `population`. If we held a reference into `population.alive_ids` for the loop, that reference would conflict with the `&mut population` that action execution needs.
+1. **Why snapshot into scratch instead of iterating `alive_ids` directly:** `step_one_agent` takes `&mut SimulationState`, which includes `population`. Holding a reference into `population.alive_ids` for the loop would conflict with the `&mut population` that action execution needs.
 
 2. **Why indexed loop instead of `for id in &state.scratch.alive_ids`:** A range-for borrow would hold `&state.scratch` for the duration of the loop body, conflicting with `step_one_agent(state, ...)` taking `&mut state` (which includes `&mut state.scratch`). The index-based walk borrows `state.scratch.alive_ids[i]` for a single expression evaluation, then releases it before the `&mut state` is taken.
 
@@ -162,4 +162,4 @@ The snapshot is reused every step (no allocation); `alive_ids` in the main popul
 // unique &mut borrow of the population for its full lifetime.
 ```
 
-The raw pointer approach (`*const [AgentId]` + `*mut Vec<Option<Agent>>`) is necessary because the Rust iterator model cannot return `&mut` references into a container while also borrowing from the container's own index structure. `alive_ids` values are guaranteed unique at all times — `spawn` always pushes a new sequential ID, and `drain_death_queue` removes IDs before they can be duplicated.
+The raw pointer approach (`*const [AgentId]` + `*mut Vec<Option<Agent>>`) is necessary because the Rust iterator model cannot return `&mut` references into a container while also borrowing from the container's own index structure. `spawn` always pushes a new sequential ID, and `drain_death_queue` removes IDs before they can be duplicated, guaranteeing `alive_ids` values remain unique at all times.
