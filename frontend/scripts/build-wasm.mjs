@@ -92,6 +92,9 @@ function runWasmPack() {
       "--out-name", "biosim4_wasm",
       profile,
     ];
+    if (isDev) {
+      wasmPackArgs.push("--features", "debug-hooks");
+    }
     console.log(`\n▶ wasm-pack ${wasmPackArgs.join(" ")}\n`);
 
     const child = spawn("wasm-pack", wasmPackArgs, {

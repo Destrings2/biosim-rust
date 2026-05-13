@@ -16,10 +16,24 @@ js-sys = "0.3"
 console_error_panic_hook = { version = "0.1", optional = true }
 
 [features]
-default = ["console_error_panic_hook"]
+default = []
+debug-hooks = ["dep:console_error_panic_hook"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[package.metadata.wasm-pack.profile.release]
+# wasm-opt -O3 for runtime speed (not size). Feature flags follow what recent
+# Rust emits by default: bulk-memory for `memory.copy`, mutable-globals for
+# the global stack pointer, sign-ext for sign-extension ops, and
+# nontrapping-fptoint for the saturating float→int conversions LLVM emits.
+wasm-opt = [
+    "-O3",
+    "--enable-bulk-memory",
+    "--enable-mutable-globals",
+    "--enable-sign-ext",
+    "--enable-nontrapping-float-to-int",
+]
