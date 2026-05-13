@@ -5,10 +5,11 @@
 // status bar and an action bar.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Editor, { type Monaco, type OnMount } from "@monaco-editor/react";
+import Editor, { type BeforeMount, type Monaco, type OnMount } from "@monaco-editor/react";
 import type { Simulator } from "../../pkg/biosim4_wasm";
 import { compileChallenge } from "../customChallenge/compile";
 import { API_DTS } from "../customChallenge/apiTypes";
+import { BIOSIM_THEME_ID, defineBiosimTheme } from "../customChallenge/monacoTheme";
 
 interface Props {
   simulator: Simulator;
@@ -43,6 +44,17 @@ const WORLD_FIELDS = [
   { name: "world.steps_per_generation", type: "NUM", desc: "Steps per generation" },
 ] as const;
 
+function FieldName({ name }: { name: string }) {
+  const dot = name.indexOf(".");
+  if (dot < 0) return <span className="ces-field-name">{name}</span>;
+  return (
+    <span className="ces-field-name">
+      <span className="ces-field-prefix">{name.slice(0, dot)}</span>
+      <span className="ces-field-suffix">{name.slice(dot)}</span>
+    </span>
+  );
+}
+
 function typeBadgeClass(type: string): string {
   if (type === "BOOL") return "badge warn";
   if (type === "[N,N,N]") return "badge";
@@ -52,10 +64,14 @@ function typeBadgeClass(type: string): string {
 export function CustomChallengeEditor({ simulator, source, onSourceChange, onApply, onCancel }: Props) {
   const [diag, setDiag] = useState<Diagnostic | null>({
     kind: "info",
-    message: "Edit, then ⌘↵ to apply. Hover identifiers for type docs.",
+    message: "Edit, then ⌘↵ to apply.",
   });
   const [sideTab, setSideTab] = useState<SideTab>("agent");
   const monacoRef = useRef<Monaco | null>(null);
+
+  const handleBeforeMount: BeforeMount = (monaco) => {
+    defineBiosimTheme(monaco);
+  };
 
   const handleMount: OnMount = (_editor, monaco) => {
     monacoRef.current = monaco;
@@ -96,7 +112,7 @@ export function CustomChallengeEditor({ simulator, source, onSourceChange, onApp
         setDiag({ kind: "error", message: res.error ?? "Validation failed." });
         return null;
       }
-      setDiag({ kind: "ok", message: `Valid challenge: ${res.id}` });
+      setDiag({ kind: "ok", message: `Parses cleanly · ${res.id}` });
       return compiled.value;
     } catch (e) {
       setDiag({ kind: "error", message: e instanceof Error ? e.message : String(e) });
@@ -126,28 +142,42 @@ export function CustomChallengeEditor({ simulator, source, onSourceChange, onApp
     return () => window.removeEventListener("keydown", onKey);
   }, [apply]);
 
+  const lineCount = source.length === 0 ? 0 : source.split("\n").length;
+
   return (
     <div className="custom-editor">
       <div className="custom-editor-main">
-        <Editor
-          height="100%"
-          defaultLanguage="javascript"
-          theme="vs-dark"
-          value={source}
-          onChange={handleChange}
-          onMount={handleMount}
-          options={{
-            fontSize: 13,
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            tabSize: 2,
-            wordWrap: "on",
-            renderLineHighlight: "all",
-            automaticLayout: true,
-            padding: { top: 12, bottom: 12 },
-            scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-          }}
-        />
+        <div className="ces-filebar">
+          <div className="ces-filebar-left">
+            <span className="ces-filebar-dot" />
+            <span className="ces-filebar-name">challenge.js</span>
+            <span className="ces-filebar-sep">·</span>
+            <span className="ces-filebar-lines">{lineCount} lines</span>
+          </div>
+          <span className="ces-filebar-lang">JavaScript</span>
+        </div>
+        <div className="ces-editor-host">
+          <Editor
+            height="100%"
+            defaultLanguage="javascript"
+            theme={BIOSIM_THEME_ID}
+            value={source}
+            onChange={handleChange}
+            beforeMount={handleBeforeMount}
+            onMount={handleMount}
+            options={{
+              fontSize: 13,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              tabSize: 2,
+              wordWrap: "on",
+              renderLineHighlight: "all",
+              automaticLayout: true,
+              padding: { top: 12, bottom: 12 },
+              scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+            }}
+          />
+        </div>
       </div>
 
       <aside className="custom-editor-side">
@@ -164,30 +194,42 @@ export function CustomChallengeEditor({ simulator, source, onSourceChange, onApp
         </div>
 
         {sideTab === "agent" && (
-          <div className="ces-fields">
-            {AGENT_FIELDS.map((f) => (
-              <div key={f.name} className="ces-field">
-                <div className="ces-field-head">
-                  <span className="ces-field-name">{f.name}</span>
-                  <span className={typeBadgeClass(f.type)}>{f.type}</span>
+          <div className="ces-side-scroll">
+            <p className="ces-side-intro">
+              The agent being tested at generation end. Mutating fields is a
+              no-op — return <code>{"{ pass, fitness }"}</code>.
+            </p>
+            <div className="ces-fields">
+              {AGENT_FIELDS.map((f) => (
+                <div key={f.name} className="ces-field">
+                  <div className="ces-field-head">
+                    <FieldName name={f.name} />
+                    <span className={typeBadgeClass(f.type)}>{f.type}</span>
+                  </div>
+                  <div className="ces-field-desc">{f.desc}</div>
                 </div>
-                <div className="ces-field-desc">{f.desc}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
         {sideTab === "world" && (
-          <div className="ces-fields">
-            {WORLD_FIELDS.map((f) => (
-              <div key={f.name} className="ces-field">
-                <div className="ces-field-head">
-                  <span className="ces-field-name">{f.name}</span>
-                  <span className="badge ok">{f.type}</span>
+          <div className="ces-side-scroll">
+            <p className="ces-side-intro">
+              Read-only view of the current world. Use these to score fitness
+              relative to grid geometry or epoch progress.
+            </p>
+            <div className="ces-fields">
+              {WORLD_FIELDS.map((f) => (
+                <div key={f.name} className="ces-field">
+                  <div className="ces-field-head">
+                    <FieldName name={f.name} />
+                    <span className="badge ok">{f.type}</span>
+                  </div>
+                  <div className="ces-field-desc">{f.desc}</div>
                 </div>
-                <div className="ces-field-desc">{f.desc}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -233,9 +275,11 @@ const fitness = Math.max(0, 1 - d / maxR);`}</pre>
 
         <div className="custom-editor-hint-bar">
           <div className="hint-keys">
-            <span>⌘↵ Apply</span>
+            <span>⌘↵ APPLY</span>
             <span className="hint-sep">·</span>
-            <span>Tab Indent</span>
+            <span>TAB INDENT</span>
+            <span className="hint-sep">·</span>
+            <span>ESC CLOSE</span>
           </div>
           <div className="custom-editor-actions">
             <button className="btn-ghost" onClick={onCancel}>Back to gallery</button>
