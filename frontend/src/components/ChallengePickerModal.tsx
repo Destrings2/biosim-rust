@@ -9,8 +9,20 @@ import { ChallengeArt, challengeArtKind } from "./ChallengeArt";
 import { CustomChallengeEditor } from "./CustomChallengeEditor";
 import { IcSearch } from "./Icons";
 import { Modal } from "./Modal";
+import { loadCustomSource, saveCustomSource } from "../customChallenge/storage";
+import { BOILERPLATE } from "../customChallenge/template";
 
 const CUSTOM_ID = "__custom__";
+
+function extractSignature(source: string): string {
+  const ev = source.match(/\bevaluate\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)/);
+  if (ev) return `evaluate(${ev[1]}, ${ev[2]})`;
+  const fn = source.match(/function\s+(\w+)\s*\(([^)]*)\)/);
+  if (fn) return `${fn[1]}(${fn[2].trim()})`;
+  const nm = source.match(/\bname\s*:\s*["']([^"']+)["']/);
+  if (nm) return nm[1];
+  return "challenge";
+}
 
 interface SchemaProperty {
   type: "number" | "boolean" | "string";
@@ -44,6 +56,16 @@ export function ChallengePickerModal({ schemas, activeId, simulator, onClose, on
   const [composition, setComposition] = useState<ChallengeComposition>("Any");
   const [params, setParams] = useState<Record<string, unknown>>({});
   const [query, setQuery] = useState("");
+  const [customSource, setCustomSource] = useState<string>(() => loadCustomSource());
+
+  const handleCustomSourceChange = (v: string) => {
+    setCustomSource(v);
+    saveCustomSource(v);
+  };
+  const resetToBoilerplate = () => {
+    setCustomSource(BOILERPLATE);
+    saveCustomSource(BOILERPLATE);
+  };
 
   const isCustom = selectedId === CUSTOM_ID;
 
@@ -88,22 +110,28 @@ export function ChallengePickerModal({ schemas, activeId, simulator, onClose, on
       <Modal>
         <div className="modal-back" onClick={onClose}>
           <div className="modal picker-modal editor-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button className="modal-close" onClick={() => setSelectedId(schemas[0]?.id ?? "")} title="Back to gallery">
-                  ← GALLERY
-                </button>
-                <div>
-                  <div className="modal-eyebrow">Custom challenge · JavaScript</div>
-                  <h2 className="modal-title">Author a challenge</h2>
-                </div>
+            <div className="modal-head editor-head">
+              <button className="modal-close" onClick={() => setSelectedId(schemas[0]?.id ?? "")} title="Back to gallery">
+                ‹ Gallery
+              </button>
+              <div className="editor-head-title">
+                <span className="editor-head-sig">{extractSignature(customSource)}</span>
+                <span className="badge ok">JS</span>
+                <span className="editor-head-sub">Custom challenge</span>
               </div>
-              <button className="modal-close" onClick={onClose}>ESC</button>
+              <div className="editor-head-right">
+                <button className="btn-ghost editor-reset-btn" onClick={resetToBoilerplate} title="Restore boilerplate">
+                  ↺ Reset
+                </button>
+                <button className="modal-close" onClick={onClose}>ESC</button>
+              </div>
             </div>
 
             <div className="editor-body">
               <CustomChallengeEditor
                 simulator={simulator}
+                source={customSource}
+                onSourceChange={handleCustomSourceChange}
                 onApply={(id) => {
                   onCustomRegistered();
                   onApply({ active: [id], composition, params: {} });
