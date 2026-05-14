@@ -2,9 +2,12 @@
 //!
 //! # Cell encoding
 //!
-//! Each cell stores one of three values:
+//! Each cell stores one of four values:
 //! - `EMPTY = 0` — unoccupied.
-//! - `BARRIER = 0xFFFF_FFFF` — static obstacle.
+//! - `BARRIER = 0xFFFF_FFFF` — static, blocking obstacle.
+//! - `KILL_BARRIER = 0xFFFF_FFFE` — hazard cell. Movement into it kills
+//!   the moving agent instead of blocking the move. See
+//!   `Population::drain_move_queue`.
 //! - Agent ID (1..population) — occupied by a live agent.
 //!
 //! Zero maps to `EMPTY` (not an agent), which is why `INVALID_AGENT = 0` in
@@ -26,8 +29,11 @@
 
 use crate::types::Coord;
 
-pub const EMPTY:   u32 = 0;
-pub const BARRIER: u32 = 0xFFFF_FFFF;
+pub const EMPTY:        u32 = 0;
+pub const BARRIER:      u32 = 0xFFFF_FFFF;
+/// User-painted hazard cell. Agents attempting to move into it die rather
+/// than being blocked.
+pub const KILL_BARRIER: u32 = 0xFFFF_FFFE;
 
 /// 2D arena grid. Each cell stores EMPTY, BARRIER, or an agent ID (1..population).
 /// Stored column-major: `cells[x][y]`.
@@ -71,10 +77,20 @@ impl Grid {
             || loc.y as u16 == self.size_y - 1
     }
 
-    pub fn is_empty_at(&self, loc: Coord)   -> bool { self.is_in_bounds(loc) && self.at(loc) == EMPTY }
-    pub fn is_barrier_at(&self, loc: Coord) -> bool { self.is_in_bounds(loc) && self.at(loc) == BARRIER }
-    pub fn is_occupied_at(&self, loc: Coord)-> bool {
-        self.is_in_bounds(loc) && self.at(loc) != EMPTY && self.at(loc) != BARRIER
+    pub fn is_empty_at(&self, loc: Coord)        -> bool { self.is_in_bounds(loc) && self.at(loc) == EMPTY }
+    pub fn is_barrier_at(&self, loc: Coord)      -> bool { self.is_in_bounds(loc) && self.at(loc) == BARRIER }
+    pub fn is_kill_barrier_at(&self, loc: Coord) -> bool { self.is_in_bounds(loc) && self.at(loc) == KILL_BARRIER }
+    /// True if the cell blocks movement (regular wall or kill barrier).
+    /// Use this to test "can an agent move here?" — kill barriers are
+    /// drained specially in `drain_move_queue` so the agent doesn't end
+    /// up on the cell.
+    pub fn is_blocking_at(&self, loc: Coord)     -> bool {
+        let v = if self.is_in_bounds(loc) { self.at(loc) } else { return false; };
+        v == BARRIER || v == KILL_BARRIER
+    }
+    pub fn is_occupied_at(&self, loc: Coord)     -> bool {
+        let v = if self.is_in_bounds(loc) { self.at(loc) } else { return false; };
+        v != EMPTY && v != BARRIER && v != KILL_BARRIER
     }
 
     /// Find a random empty location. Spin-loops — caller must ensure population < grid area.

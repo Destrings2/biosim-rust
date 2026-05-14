@@ -72,6 +72,7 @@ pub enum Tool {
     #[default]
     Inspect,
     Barrier,
+    KillBarrier,
     Kill,
     Reproduce,
 }
@@ -79,26 +80,29 @@ pub enum Tool {
 impl Tool {
     pub fn label(self) -> &'static str {
         match self {
-            Tool::Inspect   => "Inspect",
-            Tool::Barrier   => "Barrier",
-            Tool::Kill      => "Kill",
-            Tool::Reproduce => "Reproduce",
+            Tool::Inspect     => "Inspect",
+            Tool::Barrier     => "Barrier",
+            Tool::KillBarrier => "Kill Zone",
+            Tool::Kill        => "Kill",
+            Tool::Reproduce   => "Reproduce",
         }
     }
     pub fn shortcut(self) -> &'static str {
         match self {
-            Tool::Inspect   => "I",
-            Tool::Barrier   => "B",
-            Tool::Kill      => "K",
-            Tool::Reproduce => "R",
+            Tool::Inspect     => "I",
+            Tool::Barrier     => "B",
+            Tool::KillBarrier => "Z",
+            Tool::Kill        => "K",
+            Tool::Reproduce   => "R",
         }
     }
     pub fn description(self) -> &'static str {
         match self {
-            Tool::Inspect   => "Click an agent to view its neural network",
-            Tool::Barrier   => "Click & drag to paint barriers (right-click to erase)",
-            Tool::Kill      => "Click an agent to kill it instantly",
-            Tool::Reproduce => "Click an agent to spawn a mutated child nearby",
+            Tool::Inspect     => "Click an agent to view its neural network",
+            Tool::Barrier     => "Click & drag to paint barriers (right-click to erase)",
+            Tool::KillBarrier => "Click & drag to paint kill zones — agents that move into them die (right-click to erase)",
+            Tool::Kill        => "Click an agent to kill it instantly",
+            Tool::Reproduce   => "Click an agent to spawn a mutated child nearby",
         }
     }
 }
@@ -124,6 +128,11 @@ pub struct SimControls {
     pub refit_camera: bool,
     /// Painted-barrier count cache for HUD without crossing through the sim resource.
     pub painted_count: u32,
+    /// Try to use the GPU compute backend for fast-forward. Honored only
+    /// when (a) `GpuAccel::Ready` and (b) the current registry config
+    /// uses only GPU-supported sensors/actions. Otherwise FF transparently
+    /// falls back to CPU.
+    pub ff_use_gpu: bool,
 }
 
 impl Default for SimControls {
@@ -139,6 +148,7 @@ impl Default for SimControls {
             grid_dirty: true,
             refit_camera: true,
             painted_count: 0,
+            ff_use_gpu: true,
         }
     }
 }
@@ -168,6 +178,9 @@ pub struct FastForwardState {
     /// Most recent generation we observed — read by the UI for the progress
     /// bar without re-querying the sim resource.
     pub last_gen: u32,
+    /// True when this FF run is using the GPU backend. Captured at start
+    /// so the modal badge doesn't flicker if the toggle changes mid-run.
+    pub using_gpu: bool,
 }
 
 impl FastForwardState {
@@ -225,7 +238,9 @@ pub enum SimCommand {
     StepOnce,
     StepGeneration,
     RunEpoch,
-    SetBarrier { x: u16, y: u16, on: bool },
+    /// `tile = Some(kind)` paints a wall or kill barrier; `tile = None`
+    /// erases (force-empty, even if a procedural barrier was here).
+    SetBarrier { x: u16, y: u16, tile: Option<biosim4_core::sim_state::BarrierTile> },
     Kill { x: u16, y: u16 },
     Reproduce { x: u16, y: u16 },
     ClearUserBarriers,
@@ -287,6 +302,7 @@ fn process_commands(
     mut history: ResMut<SimHistory>,
     mut queue: ResMut<SimCommandQueue>,
     mut fast_forward: ResMut<FastForward>,
+    gpu_accel: Res<crate::gpu::GpuAccel>,
 ) {
     if queue.items.is_empty() { return; }
     let items = std::mem::take(&mut queue.items);
@@ -329,8 +345,8 @@ fn process_commands(
                 if !controls.running { run_full_epoch(&mut sim, &mut history); }
                 controls.grid_dirty = true;
             }
-            SimCommand::SetBarrier { x, y, on } => {
-                set_barrier(&mut sim, x, y, on);
+            SimCommand::SetBarrier { x, y, tile } => {
+                set_barrier(&mut sim, x, y, tile);
                 controls.painted_count = sim.state.user_barriers.len() as u32;
                 controls.grid_dirty = true;
             }
@@ -371,11 +387,35 @@ fn process_commands(
                 // Pause rendered playback while we churn through generations.
                 controls.running = false;
                 let cur = sim.state.generation;
+
+                // Try to initialize the GPU backend if the user requested it.
+                // Initialization can fail for two reasons:
+                //   1. No GPU adapter / device available (`GpuAccel::Unavailable`).
+                //   2. The current registry config uses sensors/actions
+                //      not in the GPU support set (returns Err from try_init).
+                // Either falls back to CPU.
+                let using_gpu = if controls.ff_use_gpu {
+                    use crate::gpu::{GpuAccel, GpuFastForward};
+                    if let GpuAccel::Ready { ctx, ff } = &*gpu_accel {
+                        let mut slot = ff.lock().expect("gpu ff slot");
+                        if slot.is_none() {
+                            match GpuFastForward::try_init(ctx.clone(), &sim.state) {
+                                Ok(gff) => *slot = Some(gff),
+                                Err(reason) => {
+                                    info!("GPU fast-forward unavailable: {reason}");
+                                }
+                            }
+                        }
+                        slot.is_some()
+                    } else { false }
+                } else { false };
+
                 fast_forward.active = Some(FastForwardState {
                     start_gen:  cur,
                     target_gen: cur + n,
                     start_time: std::time::Instant::now(),
                     last_gen:   cur,
+                    using_gpu,
                 });
             }
             SimCommand::CancelFastForward => {
@@ -393,12 +433,52 @@ fn step_simulation(
     mut history: ResMut<SimHistory>,
     mut controls: ResMut<SimControls>,
     mut fast_forward: ResMut<FastForward>,
+    gpu_accel: Res<crate::gpu::GpuAccel>,
 ) {
     // ── Fast-forward path ───────────────────────────────────────────────
     if let Some(ff) = fast_forward.active.as_mut() {
+        if ff.using_gpu {
+            // GPU path: each `run_one_generation` does a full generation
+            // on GPU + CPU rollover. Budget one generation per frame so
+            // the UI/progress modal can refresh between gens.
+            if let crate::gpu::GpuAccel::Ready { ff: gpu_ff_slot, .. } = &*gpu_accel {
+                let mut slot = gpu_ff_slot.lock().expect("gpu ff slot");
+                // Initial upload — happens once at start of FF. We detect
+                // by comparing the cached generation in CPU state vs the
+                // last we observed; first call will be at start_gen.
+                let already_uploaded = ff.last_gen != ff.start_gen
+                    || ff.start_time.elapsed() > std::time::Duration::from_millis(50);
+                if let Some(gff) = slot.as_mut() {
+                    if !already_uploaded {
+                        gff.initial_upload(&sim.state);
+                    }
+                    let frame_start = std::time::Instant::now();
+                    while frame_start.elapsed() < FF_FRAME_BUDGET
+                        && sim.state.generation < ff.target_gen
+                    {
+                        let outcome = gff.run_one_generation(&mut sim.state);
+                        ff.last_gen = sim.state.generation;
+                        history.push(HistoryPoint {
+                            generation: outcome.generation_finished,
+                            survival_rate: outcome.survival_rate,
+                            diversity: outcome.diversity,
+                            alive: outcome.survivors,
+                        });
+                    }
+                }
+                if sim.state.generation >= ff.target_gen {
+                    fast_forward.active = None;
+                    controls.grid_dirty = true;
+                    // Drop the GPU FF state so subsequent FF runs allocate
+                    // fresh against any config changes.
+                    *slot = None;
+                }
+                return;
+            }
+        }
+
+        // CPU path (default): step-by-step under a time budget.
         let frame_start = std::time::Instant::now();
-        // Finish the current generation first, then keep rolling new gens
-        // until either we hit the target or burn the per-frame budget.
         while frame_start.elapsed() < FF_FRAME_BUDGET
             && sim.state.generation < ff.target_gen
         {
@@ -489,27 +569,43 @@ fn advance_generation(sim: &mut Sim, history: &mut SimHistory) {
     });
 }
 
-fn set_barrier(sim: &mut Sim, x: u16, y: u16, on: bool) {
+/// Paint or erase a user barrier. `tile = Some(_)` stamps a wall or kill
+/// barrier; `tile = None` erases (force-empty). Refuses to overwrite an
+/// agent slot — use the kill tool for that.
+fn set_barrier(
+    sim: &mut Sim,
+    x: u16,
+    y: u16,
+    tile: Option<biosim4_core::sim_state::BarrierTile>,
+) {
+    use biosim4_core::grid::{BARRIER, EMPTY, KILL_BARRIER};
+    use biosim4_core::sim_state::BarrierTile;
+
     let sx = sim.state.config.size_x;
     let sy = sim.state.config.size_y;
     if x >= sx || y >= sy { return; }
     let loc = biosim4_core::types::Coord::new(x as i16, y as i16);
     let cell = sim.state.grid.at(loc);
-    let applied = match (on, cell) {
-        (true, biosim4_core::grid::EMPTY) => {
-            sim.state.grid.set(loc, biosim4_core::grid::BARRIER);
-            true
-        }
-        (false, biosim4_core::grid::BARRIER) => {
-            sim.state.grid.set(loc, biosim4_core::grid::EMPTY);
-            true
-        }
-        (true, biosim4_core::grid::BARRIER) | (false, biosim4_core::grid::EMPTY) => true,
-        _ => false,
+    let blocking = cell == BARRIER || cell == KILL_BARRIER;
+    let empty = cell == EMPTY;
+
+    let target_val = match tile {
+        Some(BarrierTile::Wall)  => BARRIER,
+        Some(BarrierTile::Kill)  => KILL_BARRIER,
+        Some(BarrierTile::Clear) | None => EMPTY,
     };
-    if applied {
-        sim.state.user_barriers.insert((x as i16, y as i16), on);
-    }
+
+    // Only stamp into empty or already-blocking cells; never overwrite
+    // an agent slot.
+    if !(empty || blocking) { return; }
+    sim.state.grid.set(loc, target_val);
+
+    let override_tile = match tile {
+        Some(BarrierTile::Wall) => BarrierTile::Wall,
+        Some(BarrierTile::Kill) => BarrierTile::Kill,
+        Some(BarrierTile::Clear) | None => BarrierTile::Clear,
+    };
+    sim.state.user_barriers.insert((x as i16, y as i16), override_tile);
 }
 
 fn kill_at(sim: &mut Sim, x: u16, y: u16) {

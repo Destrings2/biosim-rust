@@ -21,8 +21,9 @@ const BODY_INSET: i8 = 14;
 pub fn draw_right_panel(
     mut contexts: EguiContexts,
     sim: Res<Sim>,
-    controls: Res<SimControls>,
+    mut controls: ResMut<SimControls>,
     history: Res<SimHistory>,
+    gpu_accel: Res<crate::gpu::GpuAccel>,
     mut queue: ResMut<SimCommandQueue>,
     mut ui_state: ResMut<UiState>,
     mut local_state: Local<RightPanelLocal>,
@@ -59,7 +60,7 @@ pub fn draw_right_panel(
                         .show(ui, |ui| {
                             ui.style_mut().spacing.item_spacing.y = 6.0;
                             match ui_state.right_panel_tab {
-                                RightPanelTab::Stats     => stats_tab(ui, &sim, &controls, &history, &mut queue, &mut local_state),
+                                RightPanelTab::Stats     => stats_tab(ui, &sim, &mut controls, &history, &gpu_accel, &mut queue, &mut local_state),
                                 RightPanelTab::Challenge => challenge_tab(ui, &sim, &mut queue, &mut local_state),
                                 RightPanelTab::Registry  => registry_tab(ui, &sim, &mut queue, &mut local_state),
                                 RightPanelTab::Config    => config_tab(ui, &sim, &controls, &mut queue, &mut local_state),
@@ -147,8 +148,9 @@ fn tab_bar(ui: &mut egui::Ui, current: &mut RightPanelTab) {
 fn stats_tab(
     ui: &mut egui::Ui,
     sim: &Sim,
-    controls: &SimControls,
+    controls: &mut SimControls,
     history: &SimHistory,
+    gpu_accel: &crate::gpu::GpuAccel,
     queue: &mut SimCommandQueue,
     local: &mut RightPanelLocal,
 ) {
@@ -221,12 +223,63 @@ fn stats_tab(
     section(ui, "FAST FORWARD");
     ui.label(
         egui::RichText::new(
-            "Run N generations at full CPU speed with rendering paused.",
+            "Run N generations at full speed with rendering paused.",
         )
         .size(11.0)
         .color(theme::TEXT_2),
     );
-    ui.add_space(4.0);
+    ui.add_space(6.0);
+
+    // GPU acceleration row.
+    let gpu_ready = matches!(gpu_accel, crate::gpu::GpuAccel::Ready { .. });
+    let gpu_label = match gpu_accel {
+        crate::gpu::GpuAccel::Ready { ctx, .. } => ctx.label(),
+        crate::gpu::GpuAccel::Unavailable { reason } => reason.clone(),
+    };
+    ui.horizontal(|ui| {
+        let mut on = controls.ff_use_gpu && gpu_ready;
+        let resp = ui.add_enabled(gpu_ready, egui::Checkbox::new(&mut on, ""));
+        if resp.changed() {
+            controls.ff_use_gpu = on;
+        }
+        ui.label(
+            egui::RichText::new("GPU acceleration")
+                .size(11.5)
+                .color(if gpu_ready { theme::TEXT } else { theme::MUTED })
+                .strong(),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let (txt, col) = if gpu_ready {
+                (gpu_label.clone(), theme::ACCENT)
+            } else {
+                ("unavailable".to_string(), theme::BAD)
+            };
+            egui::Frame::default()
+                .fill(theme::BG_2)
+                .stroke(egui::Stroke::new(1.0, theme::LINE))
+                .corner_radius(egui::CornerRadius::same(3))
+                .inner_margin(egui::Margin::symmetric(6, 2))
+                .show(ui, |ui| {
+                    let r = ui.label(
+                        egui::RichText::new(txt)
+                            .monospace()
+                            .size(10.0)
+                            .color(col),
+                    );
+                    if !gpu_ready {
+                        r.on_hover_text(&gpu_label);
+                    }
+                });
+        });
+    });
+    ui.label(
+        egui::RichText::new(
+            "GPU runs every step's compute on-device — state stays in VRAM between steps and rolls over to CPU only for selection + reproduction. Auto-falls back to CPU if the active sensor/action set isn't fully supported by the GPU backend yet."
+        )
+        .size(10.5)
+        .color(theme::MUTED),
+    );
+    ui.add_space(6.0);
 
     // Preset row — sized so all five chips share the body width evenly.
     ui.horizontal(|ui| {
@@ -552,6 +605,27 @@ fn registry_tab(
     );
     ui.add_space(6.0);
 
+    // Count how many enabled sensors/actions don't have a GPU
+    // implementation — drives the "DISABLE NON-GPU" button states.
+    let unsupported_sensors: Vec<(String, String)> = sim
+        .state
+        .sensors
+        .iter()
+        .filter(|(_, s, enabled)| {
+            *enabled && crate::gpu::state::gpu_sensor_for(s.id()).is_none()
+        })
+        .map(|(_, s, _)| (s.id().to_string(), s.name().to_string()))
+        .collect();
+    let unsupported_actions: Vec<(String, String)> = sim
+        .state
+        .actions
+        .iter()
+        .filter(|(_, a, enabled)| {
+            *enabled && crate::gpu::state::gpu_action_for(a.id()).is_none()
+        })
+        .map(|(_, a, _)| (a.id().to_string(), a.name().to_string()))
+        .collect();
+
     egui::CollapsingHeader::new(
         egui::RichText::new(format!(
             "SENSORS  {} / {}",
@@ -569,11 +643,25 @@ fn registry_tab(
             ui.add(
                 egui::TextEdit::singleline(&mut local.sensor_filter)
                     .hint_text("name…")
-                    .desired_width(180.0),
+                    .desired_width(130.0),
             );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                disable_non_gpu_button(
+                    ui,
+                    "non-GPU",
+                    unsupported_sensors.len(),
+                    "Disable every enabled sensor without a GPU implementation \
+                     (so fast-forward can use the GPU backend).",
+                    || {
+                        for (id, _) in &unsupported_sensors {
+                            queue.items.push(SimCommand::SetSensorEnabled(id.clone(), false));
+                        }
+                    },
+                );
+            });
         });
         ui.add_space(2.0);
-        registry_list(ui, &local.sensor_filter, sim.state.sensors.iter().map(|(_, s, e)| (s.id().to_string(), s.name().to_string(), e)), |id, on| {
+        registry_list(ui, &local.sensor_filter, sim.state.sensors.iter().map(|(_, s, e)| (s.id().to_string(), s.name().to_string(), e, crate::gpu::state::gpu_sensor_for(s.id()).is_some())), |id, on| {
             queue.items.push(SimCommand::SetSensorEnabled(id, on));
         });
     });
@@ -597,20 +685,68 @@ fn registry_tab(
             ui.add(
                 egui::TextEdit::singleline(&mut local.action_filter)
                     .hint_text("name…")
-                    .desired_width(180.0),
+                    .desired_width(130.0),
             );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                disable_non_gpu_button(
+                    ui,
+                    "non-GPU",
+                    unsupported_actions.len(),
+                    "Disable every enabled action without a GPU implementation \
+                     (so fast-forward can use the GPU backend).",
+                    || {
+                        for (id, _) in &unsupported_actions {
+                            queue.items.push(SimCommand::SetActionEnabled(id.clone(), false));
+                        }
+                    },
+                );
+            });
         });
         ui.add_space(2.0);
-        registry_list(ui, &local.action_filter, sim.state.actions.iter().map(|(_, a, e)| (a.id().to_string(), a.name().to_string(), e)), |id, on| {
+        registry_list(ui, &local.action_filter, sim.state.actions.iter().map(|(_, a, e)| (a.id().to_string(), a.name().to_string(), e, crate::gpu::state::gpu_action_for(a.id()).is_some())), |id, on| {
             queue.items.push(SimCommand::SetActionEnabled(id, on));
         });
     });
 }
 
+/// Compact button that grays out when no enabled registry entry is
+/// unsupported, and shows the count of items it would disable. Keeps the
+/// label tight so it sits in the filter row.
+fn disable_non_gpu_button(
+    ui: &mut egui::Ui,
+    suffix: &str,
+    unsupported_count: usize,
+    tip: &str,
+    mut on_click: impl FnMut(),
+) {
+    let enabled = unsupported_count > 0;
+    let label = if unsupported_count == 0 {
+        "✓ GPU-ready".to_string()
+    } else {
+        format!("⨯ {unsupported_count}  {suffix}")
+    };
+    let color = if enabled { theme::WARN } else { theme::ACCENT };
+    let stroke = if enabled { theme::WARN } else { theme::LINE };
+    let btn = egui::Button::new(
+        egui::RichText::new(label)
+            .monospace()
+            .size(10.0)
+            .color(color)
+            .strong(),
+    )
+    .fill(egui::Color32::TRANSPARENT)
+    .stroke(egui::Stroke::new(1.0, stroke))
+    .corner_radius(egui::CornerRadius::same(3))
+    .min_size(egui::vec2(96.0, 22.0));
+    let r = ui.add_enabled(enabled, btn).on_hover_text(tip);
+    if r.clicked() { on_click(); }
+}
+
 fn registry_list(
     ui: &mut egui::Ui,
     filter: &str,
-    items: impl Iterator<Item = (String, String, bool)>,
+    // (id, name, enabled, gpu_supported)
+    items: impl Iterator<Item = (String, String, bool, bool)>,
     mut on_toggle: impl FnMut(String, bool),
 ) {
     let filter_lower = filter.to_lowercase();
@@ -621,7 +757,7 @@ fn registry_list(
         .inner_margin(egui::Margin::symmetric(8, 6))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 3.0;
-            for (id, name, enabled) in items {
+            for (id, name, enabled, gpu_supported) in items {
                 if !filter_lower.is_empty() && !name.to_lowercase().contains(&filter_lower) {
                     continue;
                 }
@@ -629,6 +765,23 @@ fn registry_list(
                     let mut on = enabled;
                     if ui.checkbox(&mut on, "").changed() {
                         on_toggle(id.clone(), on);
+                    }
+                    // Yellow warning dot for enabled-but-not-GPU-supported
+                    // entries; faint dot for disabled non-GPU; nothing for
+                    // GPU-supported entries.
+                    if !gpu_supported {
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(8.0, 8.0),
+                            egui::Sense::hover(),
+                        );
+                        let color = if enabled {
+                            theme::WARN
+                        } else {
+                            theme::LINE_2
+                        };
+                        ui.painter().circle_filled(rect.center(), 3.0, color);
+                    } else {
+                        ui.add_space(8.0);
                     }
                     ui.label(
                         egui::RichText::new(name)

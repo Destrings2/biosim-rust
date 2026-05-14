@@ -78,10 +78,21 @@ pub struct SimulationState {
     /// can split-borrow them alongside `population` etc.
     pub scratch: StepScratch,
     /// User-applied overrides on top of the procedural `barrier_type` layout.
-    /// `true` = force barrier, `false` = force cleared. Re-applied at the end
-    /// of `initialize_generation_0` and `spawn_new_generation` so manually
-    /// painted walls survive across generations.
-    pub user_barriers: HashMap<(i16, i16), bool>,
+    /// See [`BarrierTile`] for the variants. Re-applied at the end of
+    /// `initialize_generation_0` and `spawn_new_generation` so manually
+    /// painted cells survive across generations.
+    pub user_barriers: HashMap<(i16, i16), BarrierTile>,
+}
+
+/// User-painted cell override.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BarrierTile {
+    /// Force this cell empty (clears a procedural barrier).
+    Clear,
+    /// Force this cell to be a static wall.
+    Wall,
+    /// Force this cell to be a kill barrier — agents moving into it die.
+    Kill,
 }
 
 impl SimulationState {
@@ -91,18 +102,23 @@ impl SimulationState {
     pub fn reapply_user_barriers(&mut self) {
         let sx = self.config.size_x as i16;
         let sy = self.config.size_y as i16;
-        for (&(x, y), &on) in &self.user_barriers {
+        for (&(x, y), &tile) in &self.user_barriers {
             if x < 0 || y < 0 || x >= sx || y >= sy { continue; }
             let loc = Coord::new(x, y);
             // Don't stamp over an agent slot (shouldn't happen at gen-boundary
             // since the grid is freshly zero-filled, but defensive).
             let cell = self.grid.at(loc);
-            if cell != crate::grid::EMPTY && cell != crate::grid::BARRIER { continue; }
-            if on {
-                self.grid.set(loc, crate::grid::BARRIER);
-            } else {
-                self.grid.set(loc, crate::grid::EMPTY);
+            if cell != crate::grid::EMPTY
+                && cell != crate::grid::BARRIER
+                && cell != crate::grid::KILL_BARRIER
+            {
+                continue;
             }
+            self.grid.set(loc, match tile {
+                BarrierTile::Clear => crate::grid::EMPTY,
+                BarrierTile::Wall  => crate::grid::BARRIER,
+                BarrierTile::Kill  => crate::grid::KILL_BARRIER,
+            });
         }
     }
 }

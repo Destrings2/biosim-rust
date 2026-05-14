@@ -49,3 +49,11 @@ bevy = { version = "0.18", default-features = false, features = [
 # along with the Bevy major.
 bevy_egui = "0.39"
 
+# GPU fast-forward backend. We initialize a compute-only wgpu device
+# separately from Bevy's render device — the FF path needs none of Bevy's
+# render resources and isolating the device keeps the lifetime story simple.
+# Versions match what Bevy 0.18 pulls in transitively (wgpu 27, bytemuck 1).
+wgpu = "27"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+

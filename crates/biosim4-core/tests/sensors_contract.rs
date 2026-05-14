@@ -55,7 +55,7 @@ fn make_test_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> A
 fn registry_has_all_builtin_sensors() {
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
-    assert_eq!(reg.count(), 35, "expected 35 built-in sensors");
+    assert_eq!(reg.count(), 36, "expected 36 built-in sensors");
 }
 
 #[test]

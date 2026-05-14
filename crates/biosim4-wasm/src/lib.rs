@@ -350,16 +350,17 @@ impl Simulator {
 
     // ── World-editing tools (used by the frontend toolbar) ────────────────
 
-    /// Cell type at world (x, y): `"empty"`, `"barrier"`, or `"agent"`. Returns
-    /// `"oob"` for out-of-bounds queries.
+    /// Cell type at world (x, y): `"empty"`, `"barrier"`, `"kill_barrier"`,
+    /// or `"agent"`. Returns `"oob"` for out-of-bounds queries.
     pub fn cell_kind(&self, x: u16, y: u16) -> String {
         let sx = self.inner.config.size_x;
         let sy = self.inner.config.size_y;
         if x >= sx || y >= sy { return "oob".to_string(); }
         match self.inner.grid.at(Coord::new(x as i16, y as i16)) {
-            biosim4_core::grid::EMPTY => "empty".to_string(),
-            biosim4_core::grid::BARRIER => "barrier".to_string(),
-            _ => "agent".to_string(),
+            biosim4_core::grid::EMPTY        => "empty".to_string(),
+            biosim4_core::grid::BARRIER      => "barrier".to_string(),
+            biosim4_core::grid::KILL_BARRIER => "kill_barrier".to_string(),
+            _                                => "agent".to_string(),
         }
     }
 
@@ -368,27 +369,32 @@ impl Simulator {
     /// first). Persists across generations: the override is recorded in
     /// `user_barriers` and re-applied after every `spawn_new_generation`.
     pub fn set_barrier(&mut self, x: u16, y: u16, on: bool) -> bool {
+        self.set_barrier_tile(x, y, if on { 1 } else { 0 })
+    }
+
+    /// Set a barrier cell with an explicit kind:
+    /// `0` = erase (force empty), `1` = wall barrier, `2` = kill barrier.
+    /// Kill barriers kill any agent that attempts to move into them.
+    pub fn set_barrier_tile(&mut self, x: u16, y: u16, kind: u8) -> bool {
+        use biosim4_core::grid::{BARRIER, EMPTY, KILL_BARRIER};
+        use biosim4_core::sim_state::BarrierTile;
+
         let sx = self.inner.config.size_x;
         let sy = self.inner.config.size_y;
         if x >= sx || y >= sy { return false; }
         let loc = Coord::new(x as i16, y as i16);
         let cell = self.inner.grid.at(loc);
-        let ok = match (on, cell) {
-            (true, biosim4_core::grid::EMPTY) => {
-                self.inner.grid.set(loc, biosim4_core::grid::BARRIER);
-                true
-            }
-            (false, biosim4_core::grid::BARRIER) => {
-                self.inner.grid.set(loc, biosim4_core::grid::EMPTY);
-                true
-            }
-            (true, biosim4_core::grid::BARRIER) | (false, biosim4_core::grid::EMPTY) => true,
-            _ => false, // cell occupied by an agent
+        let (new_val, tile) = match kind {
+            1 => (BARRIER, BarrierTile::Wall),
+            2 => (KILL_BARRIER, BarrierTile::Kill),
+            _ => (EMPTY, BarrierTile::Clear),
         };
-        if ok {
-            self.inner.user_barriers.insert((x as i16, y as i16), on);
-        }
-        ok
+        // Only stamp into empty or already-blocking cells; never overwrite agents.
+        let blocking = cell == BARRIER || cell == KILL_BARRIER;
+        if !(cell == EMPTY || blocking) { return false; }
+        self.inner.grid.set(loc, new_val);
+        self.inner.user_barriers.insert((x as i16, y as i16), tile);
+        true
     }
 
     /// Forget all manual barrier edits and rebuild the grid from the

@@ -14,6 +14,7 @@
 //!   - `theme`         — palette + style installation.
 
 mod camera;
+mod gpu;
 mod grid_render;
 mod sim;
 mod theme;
@@ -38,6 +39,7 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::srgb(0.04, 0.045, 0.055)))
         .add_plugins((
+            gpu::GpuPlugin,
             sim::SimPlugin,
             grid_render::GridRenderPlugin,
             camera::CameraPlugin,

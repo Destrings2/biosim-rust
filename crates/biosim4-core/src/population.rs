@@ -84,6 +84,21 @@ impl Population {
 
     pub fn alive_ids(&self) -> &[AgentId] { &self.alive_ids }
 
+    /// Rebuild the `alive_ids` cache from scratch by scanning every slot.
+    /// Used by alternate stepping backends (e.g. the GPU fast-forward path)
+    /// that mutate `agent.alive` directly without going through
+    /// `queue_for_death`/`drain_death_queue`. O(capacity).
+    pub fn rebuild_alive_ids(&mut self) {
+        self.alive_ids.clear();
+        for slot in self.agents.iter().skip(1) {
+            if let Some(a) = slot {
+                if a.alive {
+                    self.alive_ids.push(a.id);
+                }
+            }
+        }
+    }
+
     /// Iterate over all alive agents.
     pub fn iter_alive(&self) -> impl Iterator<Item = &Agent> {
         self.alive_ids.iter().filter_map(|&id| self.get(id))
@@ -130,13 +145,26 @@ impl Population {
         }
     }
 
-    /// Apply all queued moves. Silently skips dead agents or occupied destinations.
+    /// Apply all queued moves. Silently skips dead agents or occupied
+    /// destinations. **Kill barriers**: if the destination is a kill
+    /// barrier, the agent dies — its old cell is freed and the agent is
+    /// removed from `alive_ids`. The kill barrier itself stays put.
     pub fn drain_move_queue(&mut self, grid: &mut Grid) {
+        let mut killed = Vec::new();
         for (id, new_loc) in self.move_queue.drain(..) {
             let agent = match self.agents.get_mut(id as usize).and_then(|s| s.as_mut()) {
                 Some(a) if a.alive => a,
                 _ => continue,
             };
+            // Touching a kill barrier kills the agent. The cell itself
+            // stays as KILL_BARRIER so subsequent agents also die.
+            if grid.is_kill_barrier_at(new_loc) {
+                let old_loc = agent.loc;
+                agent.alive = false;
+                grid.set(old_loc, crate::grid::EMPTY);
+                killed.push(id);
+                continue;
+            }
             if !grid.is_empty_at(new_loc) { continue; }
             let old_loc = agent.loc;
             let new_dir = (new_loc - old_loc).as_dir();
@@ -145,6 +173,9 @@ impl Population {
             agent.loc = new_loc;
             agent.last_move_dir = new_dir;
             agent.heading = new_dir; // persistent heading updated on move
+        }
+        if !killed.is_empty() {
+            self.alive_ids.retain(|id| !killed.contains(id));
         }
     }
 }

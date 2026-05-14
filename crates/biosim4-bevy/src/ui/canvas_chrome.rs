@@ -80,9 +80,10 @@ pub fn draw_canvas_chrome(
 
             // ── Bottom-left: hover cell info (replaces the separate hover badge)
             let bl_text = match (hovered.cell, hovered.kind) {
-                (Some((x, y)), CellKind::Empty) => format!("({x:>3}, {y:>3}) · empty"),
-                (Some((x, y)), CellKind::Barrier) => format!("({x:>3}, {y:>3}) · barrier"),
-                (Some((x, y)), CellKind::Agent(id)) => format!("({x:>3}, {y:>3}) · agent #{id}"),
+                (Some((x, y)), CellKind::Empty)       => format!("({x:>3}, {y:>3}) · empty"),
+                (Some((x, y)), CellKind::Barrier)     => format!("({x:>3}, {y:>3}) · barrier"),
+                (Some((x, y)), CellKind::KillBarrier) => format!("({x:>3}, {y:>3}) · kill zone"),
+                (Some((x, y)), CellKind::Agent(id))   => format!("({x:>3}, {y:>3}) · agent #{id}"),
                 _ => "—".into(),
             };
             painter.text(

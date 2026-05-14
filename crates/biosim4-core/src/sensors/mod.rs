@@ -57,6 +57,7 @@ pub fn register_builtin_sensors(registry: &mut SensorRegistry) {
     registry.register(Box::new(Age));
     registry.register(Box::new(BarrierFwd));
     registry.register(Box::new(BarrierLR));
+    registry.register(Box::new(KillBarrierFwd));
     registry.register(Box::new(RandomSensor));
     registry.register(Box::new(Signal0));
     registry.register(Box::new(Signal0Fwd));
@@ -253,6 +254,33 @@ impl Sensor for BarrierLR {
     fn name(&self) -> &str { "barrier LR" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         1.0 - short_probe_barrier_lr(ctx.agent.loc, ctx.agent.last_move_dir, 4, ctx.world.grid)
+    }
+}
+
+/// "Distance to nearest kill barrier in the forward direction" — same
+/// short-probe shape as `barrier_fwd` but only counts cells flagged with
+/// `KILL_BARRIER`. Lets evolution learn to steer around hazards painted
+/// by the user.
+struct KillBarrierFwd;
+impl Sensor for KillBarrierFwd {
+    fn id(&self) -> &str { "kill_barrier_fwd" }
+    fn name(&self) -> &str { "kill barrier fwd" }
+    fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+        let step = ctx.agent.last_move_dir.as_normalized_coord();
+        if step.x == 0 && step.y == 0 { return 0.0; }
+        let max = 4i16;
+        for i in 1..=max {
+            let p = crate::types::Coord::new(
+                ctx.agent.loc.x + step.x * i,
+                ctx.agent.loc.y + step.y * i,
+            );
+            if !ctx.world.grid.is_in_bounds(p) { return 0.0; }
+            if ctx.world.grid.is_kill_barrier_at(p) {
+                // Closer kill barrier = stronger reading.
+                return 1.0 - (i as f32 - 1.0) / max as f32;
+            }
+        }
+        0.0
     }
 }
 

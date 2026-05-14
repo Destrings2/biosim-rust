@@ -30,7 +30,13 @@ pub fn draw_floating_toolbar(
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        for t in [Tool::Inspect, Tool::Barrier, Tool::Kill, Tool::Reproduce] {
+                        for t in [
+                            Tool::Inspect,
+                            Tool::Barrier,
+                            Tool::KillBarrier,
+                            Tool::Kill,
+                            Tool::Reproduce,
+                        ] {
                             tool_button(ui, t, &mut controls);
                         }
                     });
@@ -48,10 +54,11 @@ fn tool_button(ui: &mut egui::Ui, tool: Tool, controls: &mut SimControls) {
     };
 
     let glyph = match tool {
-        Tool::Inspect   => "◎",
-        Tool::Barrier   => "▣",
-        Tool::Kill      => "✕",
-        Tool::Reproduce => "✦",
+        Tool::Inspect     => "◎",
+        Tool::Barrier     => "▣",
+        Tool::KillBarrier => "☠",
+        Tool::Kill        => "✕",
+        Tool::Reproduce   => "✦",
     };
 
     let btn = egui::Button::new(

@@ -27,6 +27,7 @@ pub enum CellKind {
     #[default]
     Empty,
     Barrier,
+    KillBarrier,
     Agent(u32),
     OutOfBounds,
 }
@@ -70,9 +71,10 @@ fn track_hover(
             hovered.cell = Some((x, y));
             let loc = biosim4_core::types::Coord::new(x as i16, y as i16);
             hovered.kind = match sim.state.grid.at(loc) {
-                biosim4_core::grid::EMPTY => CellKind::Empty,
-                biosim4_core::grid::BARRIER => CellKind::Barrier,
-                id => CellKind::Agent(id),
+                biosim4_core::grid::EMPTY        => CellKind::Empty,
+                biosim4_core::grid::BARRIER      => CellKind::Barrier,
+                biosim4_core::grid::KILL_BARRIER => CellKind::KillBarrier,
+                id                               => CellKind::Agent(id),
             };
         }
         None => {
@@ -113,11 +115,19 @@ fn handle_tool_input(
             }
         }
         Tool::Barrier => {
-            // Hold-to-paint feels much better than click-each-cell.
+            use biosim4_core::sim_state::BarrierTile;
             if left {
-                queue.items.push(SimCommand::SetBarrier { x, y, on: true });
+                queue.items.push(SimCommand::SetBarrier { x, y, tile: Some(BarrierTile::Wall) });
             } else if right_pressed {
-                queue.items.push(SimCommand::SetBarrier { x, y, on: false });
+                queue.items.push(SimCommand::SetBarrier { x, y, tile: None });
+            }
+        }
+        Tool::KillBarrier => {
+            use biosim4_core::sim_state::BarrierTile;
+            if left {
+                queue.items.push(SimCommand::SetBarrier { x, y, tile: Some(BarrierTile::Kill) });
+            } else if right_pressed {
+                queue.items.push(SimCommand::SetBarrier { x, y, tile: None });
             }
         }
         Tool::Kill => {
@@ -151,9 +161,11 @@ fn tool_keyboard_shortcuts(
         controls.tool = Tool::Inspect;
     } else if keys.just_pressed(KeyCode::KeyB) || keys.just_pressed(KeyCode::Digit2) {
         controls.tool = Tool::Barrier;
-    } else if keys.just_pressed(KeyCode::KeyK) || keys.just_pressed(KeyCode::Digit3) {
+    } else if keys.just_pressed(KeyCode::KeyZ) || keys.just_pressed(KeyCode::Digit3) {
+        controls.tool = Tool::KillBarrier;
+    } else if keys.just_pressed(KeyCode::KeyK) || keys.just_pressed(KeyCode::Digit4) {
         controls.tool = Tool::Kill;
-    } else if keys.just_pressed(KeyCode::KeyR) || keys.just_pressed(KeyCode::Digit4) {
+    } else if keys.just_pressed(KeyCode::KeyR) || keys.just_pressed(KeyCode::Digit5) {
         controls.tool = Tool::Reproduce;
     } else if keys.just_pressed(KeyCode::Space) {
         controls.running = !controls.running;

@@ -14,7 +14,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use biosim4_core::grid::{BARRIER, EMPTY};
+use biosim4_core::grid::{BARRIER, EMPTY, KILL_BARRIER};
 use biosim4_core::registry::challenge::ChallengeOverlay;
 use biosim4_core::types::Coord;
 
@@ -153,6 +153,13 @@ fn encode_into(sim: &Sim, buf: &mut [u8]) {
                     }
                 }
                 BARRIER => [80, 80, 80],
+                // Kill barrier — saturated red with a subtle pulse using a
+                // checker pattern so it reads as "hazard" even at small
+                // pixel scale.
+                KILL_BARRIER => {
+                    let checker = ((x as i16 + world_y as i16) & 1) as u8;
+                    [200 - checker * 20, 30, 30]
+                }
                 id => sim.state.population.get(id).map(|a| a.color).unwrap_or([0, 0, 0]),
             };
             let off = row_base + x * 4;
