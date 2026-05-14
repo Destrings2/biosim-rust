@@ -36,9 +36,10 @@ bevy = { version = "0.18", default-features = false, features = [
     "bevy_image",
     "bevy_gizmos",
     "bevy_gizmos_render",
-    "bevy_picking",
+    # bevy_picking, tonemapping_luts: not used. Agent selection uses raw
+    # cursor coords + canvas math, not Bevy's picking plugin. The renderer
+    # blits 8-bit RGB directly with no HDR pipeline.
     "default_font",
-    "tonemapping_luts",
     "x11",
     "wayland",
 ] }
