@@ -413,7 +413,7 @@ fn new_generation_agents_wired_against_reduced_genome() {
     // We check that no gene source index exceeds enabled_count.
     use biosim4_core::genome::gene::SOURCE_SENSOR;
     for agent in state.population.iter_alive() {
-        for g in &agent.nnet.connections {
+        for g in agent.nnet.all_connections() {
             if g.source_type() == SOURCE_SENSOR {
                 assert!(
                     (g.source_num() as u16) < expected_sensor_count,

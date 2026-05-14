@@ -16,7 +16,7 @@ fn make_gene(src_type: u8, src_num: u8, sink_type: u8, sink_num: u8, weight: i16
 fn empty_genome_has_no_connections() {
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let nnet = create_wiring(&[], cfg);
-    assert_eq!(nnet.connections.len(), 0);
+    assert_eq!(nnet.connection_count(), 0);
     assert_eq!(nnet.neurons.len(), 0);
 }
 
@@ -25,7 +25,7 @@ fn sensor_to_action_connection_survives_culling() {
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let g = vec![make_gene(1, 0, 1, 0, 4096)];  // sensor 0 → action 0
     let nnet = create_wiring(&g, cfg);
-    assert_eq!(nnet.connections.len(), 1, "direct sensor→action should survive");
+    assert_eq!(nnet.connection_count(), 1, "direct sensor→action should survive");
     assert_eq!(nnet.neurons.len(), 0, "no neurons needed");
 }
 
@@ -38,7 +38,7 @@ fn dangling_neuron_chain_is_culled() {
         make_gene(0, 0, 0, 1, 4096),  // neuron 0 → neuron 1
     ];
     let nnet = create_wiring(&g, cfg);
-    assert_eq!(nnet.connections.len(), 0, "dangling chain should be fully culled");
+    assert_eq!(nnet.connection_count(), 0, "dangling chain should be fully culled");
     assert_eq!(nnet.neurons.len(), 0);
 }
 
@@ -51,15 +51,15 @@ fn neuron_with_action_output_survives() {
         make_gene(0, 0, 1, 0, 4096),  // neuron 0 → action 0
     ];
     let nnet = create_wiring(&g, cfg);
-    assert_eq!(nnet.connections.len(), 2);
+    assert_eq!(nnet.connection_count(), 2);
     assert_eq!(nnet.neurons.len(), 1);
 }
 
 #[test]
-fn connections_ordered_neuron_to_neuron_before_action_sinks() {
-    // The feed_forward function depends on this ordering for the tanh-application
-    // boundary. If a neuron→action connection appears before a neuron→neuron, the
-    // neuron output gets latched too early.
+fn connections_split_into_neuron_and_action_lists() {
+    // feed_forward walks `neuron_connections` first (accumulate into neuron
+    // sums) then `action_connections` (drive actions). The split must put
+    // every connection in the right bucket regardless of input ordering.
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let g = vec![
         make_gene(0, 0, 1, 0, 4096),  // neuron 0 → action 0
@@ -68,14 +68,11 @@ fn connections_ordered_neuron_to_neuron_before_action_sinks() {
         make_gene(0, 1, 1, 0, 4096),  // neuron 1 → action 0
     ];
     let nnet = create_wiring(&g, cfg);
-    // First half should be all neuron-sink, second half should be all action-sink
-    let mut seen_action = false;
-    for c in &nnet.connections {
-        if c.is_action_sink() {
-            seen_action = true;
-        } else if seen_action {
-            panic!("found neuron-sink connection {:?} after action-sink", c);
-        }
+    for c in &nnet.neuron_connections {
+        assert!(!c.is_action_sink(), "neuron_connections must only contain neuron-sink genes");
+    }
+    for c in &nnet.action_connections {
+        assert!(c.is_action_sink(), "action_connections must only contain action-sink genes");
     }
 }
 
@@ -222,7 +219,7 @@ fn pure_self_loop_neuron_is_culled() {
         make_gene(0, 0, 0, 0, 8192),  // neuron 0 → neuron 0 only — no action output
     ];
     let nnet = create_wiring(&g, cfg);
-    assert_eq!(nnet.connections.len(), 0,
+    assert_eq!(nnet.connection_count(), 0,
         "self-loop with no downstream action must be fully culled");
     assert_eq!(nnet.neurons.len(), 0);
 }

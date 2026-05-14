@@ -85,13 +85,18 @@ struct InspectorState {
 
 pub fn draw_agent_inspector(
     mut contexts: EguiContexts,
-    sim: Res<Sim>,
+    mut sim: ResMut<Sim>,
     mut controls: ResMut<SimControls>,
 ) {
     let Some(agent_id) = controls.selected_agent else {
         return;
     };
     let Ok(ctx) = contexts.ctx_mut() else { return };
+
+    // Recompute the selected agent's Phase 1 against the current world so
+    // we have action levels to display. Done up front, before the agent
+    // borrow below, to avoid aliasing `&mut sim.state` with `&Agent`.
+    let action_levels = biosim4_core::sim_step::inspect_action_levels(&mut sim.state, agent_id);
 
     let agent_ref = sim.state.population.get(agent_id);
     let mut open = true;
@@ -157,7 +162,7 @@ pub fn draw_agent_inspector(
                             .auto_shrink([false, false])
                             .id_salt("inspector_right_col")
                             .show(ui, |ui| {
-                                actions_panel(ui, &sim, a);
+                                actions_panel(ui, &sim, a, action_levels.as_deref());
                             });
                     },
                 );
@@ -247,28 +252,20 @@ fn left_column(ui: &mut egui::Ui, sim: &Sim, a: &biosim4_core::agent::Agent) {
     minimap(ui, sim, a.loc.x, a.loc.y, a.color);
 }
 
-/// Look up the agent's action-level vector from the last step's scratch.
-/// Returns `None` if the simulation hasn't stepped yet, or if the agent was
-/// born after the last `alive_ids` snapshot.
-fn agent_action_levels(sim: &Sim, agent_id: u32) -> Option<&[f32]> {
-    let pos = sim
-        .state
-        .scratch
-        .alive_ids
-        .iter()
-        .position(|&id| id == agent_id)?;
-    sim.state
-        .scratch
-        .per_agent_action_levels
-        .get(pos)
-        .map(|v| v.as_slice())
-}
-
 /// "ACTIONS · N DRIVEN" panel — lists every action with non-trivial output
-/// from the most recent Phase 1, sorted by absolute weight. Each row shows
-/// the action name, signed weight, and a colored magnitude bar.
-fn actions_panel(ui: &mut egui::Ui, sim: &Sim, agent: &biosim4_core::agent::Agent) {
-    let levels = match agent_action_levels(sim, agent.id) {
+/// from a freshly-recomputed Phase 1, sorted by absolute weight. Each row
+/// shows the action name, signed weight, and a coloured magnitude bar.
+///
+/// `levels` is computed by `inspect_action_levels` in the caller; the
+/// inspector recomputes per-frame against the current world so we don't
+/// need the hot step loop to materialise action levels for every agent.
+fn actions_panel(
+    ui: &mut egui::Ui,
+    sim: &Sim,
+    _agent: &biosim4_core::agent::Agent,
+    levels: Option<&[f32]>,
+) {
+    let levels = match levels {
         Some(l) if !l.is_empty() => l,
         _ => {
             section_label(ui, "ACTIONS");
@@ -520,7 +517,7 @@ fn net_section(ui: &mut egui::Ui, sim: &Sim, agent: &biosim4_core::agent::Agent)
         egui::Align2::LEFT_CENTER,
         format!(
             "{} edges  ·  {}/{} neurons driven",
-            nnet.connections.len(),
+            nnet.connection_count(),
             nnet.neurons.iter().filter(|n| n.driven).count(),
             nnet.neurons.len(),
         ),
@@ -567,7 +564,7 @@ fn collect_used_ids(nnet: &biosim4_core::genome::NeuralNet) -> (Vec<u16>, Vec<u1
     let mut sensors: Vec<u16> = Vec::new();
     let mut actions: Vec<u16> = Vec::new();
     let mut neurons: Vec<u16> = Vec::new();
-    for g in &nnet.connections {
+    for g in nnet.all_connections() {
         let src = g.source_num() as u16;
         let snk = g.sink_num() as u16;
         if g.source_type() == SOURCE_SENSOR {
@@ -941,7 +938,7 @@ fn build_edges(
     actions: &[u16],
     nodes: &[NodeView],
 ) -> Vec<(usize, usize, f32)> {
-    let mut edges = Vec::with_capacity(nnet.connections.len());
+    let mut edges = Vec::with_capacity(nnet.connection_count());
     let find = |kind: NodeKind, idx: u16, slice: &[u16]| -> Option<usize> {
         let pos_in_slice = slice.iter().position(|&i| i == idx)?;
         // The `nodes` Vec is built in sensor → action → neuron order, so we
@@ -954,7 +951,7 @@ fn build_edges(
         let _ = nodes;
         Some(base + pos_in_slice)
     };
-    for g in &nnet.connections {
+    for g in nnet.all_connections() {
         let src_idx = g.source_num() as u16;
         let snk_idx = g.sink_num() as u16;
         let from = if g.source_type() == SOURCE_SENSOR {
@@ -1057,7 +1054,7 @@ fn draw_edges(
     neuron_pos: &[egui::Pos2],
     action_pos: &[egui::Pos2],
 ) {
-    for gene in &nnet.connections {
+    for gene in nnet.all_connections() {
         let weight = gene.weight_as_float();
         let abs_w = weight.abs();
         let src_idx = gene.source_num() as u16;

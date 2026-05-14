@@ -43,21 +43,12 @@ use crate::types::Coord;
 use std::collections::HashMap;
 
 /// Reusable scratch buffers — allocated once, cleared and reused each step.
-/// Avoids ~600K Vec allocations per generation at typical sizes (1000 agents
-/// × 200 steps × 3 buffers).
 #[derive(Default)]
 pub struct StepScratch {
-    /// Snapshot of `population.alive_ids` taken at the start of `step_all_agents`,
-    /// so we can iterate while mutating the population (drains, kills, etc.).
+    /// Snapshot of `population.alive_ids` taken at the start of
+    /// `step_all_agents`, so we can iterate while mutating the population
+    /// (drains, kills, etc.).
     pub alive_ids: Vec<AgentId>,
-    /// Per-agent action accumulator scratch reused by `feed_forward`.
-    /// Sized to `alive_ids.len()` at the start of each step. Phase 1 writes
-    /// to slot `i`; Phase 2 reads from slot `i`. This enables Phase 1 to run
-    /// in parallel — each thread touches a unique slot.
-    pub per_agent_action_levels: Vec<Vec<f32>>,
-    /// Per-agent neuron accumulator scratch reused by `feed_forward`.
-    /// Same indexing as `per_agent_action_levels`.
-    pub per_agent_neuron_accum: Vec<Vec<f32>>,
 }
 
 pub struct SimulationState {

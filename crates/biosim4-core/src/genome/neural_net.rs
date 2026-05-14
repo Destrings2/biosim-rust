@@ -34,15 +34,16 @@
 //!
 //! # `feed_forward` ordering invariant
 //!
-//! The connection list is walked once. Before the first action-sink connection
-//! is processed, `tanh()` is applied to the accumulated sum of every driven
-//! neuron; those outputs are then available when action connections are
-//! evaluated. Un-driven neurons skip `tanh` and keep their persistent `output`
-//! (initialized to `0.5`, never updated), contributing a constant bias to any
-//! action they connect to.
+//! The two connection lists are walked in sequence: first every
+//! neuron→neuron connection accumulates into a per-neuron sum; then `tanh()`
+//! is applied to each driven neuron's sum; then every →action connection is
+//! evaluated against the now-finalised neuron outputs. Un-driven neurons skip
+//! `tanh` and keep their persistent `output` (initialised to `0.5`, never
+//! updated), contributing a constant bias to any action they connect to.
 //!
-//! Applying `tanh` mid-loop (e.g., neuron-by-neuron) would produce incorrect
-//! results — each neuron's accumulator must be fully summed before clamping.
+//! Applying `tanh` neuron-by-neuron during the first walk would produce
+//! incorrect results — each neuron's accumulator must be fully summed before
+//! clamping.
 
 use std::collections::HashMap;
 use crate::genome::gene::Gene;
@@ -65,10 +66,27 @@ pub struct Neuron {
 
 #[derive(Clone, Debug, Default)]
 pub struct NeuralNet {
-    /// Resolved connections (neuron→neuron first, then neuron/sensor→action).
-    pub connections: Vec<Gene>,
+    /// Connections whose sink is an internal neuron. Walked first by
+    /// `feed_forward` to accumulate neuron inputs.
+    pub neuron_connections: Vec<Gene>,
+    /// Connections whose sink is an action. Walked after the neuron tanh
+    /// pass so they see finalised neuron outputs.
+    pub action_connections: Vec<Gene>,
     /// Active internal neurons, indexed sequentially 0..N.
     pub neurons: Vec<Neuron>,
+}
+
+impl NeuralNet {
+    /// Total connection count — sum of both lists. Used by inspectors.
+    pub fn connection_count(&self) -> usize {
+        self.neuron_connections.len() + self.action_connections.len()
+    }
+
+    /// Iterate every connection in `feed_forward` order (neurons first,
+    /// then actions). Used by inspectors and graph renderers.
+    pub fn all_connections(&self) -> impl Iterator<Item = &Gene> {
+        self.neuron_connections.iter().chain(self.action_connections.iter())
+    }
 }
 
 /// Compile a genome into a NeuralNet.
@@ -194,9 +212,6 @@ pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
         }
     }
 
-    let mut connections = neuron_to_neuron;
-    connections.extend(to_action);
-
     // Step 6: build neuron list
     let neurons = (0..neuron_count).map(|i| {
         let old_id = sorted_ids[i];
@@ -207,7 +222,11 @@ pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
         }
     }).collect();
 
-    NeuralNet { connections, neurons }
+    NeuralNet {
+        neuron_connections: neuron_to_neuron,
+        action_connections: to_action,
+        neurons,
+    }
 }
 
 /// Allocating wrapper around [`feed_forward`]. Convenient for tests and
@@ -239,41 +258,34 @@ pub fn feed_forward(
     neuron_accum.clear();
     neuron_accum.resize(nnet.neurons.len(), 0.0);
 
-    let mut neuron_outputs_computed = false;
-
-    for conn in &nnet.connections {
-        // Once we hit the first action-sink connection, apply tanh to all neuron accumulators.
-        if conn.is_action_sink() && !neuron_outputs_computed {
-            for (i, neuron) in nnet.neurons.iter_mut().enumerate() {
-                if neuron.driven {
-                    neuron.output = neuron_accum[i].tanh();
-                }
-                // un-driven neurons keep their previous output (constant bias)
-            }
-            neuron_outputs_computed = true;
-        }
-
-        let weight = conn.weight_as_float();
+    // Phase A: accumulate inputs into neuron sums. Sink is always a neuron,
+    // so no per-conn branch on sink type.
+    for conn in &nnet.neuron_connections {
         let src_val = if conn.is_sensor_source() {
             get_sensor(conn.source_num() as u16)
         } else {
             nnet.neurons[conn.source_num() as usize].output
         };
+        neuron_accum[conn.sink_num() as usize] += conn.weight_as_float() * src_val;
+    }
 
-        if conn.is_action_sink() {
-            action_accum[conn.sink_num() as usize] += weight * src_val;
-        } else {
-            neuron_accum[conn.sink_num() as usize] += weight * src_val;
+    // Phase B: clamp each driven neuron's accumulator to its output. Un-driven
+    // neurons keep their persistent `output` (constant bias).
+    for (i, neuron) in nnet.neurons.iter_mut().enumerate() {
+        if neuron.driven {
+            neuron.output = neuron_accum[i].tanh();
         }
     }
 
-    // If no action connections were encountered, still update neurons
-    if !neuron_outputs_computed {
-        for (i, neuron) in nnet.neurons.iter_mut().enumerate() {
-            if neuron.driven {
-                neuron.output = neuron_accum[i].tanh();
-            }
-        }
+    // Phase C: drive actions from finalised sensor/neuron outputs. Sink is
+    // always an action.
+    for conn in &nnet.action_connections {
+        let src_val = if conn.is_sensor_source() {
+            get_sensor(conn.source_num() as u16)
+        } else {
+            nnet.neurons[conn.source_num() as usize].output
+        };
+        action_accum[conn.sink_num() as usize] += conn.weight_as_float() * src_val;
     }
 }
 
@@ -305,7 +317,7 @@ mod tests {
             make_gene(0, 0, 0, 1, 1000), // neuron 0 → neuron 1
         ];
         let nnet = create_wiring(&genome, cfg);
-        assert_eq!(nnet.connections.len(), 0);
+        assert_eq!(nnet.connection_count(), 0);
         assert_eq!(nnet.neurons.len(), 0);
     }
 }

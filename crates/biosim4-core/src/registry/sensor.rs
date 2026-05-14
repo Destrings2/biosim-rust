@@ -62,7 +62,13 @@ pub trait Sensor: Send + Sync {
 pub struct SensorRegistry {
     sensors: Vec<Box<dyn Sensor>>,
     /// Stable IDs of sensors that are disabled (pending or committed).
+    /// Source of truth for ID-keyed lookups (`is_enabled`, `register`).
     disabled: HashSet<String>,
+    /// Per-sensor pending-disabled mask, indexed by registration index
+    /// (`actual_idx`). Mirrors `disabled` and is the hot-path lookup used
+    /// by `evaluate()` so we don't hash a string on every sensor read.
+    /// Rebuilt by `set_enabled` and `register`, both rare events.
+    disabled_mask: Vec<bool>,
     /// Dense map: `active_map[enabled_idx] = actual_idx`.
     /// Rebuilt by `commit_enabled()` and on each `register()`.
     active_map: Vec<u16>,
@@ -70,28 +76,33 @@ pub struct SensorRegistry {
 
 impl SensorRegistry {
     pub fn new() -> Self {
-        Self { sensors: Vec::new(), disabled: HashSet::new(), active_map: Vec::new() }
+        Self {
+            sensors: Vec::new(),
+            disabled: HashSet::new(),
+            disabled_mask: Vec::new(),
+            active_map: Vec::new(),
+        }
     }
 
     pub fn register(&mut self, sensor: Box<dyn Sensor>) {
         self.sensors.push(sensor);
-        self.rebuild_active_map();
+        self.rebuild_state();
     }
 
     // ── Enable / disable ─────────────────────────────────────────────────
 
     /// Mark a sensor enabled or disabled by its stable ID.
-    /// The change is *pending* until the next `commit_enabled()` call.
-    /// Mid-generation the disabled sensor immediately returns `0.0`.
+    /// The change is *pending* until the next `commit_enabled()` call:
+    /// `active_map` (and therefore `enabled_count()`) stays put, so genome
+    /// wiring is stable within a generation, but `evaluate()` immediately
+    /// returns `0.0` for the disabled sensor via `disabled_mask`.
     pub fn set_enabled(&mut self, id: &str, enabled: bool) {
         if enabled {
             self.disabled.remove(id);
         } else {
             self.disabled.insert(id.to_string());
         }
-        // Do NOT rebuild active_map here: genome wiring must stay stable
-        // within a generation. commit_enabled() applies the change at the
-        // next generation boundary.
+        self.rebuild_disabled_mask();
     }
 
     /// Returns `true` if the sensor is currently enabled (not pending-disabled).
@@ -103,10 +114,18 @@ impl SensorRegistry {
     /// `wiring_config()` / `create_wiring()` in `spawn_new_generation` so that
     /// new neural nets are wired against the updated active set.
     pub fn commit_enabled(&mut self) {
-        self.rebuild_active_map();
+        self.rebuild_state();
     }
 
-    fn rebuild_active_map(&mut self) {
+    fn rebuild_disabled_mask(&mut self) {
+        self.disabled_mask = self.sensors
+            .iter()
+            .map(|s| self.disabled.contains(s.id()))
+            .collect();
+    }
+
+    fn rebuild_state(&mut self) {
+        self.rebuild_disabled_mask();
         self.active_map = self.sensors
             .iter()
             .enumerate()
@@ -133,13 +152,11 @@ impl SensorRegistry {
     /// If the sensor was disabled mid-generation (pending) the call returns
     /// `0.0` immediately rather than querying the sensor implementation.
     pub fn evaluate(&self, enabled_idx: u16, ctx: &mut SensorContext) -> f32 {
-        let actual_idx = self.active_map[enabled_idx as usize];
-        let s = &self.sensors[actual_idx as usize];
-        // Honour pending mid-generation disables immediately.
-        if self.disabled.contains(s.id()) {
+        let actual_idx = self.active_map[enabled_idx as usize] as usize;
+        if self.disabled_mask[actual_idx] {
             return 0.0;
         }
-        s.evaluate(ctx).clamp(0.0, 1.0)
+        self.sensors[actual_idx].evaluate(ctx).clamp(0.0, 1.0)
     }
 
     // ── Introspection ─────────────────────────────────────────────────────

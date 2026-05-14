@@ -50,32 +50,43 @@ pub struct ActionRegistry {
     actions: Vec<Box<dyn Action>>,
     /// Stable IDs of actions that are disabled (pending or committed).
     disabled: HashSet<String>,
+    /// Per-action pending-disabled mask, indexed by registration index.
+    /// Hot-path lookup for `execute()` — mirrors `disabled` so we don't
+    /// hash a string on every action invocation.
+    disabled_mask: Vec<bool>,
     /// Dense map: `active_map[enabled_idx] = actual_idx`.
     active_map: Vec<u16>,
 }
 
 impl ActionRegistry {
     pub fn new() -> Self {
-        Self { actions: Vec::new(), disabled: HashSet::new(), active_map: Vec::new() }
+        Self {
+            actions: Vec::new(),
+            disabled: HashSet::new(),
+            disabled_mask: Vec::new(),
+            active_map: Vec::new(),
+        }
     }
 
     pub fn register(&mut self, action: Box<dyn Action>) {
         self.actions.push(action);
-        self.rebuild_active_map();
+        self.rebuild_state();
     }
 
     // ── Enable / disable ─────────────────────────────────────────────────
 
     /// Mark an action enabled or disabled by its stable ID.
-    /// The change is *pending* until the next `commit_enabled()` call.
-    /// Mid-generation the disabled action is immediately silenced (skipped).
+    /// The change is *pending* until the next `commit_enabled()` call:
+    /// `active_map` stays put (genome wiring is stable within a generation)
+    /// but `execute()` immediately skips the disabled action via
+    /// `disabled_mask`.
     pub fn set_enabled(&mut self, id: &str, enabled: bool) {
         if enabled {
             self.disabled.remove(id);
         } else {
             self.disabled.insert(id.to_string());
         }
-        // Do NOT rebuild active_map here — see SensorRegistry for rationale.
+        self.rebuild_disabled_mask();
     }
 
     /// Returns `true` if the action is currently enabled (not pending-disabled).
@@ -86,10 +97,18 @@ impl ActionRegistry {
     /// Commit pending changes. Call **before** `wiring_config()` in
     /// `spawn_new_generation` so new nnets wire against the updated active set.
     pub fn commit_enabled(&mut self) {
-        self.rebuild_active_map();
+        self.rebuild_state();
     }
 
-    fn rebuild_active_map(&mut self) {
+    fn rebuild_disabled_mask(&mut self) {
+        self.disabled_mask = self.actions
+            .iter()
+            .map(|a| self.disabled.contains(a.id()))
+            .collect();
+    }
+
+    fn rebuild_state(&mut self) {
+        self.rebuild_disabled_mask();
         self.active_map = self.actions
             .iter()
             .enumerate()
@@ -111,13 +130,11 @@ impl ActionRegistry {
     /// Execute action at `enabled_idx` — an index into the *active* (dense)
     /// set. Silently skips pending-disabled actions mid-generation.
     pub fn execute(&self, enabled_idx: u16, level: f32, ctx: &mut ActionContext) {
-        let actual_idx = self.active_map[enabled_idx as usize];
-        let a = &self.actions[actual_idx as usize];
-        // Honour pending mid-generation disables immediately.
-        if self.disabled.contains(a.id()) {
+        let actual_idx = self.active_map[enabled_idx as usize] as usize;
+        if self.disabled_mask[actual_idx] {
             return;
         }
-        a.execute(level, ctx);
+        self.actions[actual_idx].execute(level, ctx);
     }
 
     // ── Introspection ─────────────────────────────────────────────────────

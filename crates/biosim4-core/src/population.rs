@@ -122,25 +122,53 @@ impl Population {
 
     // ── Deferred queues ───────────────────────────────────────────────
 
+    /// Queue an agent for end-of-step death. Duplicate entries are harmless —
+    /// `drain_death_queue` deduplicates via the `alive` flag.
     pub fn queue_for_death(&mut self, id: AgentId) {
-        if !self.death_queue.contains(&id) {
-            self.death_queue.push(id);
-        }
+        self.death_queue.push(id);
     }
 
     pub fn queue_for_move(&mut self, id: AgentId, new_loc: Coord) {
         self.move_queue.push((id, new_loc));
     }
 
-    /// Apply all queued deaths. Clears corresponding grid cells.
+    /// Apply all queued deaths. Clears corresponding grid cells. Idempotent
+    /// on duplicate IDs: each slot is flipped to `alive = false` and skipped
+    /// thereafter. Single linear pass over `alive_ids` rather than O(N×D).
     pub fn drain_death_queue(&mut self, grid: &mut Grid) {
-        for id in self.death_queue.drain(..) {
+        if self.death_queue.is_empty() { return; }
+        let q = std::mem::take(&mut self.death_queue);
+        self.apply_deaths(grid, q);
+    }
+
+    /// Variant of `drain_death_queue` that consumes an externally-owned death
+    /// list, skipping the round-trip through `self.death_queue`. Used by the
+    /// parallel step pipeline, where `step_all_agents` already produces the
+    /// merged death list as the rayon fold result.
+    pub fn drain_death_queue_from(&mut self, grid: &mut Grid, deaths: Vec<AgentId>) {
+        if deaths.is_empty() && self.death_queue.is_empty() { return; }
+        // Apply any leftover queued deaths first (e.g. from `queue_for_death`
+        // calls outside the step pipeline), then the externally-supplied list.
+        let mut combined = std::mem::take(&mut self.death_queue);
+        combined.extend(deaths);
+        self.apply_deaths(grid, combined);
+    }
+
+    fn apply_deaths(&mut self, grid: &mut Grid, ids: Vec<AgentId>) {
+        if ids.is_empty() { return; }
+        for id in ids {
             if let Some(agent) = self.agents.get_mut(id as usize).and_then(|s| s.as_mut()) {
+                if !agent.alive { continue; }
                 agent.alive = false;
                 grid.set(agent.loc, crate::grid::EMPTY);
             }
-            self.alive_ids.retain(|&x| x != id);
         }
+        self.alive_ids.retain(|&id| {
+            self.agents
+                .get(id as usize)
+                .and_then(|s| s.as_ref())
+                .is_some_and(|a| a.alive)
+        });
     }
 
     /// Apply all queued moves. Silently skips dead agents or occupied
@@ -148,19 +176,36 @@ impl Population {
     /// barrier, the agent dies — its old cell is freed and the agent is
     /// removed from `alive_ids`. The kill barrier itself stays put.
     pub fn drain_move_queue(&mut self, grid: &mut Grid) {
-        let mut killed = Vec::new();
-        for (id, new_loc) in self.move_queue.drain(..) {
+        if self.move_queue.is_empty() { return; }
+        let q = std::mem::take(&mut self.move_queue);
+        self.apply_moves(grid, q);
+    }
+
+    /// Variant of `drain_move_queue` that consumes an externally-owned move
+    /// list. Used by the parallel step pipeline so the merged rayon fold
+    /// result goes straight to the grid without an extra extend through
+    /// `self.move_queue`.
+    pub fn drain_move_queue_from(&mut self, grid: &mut Grid, moves: Vec<(AgentId, Coord)>) {
+        if moves.is_empty() && self.move_queue.is_empty() { return; }
+        // Honour any pre-queued moves from `queue_for_move` (e.g. tooling),
+        // then the externally-supplied list.
+        let mut combined = std::mem::take(&mut self.move_queue);
+        combined.extend(moves);
+        self.apply_moves(grid, combined);
+    }
+
+    fn apply_moves(&mut self, grid: &mut Grid, moves: Vec<(AgentId, Coord)>) {
+        let mut any_killed = false;
+        for (id, new_loc) in moves {
             let agent = match self.agents.get_mut(id as usize).and_then(|s| s.as_mut()) {
                 Some(a) if a.alive => a,
                 _ => continue,
             };
-            // Touching a kill barrier kills the agent. The cell itself
-            // stays as KILL_BARRIER so subsequent agents also die.
             if grid.is_kill_barrier_at(new_loc) {
                 let old_loc = agent.loc;
                 agent.alive = false;
                 grid.set(old_loc, crate::grid::EMPTY);
-                killed.push(id);
+                any_killed = true;
                 continue;
             }
             if !grid.is_empty_at(new_loc) { continue; }
@@ -170,10 +215,17 @@ impl Population {
             grid.set(new_loc, id);
             agent.loc = new_loc;
             agent.last_move_dir = new_dir;
-            agent.heading = new_dir; // persistent heading updated on move
+            agent.heading = new_dir;
         }
-        if !killed.is_empty() {
-            self.alive_ids.retain(|id| !killed.contains(id));
+        if any_killed {
+            // Same single-pass retain as drain_death_queue: walk alive_ids
+            // once, keep only entries whose Agent.alive is still true.
+            self.alive_ids.retain(|&id| {
+                self.agents
+                    .get(id as usize)
+                    .and_then(|s| s.as_ref())
+                    .is_some_and(|a| a.alive)
+            });
         }
     }
 }

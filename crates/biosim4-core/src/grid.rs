@@ -16,7 +16,9 @@
 //!
 //! # Layout
 //!
-//! Cells are stored column-major: `cells[x][y]`. Indexing is `grid.at(Coord{x, y})`.
+//! Cells are stored as a single contiguous `Vec<u32>` in row-major order
+//! (`cells[y * size_x + x]`). Sensor neighborhood scans walk in row-major
+//! order, so this layout keeps adjacent cells on the same cache line.
 //!
 //! # `visit_neighborhood`
 //!
@@ -36,33 +38,39 @@ pub const BARRIER:      u32 = 0xFFFF_FFFF;
 pub const KILL_BARRIER: u32 = 0xFFFF_FFFE;
 
 /// 2D arena grid. Each cell stores EMPTY, BARRIER, or an agent ID (1..population).
-/// Stored column-major: `cells[x][y]`.
+/// Flat row-major storage: `cells[y * size_x + x]`.
 pub struct Grid {
     pub size_x: u16,
     pub size_y: u16,
-    cells: Vec<Vec<u32>>,
+    cells: Vec<u32>,
     pub barrier_locations: Vec<Coord>,
     pub barrier_centers: Vec<Coord>,
 }
 
 impl Grid {
     pub fn new(size_x: u16, size_y: u16) -> Self {
-        let cells = vec![vec![EMPTY; size_y as usize]; size_x as usize];
+        let cells = vec![EMPTY; size_x as usize * size_y as usize];
         Self { size_x, size_y, cells, barrier_locations: vec![], barrier_centers: vec![] }
     }
 
+    #[inline]
+    fn idx(&self, loc: Coord) -> usize {
+        (loc.y as usize) * (self.size_x as usize) + (loc.x as usize)
+    }
+
     pub fn zero_fill(&mut self) {
-        for col in self.cells.iter_mut() {
-            col.fill(EMPTY);
-        }
+        self.cells.fill(EMPTY);
     }
 
+    #[inline]
     pub fn at(&self, loc: Coord) -> u32 {
-        self.cells[loc.x as usize][loc.y as usize]
+        self.cells[self.idx(loc)]
     }
 
+    #[inline]
     pub fn set(&mut self, loc: Coord, val: u32) {
-        self.cells[loc.x as usize][loc.y as usize] = val;
+        let i = self.idx(loc);
+        self.cells[i] = val;
     }
 
     pub fn is_in_bounds(&self, loc: Coord) -> bool {
