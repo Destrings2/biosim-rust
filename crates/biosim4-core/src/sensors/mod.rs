@@ -204,15 +204,9 @@ impl Sensor for PopulationLR {
     fn name(&self) -> &str { "population LR" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let r = crate::constants::POPULATION_SENSOR_RADIUS;
-        let left = population_density_along_axis(
-            ctx.agent.loc, ctx.agent.last_move_dir.rotate90ccw(), r,
-            ctx.world.grid, ctx.world.population,
-        );
-        let right = population_density_along_axis(
-            ctx.agent.loc, ctx.agent.last_move_dir.rotate90cw(), r,
-            ctx.world.grid, ctx.world.population,
-        );
-        ((left + right) / 2.0).clamp(0.0, 1.0)
+        lr_average(ctx.agent.last_move_dir, |d| {
+            population_density_along_axis(ctx.agent.loc, d, r, ctx.world.grid, ctx.world.population)
+        })
     }
 }
 
@@ -384,11 +378,12 @@ macro_rules! signal_sensors {
             fn name(&self) -> &str { $namelr }
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
                 let r = crate::constants::SIGNAL_SENSOR_RADIUS;
-                let left  = signal_density_along_axis($layer, ctx.agent.loc,
-                    ctx.agent.last_move_dir.rotate90ccw(), r, ctx.world.grid, ctx.world.signals);
-                let right = signal_density_along_axis($layer, ctx.agent.loc,
-                    ctx.agent.last_move_dir.rotate90cw(),  r, ctx.world.grid, ctx.world.signals);
-                ((left + right) / 2.0).clamp(0.0, 1.0)
+                lr_average(ctx.agent.last_move_dir, |d| {
+                    signal_density_along_axis(
+                        $layer, ctx.agent.loc, d, r,
+                        ctx.world.grid, ctx.world.signals,
+                    )
+                })
             }
         }
     };
@@ -467,10 +462,8 @@ impl Sensor for FoodLR {
     fn name(&self) -> &str { "food LR" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let r = crate::constants::FOOD_SENSOR_RADIUS;
-        let left  = ctx.world.food.get_density_fwd(ctx.agent.loc,
-            ctx.agent.last_move_dir.rotate90ccw(), r, ctx.world.grid);
-        let right = ctx.world.food.get_density_fwd(ctx.agent.loc,
-            ctx.agent.last_move_dir.rotate90cw(),  r, ctx.world.grid);
-        ((left + right) / 2.0).clamp(0.0, 1.0)
+        lr_average(ctx.agent.last_move_dir, |d| {
+            ctx.world.food.get_density_fwd(ctx.agent.loc, d, r, ctx.world.grid)
+        })
     }
 }

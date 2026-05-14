@@ -10,6 +10,18 @@ use crate::population::Population;
 use crate::signals_layer::Signals;
 use crate::types::{Coord, Dir};
 
+/// Average of a probe taken in the two directions perpendicular to `dir`
+/// (left + right), clamped to `[0.0, 1.0]`. Used by every `*_lr` sensor.
+///
+/// Generic + `#[inline]` so the probe closure monomorphises and inlines
+/// into the caller — no extra cost vs. spelling the average out by hand.
+#[inline]
+pub fn lr_average<F: FnMut(Dir) -> f32>(dir: Dir, mut probe: F) -> f32 {
+    let left  = probe(dir.rotate90ccw());
+    let right = probe(dir.rotate90cw());
+    ((left + right) / 2.0).clamp(0.0, 1.0)
+}
+
 /// Weighted population density along a direction, normalized 0..1.
 pub fn population_density_along_axis(
     loc: Coord, dir: Dir, radius: f32, grid: &Grid, _population: &Population,
@@ -50,9 +62,7 @@ pub fn short_probe_barrier_fwd(
 pub fn short_probe_barrier_lr(
     loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid,
 ) -> f32 {
-    let left  = short_probe_barrier_fwd(loc, dir.rotate90ccw(), probe_dist, grid);
-    let right = short_probe_barrier_fwd(loc, dir.rotate90cw(),  probe_dist, grid);
-    ((left + right) / 2.0).clamp(0.0, 1.0)
+    lr_average(dir, |d| short_probe_barrier_fwd(loc, d, probe_dist, grid))
 }
 
 /// Distance in steps to nearest agent ahead, normalized 0..1. 0 = right next to one.
