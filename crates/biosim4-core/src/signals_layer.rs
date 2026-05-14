@@ -116,6 +116,27 @@ impl Signals {
         }
     }
 
+    /// Parallel fade across every layer's columns. Uses `&mut self` so the
+    /// per-cell decrements skip the atomic fence (each column is owned by
+    /// exactly one worker). Called from `sim_step::fade_signals` when the
+    /// parallel feature + multi-threaded config is on; falls back to the
+    /// sequential `fade` for single-thread / no-rayon builds.
+    #[cfg(feature = "parallel")]
+    pub fn fade_all_parallel(&mut self) {
+        use rayon::prelude::*;
+        // Flatten layers/columns into a single par_iter so rayon can
+        // work-steal across layers when there are few but large columns.
+        self.layers
+            .par_iter_mut()
+            .flat_map(|layer| layer.par_iter_mut())
+            .for_each(|col| {
+                for cell in col.iter_mut() {
+                    let v = cell.get_mut();
+                    *v = v.saturating_sub(1);
+                }
+            });
+    }
+
     /// Get the total signal density in a neighborhood (sum / count, normalized 0..1).
     pub fn get_density(&self, layer: u8, center: Coord, radius: f32, grid: &Grid) -> f32 {
         let mut sum = 0u32;

@@ -499,14 +499,9 @@ function ConfigPanel({
                            onChange={(v)=>set("population", v)}
                            markers={[500, 1000, 2500, 5000]}/>
               </CfgRow>
-              <CfgRow label="Deterministic" help="Reproducible runs from a seed">
-                <Toggle checked={bool("deterministic")} onChange={(v)=>set("deterministic", v)}/>
+              <CfgRow label="RNG seed" help="Single-threaded WASM runs are fully reproducible at a fixed seed.">
+                <SeedInput value={num("rng_seed")} onChange={(v)=>set("rng_seed", v)}/>
               </CfgRow>
-              {bool("deterministic") && (
-                <CfgRow label="RNG seed">
-                  <SeedInput value={num("rng_seed")} onChange={(v)=>set("rng_seed", v)}/>
-                </CfgRow>
-              )}
             </CfgGroup>
             <CfgGroup title="Time" summary={`${num("steps_per_generation")} \u00d7 ${num("max_generations")} = ${totalSteps.toLocaleString()} steps`}>
               <CfgRow label="Steps / generation">

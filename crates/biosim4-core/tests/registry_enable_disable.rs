@@ -547,7 +547,10 @@ fn remaining_sensors_still_return_unit_interval_when_some_are_disabled() {
 fn disable_and_reenable_before_generation_is_deterministic() {
     // Two identical runs with the same seed: one disables-then-re-enables a
     // sensor before the first spawn; both should produce the same state.
-    let cfg = small_cfg();
+    // Pinned to single-thread because multi-thread runs use entropy-seeded
+    // thread-local Rngs and would diverge regardless of the toggle.
+    let mut cfg = small_cfg();
+    cfg.num_threads = 1;
 
     let run = |toggle: bool| {
         let mut state = SimulationState::new(cfg.clone());

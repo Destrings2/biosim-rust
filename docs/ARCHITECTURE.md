@@ -107,7 +107,13 @@ A `Gene`'s `source_num` and `sink_num` fields are raw 7-bit values (0..127). `cr
 
 ### Determinism contract
 
-`SimConfig.rng_seed != 0` produces a fully reproducible simulation: `SimulationState::new` calls `Rng::seeded(rng_seed)`. In `step_one_agent`, each agent's stochastic sensor/action calls use a forked random number generator (RNG): `state.rng.fork(agent_id)`, which XORs the main RNG's next `u64` with the agent's ID. This gives per-agent independent stochasticity without locks and without affecting the main RNG's sequence for spawn and reproduction decisions.
+Determinism is **conditional on thread count**:
+
+- **`num_threads == 1` (or the `parallel` feature off)**: the simulation is fully reproducible at a fixed `rng_seed`. `SimulationState::new` calls `Rng::seeded(rng_seed)` and every stochastic draw routes through `state.rng` or the per-agent Phase 1 hash, so same seed → same evolution byte-for-byte.
+
+- **`num_threads > 1` with the `parallel` feature on**: the multi-threaded stepping path is **intentionally non-deterministic**. Phase 2 workers seed thread-local Rngs from system entropy, and `rayon::fold + reduce` merges chunk-local move/death queues in arbitrary work-stealing order. Same seed → similar but not identical evolution run-to-run. This trade buys ~3× throughput at 8 threads.
+
+Phase 1 (sensors + neural feed-forward) keeps a stateless `(rng_seed, generation, sim_step, agent_id)` hash regardless of thread count, so **per-agent sensor randomness is always reproducible** — only Phase 2 action draws diverge. Tests that need full reproducibility set `num_threads = 1`; the `parallel_determinism.rs` test suite documents the boundary explicitly.
 
 ---
 

@@ -1,0 +1,51 @@
+[package]
+name = "biosim4-bevy"
+version = "0.1.0"
+edition = "2021"
+description = "Native Bevy frontend for biosim4-rs with parallel simulation stepping"
+
+[[bin]]
+name = "biosim4-bevy"
+path = "src/main.rs"
+
+[dependencies]
+biosim4-core = { path = "../biosim4-core", features = ["parallel"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rayon = "1.8"
+
+# Trimmed Bevy feature set for a 2D simulation viewer with native UI primitives
+# (sprite, text, gizmos). 3D, audio, gltf, animation, and PBR are off — they'd
+# bloat the build with no visible benefit.
+bevy = { version = "0.18", default-features = false, features = [
+    "bevy_winit",
+    "bevy_window",
+    "bevy_render",
+    "bevy_core_pipeline",
+    # Bevy 0.18 split the 2D pipeline into API + renderer crates — without the
+    # `_render` features below, sprites/UI/gizmos compile and upload but the
+    # actual render plugins are absent, so nothing draws.
+    "bevy_sprite",
+    "bevy_sprite_render",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_text",
+    "bevy_log",
+    "bevy_asset",
+    "bevy_state",
+    "bevy_image",
+    "bevy_gizmos",
+    "bevy_gizmos_render",
+    "bevy_picking",
+    "default_font",
+    "tonemapping_luts",
+    "x11",
+    "wayland",
+] }
+
+# bevy_egui pairs egui's mature widget set (sliders, dropdowns, multi-tabs,
+# painter for the neural-net inspector) with Bevy's rendering. Pinned to a
+# version that targets Bevy 0.18 — if Cargo resolves a mismatch, bump this
+# along with the Bevy major.
+bevy_egui = "0.39"
+

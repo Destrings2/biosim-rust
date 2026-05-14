@@ -10,11 +10,14 @@ fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> 
     cfg.size_y = 96;
     cfg.population = 400;
     cfg.steps_per_generation = 150;
-    cfg.deterministic = true;
     cfg.rng_seed = seed;
     cfg.point_mutation_rate = 0.01;
     cfg.choose_parents_by_fitness = true;
     cfg.barrier_type = 0;
+    // Single-thread for stable assertions — the multi-threaded stepping
+    // path is intentionally non-deterministic, so parallel runs would make
+    // the per-generation survival series flaky against a fixed threshold.
+    cfg.num_threads = 1;
 
     let mut state = SimulationState::new(cfg);
     biosim4_core::challenges::register_builtin_challenges(&mut state.challenges);

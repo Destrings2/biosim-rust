@@ -26,7 +26,6 @@ fn small_config_json() -> String {
         "size_y": 16,
         "population": 10,
         "num_threads": 1,
-        "deterministic": true,
         "rng_seed": 7,
         "signal_layers": 1,
         "steps_per_generation": 8,

@@ -78,8 +78,11 @@ fn spawn_new_generation_resets_population_and_increments_counter() {
 
 #[test]
 fn deterministic_seed_produces_identical_first_step() {
-    // Two runs with the same seed must produce identical agent positions after one generation.
-    let cfg = small_config();
+    // Determinism is only guaranteed when `num_threads = 1` — the
+    // multi-threaded stepping path uses entropy-seeded per-worker Rngs and
+    // merges chunk-local queues in arbitrary order (see `sim_step` docs).
+    let mut cfg = small_config();
+    cfg.num_threads = 1;
     let mut s1 = SimulationState::new(cfg.clone());
     let mut s2 = SimulationState::new(cfg);
     step_generation(&mut s1);
@@ -87,7 +90,7 @@ fn deterministic_seed_produces_identical_first_step() {
 
     let p1: Vec<_> = s1.population.iter_alive().map(|a| (a.id, a.loc, a.age)).collect();
     let p2: Vec<_> = s2.population.iter_alive().map(|a| (a.id, a.loc, a.age)).collect();
-    assert_eq!(p1, p2, "deterministic seed must produce identical state");
+    assert_eq!(p1, p2, "single-thread deterministic seed must produce identical state");
 }
 
 #[test]

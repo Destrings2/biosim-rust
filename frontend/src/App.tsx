@@ -21,7 +21,6 @@ const DEFAULT_CONFIG = {
   size_y: 128,
   population: 1000,
   num_threads: 1,
-  deterministic: true,
   rng_seed: 12345,
   signal_layers: 1,
   steps_per_generation: 200,

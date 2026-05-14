@@ -1,9 +1,9 @@
 //! WebAssembly bindings for biosim4-rs.
 //!
 //! Exposes a single `Simulator` class with a step-based API designed to drive
-//! a browser frontend (canvas + DOM controls). The simulator is fully
-//! deterministic given a fixed `rng_seed`, so the same JSON config produces
-//! the same evolution across runs.
+//! a browser frontend (canvas + DOM controls). The WASM build does not enable
+//! the `parallel` feature of `biosim4-core`, so the simulator runs on a single
+//! thread and is fully reproducible at a fixed `rng_seed`.
 //!
 //! ## Lifecycle
 //!

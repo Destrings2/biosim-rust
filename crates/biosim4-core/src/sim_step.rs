@@ -16,25 +16,34 @@
 //! effect on shared state, so it is safe to run in parallel across agents.
 //!
 //! **Phase 2 — action execution + age/energy bookkeeping.** Pushes to the
-//! shared move/death queues, mutates signals, draws from `state.rng`, and
-//! advances per-agent age/energy. Runs sequentially in `alive_ids` order so
-//! that rng advancement and queue ordering are deterministic.
+//! shared move/death queues, mutates signals (atomic), advances per-agent
+//! age/energy. Runs in parallel using thread-local move/death queues and a
+//! thread-local Rng, merged at the end with no ordering guarantee.
 //!
-//! # Phase 1 rng
+//! # Determinism contract
 //!
-//! Each agent's Phase 1 uses an independent rng, seeded from a stateless hash
-//! of `(rng_seed, generation, sim_step, agent_id)`. No draws are taken from
-//! `state.rng` during Phase 1, which removes the only sequential bottleneck.
-//! Phase 1 results are still reproducible across runs with the same seed
-//! (the hash is deterministic), but the result no longer matches the
-//! advancement pattern of a single-threaded fork-per-agent scheme.
+//! Determinism is conditional on thread count:
+//!
+//! - **`num_threads == 1`** (or the `parallel` feature off): fully
+//!   reproducible at a fixed `rng_seed`. Single-thread runs route every
+//!   draw through `state.rng` and the per-agent Phase 1 hash.
+//! - **`num_threads > 1`**: intentionally non-deterministic. Phase 2
+//!   workers seed thread-local Rngs from system entropy, signal fade /
+//!   energy bookkeeping run in parallel, and chunk-local queues merge in
+//!   arbitrary work-stealing order. This trade is what makes the parallel
+//!   path ~3× faster than 1-thread on common workloads.
+//!
+//! Phase 1 still uses a stateless `(rng_seed, generation, sim_step,
+//! agent_id)` hash regardless of thread count, so **per-agent sensor
+//! randomness is always reproducible** — only Phase 2 action draws diverge
+//! across thread counts.
 //!
 //! # Alive-IDs snapshot
 //!
 //! `step_all_agents` snapshots `population.alive_ids()` into
-//! `scratch.alive_ids` at the start of each step. The loop walks the snapshot
-//! by index rather than holding a borrow on `scratch`, so phase 2 can take
-//! `&mut state` without borrow-checker conflict.
+//! `scratch.alive_ids` at the start of each step. The loop walks the
+//! snapshot by index rather than holding a borrow on `scratch`, so phase 2
+//! can take `&mut state` without borrow-checker conflict.
 //!
 //! # Deferred queues
 //!
@@ -69,9 +78,7 @@ pub fn step_one(state: &mut SimulationState, step: u32) {
     step_all_agents(state);
     state.population.drain_death_queue(&mut state.grid);
     state.population.drain_move_queue(&mut state.grid);
-    for layer in 0..state.signals.layer_count() {
-        state.signals.fade(layer);
-    }
+    fade_signals(state);
     if state.config.enable_energy {
         state.food.regenerate(state.config.food_regen_rate, &state.grid);
     }
@@ -91,33 +98,66 @@ fn run_challenge_step_hooks(state: &mut SimulationState) {
 }
 
 fn step_all_agents(state: &mut SimulationState) {
-    // ── Setup ────────────────────────────────────────────────────────────
-    //
-    // Snapshot alive_ids into the reusable scratch buffer instead of allocating
-    // a fresh Vec each step.
+    // Snapshot alive_ids into the reusable scratch buffer instead of
+    // allocating a fresh Vec each step.
     state.scratch.alive_ids.clear();
     state.scratch.alive_ids.extend_from_slice(state.population.alive_ids());
     let n = state.scratch.alive_ids.len();
 
-    // Size the per-agent scratch buffers to match alive_ids.
     state.scratch.per_agent_action_levels.resize_with(n, Vec::new);
     state.scratch.per_agent_neuron_accum.resize_with(n, Vec::new);
 
-    // ── Phase 1 (parallelizable) ────────────────────────────────────────
     phase1_compute_all(state, n);
-
-    // ── Phase 2 (parallelizable) — action execution + age ───────────────
     phase2_actions_all(state, n);
-
-    // ── Phase 2b (sequential) — energy bookkeeping ──────────────────────
     if state.config.enable_energy {
-        phase2_energy_sequential(state, n);
+        phase2_energy_all(state, n);
     }
 }
 
-/// Stateless per-agent sensor-rng seed. Hashes
-/// `(rng_seed, generation, sim_step, agent_id)` so each agent's Phase 1 has an
-/// independent stream without any draws on `state.rng`.
+// ── Determinism / parallelism dispatch ──────────────────────────────────────
+
+/// Decide whether to run the parallel path. Centralised so all phases agree.
+#[inline]
+fn use_parallel(state: &SimulationState, n: usize) -> bool {
+    #[cfg(feature = "parallel")]
+    {
+        state.config.num_threads.max(1) as usize > 1 && n > 1
+    }
+    #[cfg(not(feature = "parallel"))]
+    {
+        let _ = (state, n);
+        false
+    }
+}
+
+/// Raw-pointer wrapper used to thread `&mut SimulationState` through rayon
+/// closures. Each closure invocation operates on a disjoint per-agent slot
+/// (or atomic/thread-local field), so the aliasing is sound — see SAFETY
+/// notes on each phase's worker body for the per-call argument.
+#[cfg(feature = "parallel")]
+#[derive(Copy, Clone)]
+struct StatePtr(*mut SimulationState);
+
+#[cfg(feature = "parallel")]
+impl StatePtr {
+    #[allow(clippy::mut_from_ref)]
+    unsafe fn as_mut<'a>(&self) -> &'a mut SimulationState {
+        unsafe { &mut *self.0 }
+    }
+}
+
+#[cfg(feature = "parallel")]
+unsafe impl Send for StatePtr {}
+#[cfg(feature = "parallel")]
+unsafe impl Sync for StatePtr {}
+
+// ── Phase 1 ────────────────────────────────────────────────────────────────
+
+/// Stateless per-agent sensor-rng seed for Phase 1. Hashes
+/// `(rng_seed, generation, sim_step, agent_id)` so each agent's Phase 1 has
+/// an independent stream without any draws on `state.rng`. Kept deterministic
+/// regardless of thread scheduling so per-agent sensor randomness is
+/// reproducible from `(seed, gen, step, id)` alone.
 #[inline]
 fn phase1_seed_for(rng_seed: u64, generation: u32, sim_step: u32, id: AgentId) -> u64 {
     // SplitMix64-style mix — fast and well-distributed.
@@ -130,22 +170,7 @@ fn phase1_seed_for(rng_seed: u64, generation: u32, sim_step: u32, id: AgentId) -
     z ^ (z >> 31)
 }
 
-/// Run Phase 1 (sensor evaluation + neural feed-forward) for every alive agent.
-/// Writes the resulting action levels into `scratch.per_agent_action_levels[i]`
-/// and mutates each agent's `nnet` (neuron outputs).
 fn phase1_compute_all(state: &mut SimulationState, n: usize) {
-    #[cfg(feature = "parallel")]
-    {
-        let num_threads = state.config.num_threads.max(1) as usize;
-        if num_threads > 1 && n > 1 {
-            phase1_compute_all_parallel(state, n);
-            return;
-        }
-    }
-    phase1_compute_all_sequential(state, n);
-}
-
-fn phase1_compute_all_sequential(state: &mut SimulationState, n: usize) {
     let action_count = state.actions.enabled_count();
     let sim_step = state.sim_step;
     let generation = state.generation;
@@ -153,107 +178,44 @@ fn phase1_compute_all_sequential(state: &mut SimulationState, n: usize) {
     let size_y = state.config.size_y;
     let steps_per_gen = state.config.steps_per_generation;
     let rng_seed = state.config.rng_seed;
+
+    if use_parallel(state, n) {
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            let state_ptr = StatePtr(state as *mut SimulationState);
+
+            (0..n).into_par_iter().for_each(|i| {
+                // SAFETY: each `i` is unique per closure invocation. Phase 1
+                // mutates only `agents[alive_ids[i]].nnet` and the i-th
+                // entries of `scratch.per_agent_*`. Everything else is read.
+                let state: &mut SimulationState = unsafe { state_ptr.as_mut() };
+                let id = state.scratch.alive_ids[i];
+                let seed = phase1_seed_for(rng_seed, generation, sim_step, id);
+                let lvls = &mut state.scratch.per_agent_action_levels[i] as *mut _;
+                let accum = &mut state.scratch.per_agent_neuron_accum[i] as *mut _;
+                unsafe {
+                    phase1_one_agent(state, id, seed, action_count, sim_step,
+                                     generation, size_x, size_y, steps_per_gen,
+                                     lvls, accum);
+                }
+            });
+            return;
+        }
+    }
 
     for i in 0..n {
         let id = state.scratch.alive_ids[i];
         let seed = phase1_seed_for(rng_seed, generation, sim_step, id);
-
-        // SAFETY: split the &mut SimulationState into disjoint sub-borrows
-        // via raw pointers. The per-agent scratch slot `i` is unique to this
-        // iteration; `agents[id]` is the only slot mutated (its `nnet` field),
-        // and the immutable views of grid/signals/food/population read distinct
-        // fields. This mirrors the same pattern as before, just per-call.
-        let action_levels_ptr: *mut Vec<f32> =
-            &mut state.scratch.per_agent_action_levels[i];
-        let neuron_accum_ptr: *mut Vec<f32> =
-            &mut state.scratch.per_agent_neuron_accum[i];
-
-        // SAFETY: action_levels_ptr and neuron_accum_ptr point to distinct
-        // Vec slots in the scratch buffer; no other code reads or writes
-        // these slots during this call.
+        let lvls = &mut state.scratch.per_agent_action_levels[i] as *mut _;
+        let accum = &mut state.scratch.per_agent_neuron_accum[i] as *mut _;
         unsafe {
-            phase1_one_agent(
-                state,
-                id,
-                seed,
-                action_count,
-                sim_step,
-                generation,
-                size_x,
-                size_y,
-                steps_per_gen,
-                action_levels_ptr,
-                neuron_accum_ptr,
-            );
+            phase1_one_agent(state, id, seed, action_count, sim_step,
+                             generation, size_x, size_y, steps_per_gen,
+                             lvls, accum);
         }
     }
 }
-
-#[cfg(feature = "parallel")]
-fn phase1_compute_all_parallel(state: &mut SimulationState, n: usize) {
-    use rayon::prelude::*;
-
-    let action_count = state.actions.enabled_count();
-    let sim_step = state.sim_step;
-    let generation = state.generation;
-    let size_x = state.config.size_x;
-    let size_y = state.config.size_y;
-    let steps_per_gen = state.config.steps_per_generation;
-    let rng_seed = state.config.rng_seed;
-
-    // SAFETY wrapper for the state pointer. Each closure invocation accesses
-    // a unique `i` (and the unique `agent_id` it maps to), so the per-agent
-    // mutations target disjoint memory:
-    //   - scratch.per_agent_action_levels[i]
-    //   - scratch.per_agent_neuron_accum[i]
-    //   - population.agents[alive_ids[i]].nnet
-    // All other state reads (grid, signals, food, population.agents for
-    // sensors, sensors registry, config) are immutable. No data races.
-    //
-    // `as_mut` forces the closure to capture the whole `StatePtr` wrapper
-    // (which is `Send + Sync`) rather than partial-capturing the inner raw
-    // pointer (which is neither).
-    #[derive(Copy, Clone)]
-    struct StatePtr(*mut SimulationState);
-    impl StatePtr {
-        #[allow(clippy::mut_from_ref)]
-        unsafe fn as_mut<'a>(&self) -> &'a mut SimulationState {
-            unsafe { &mut *self.0 }
-        }
-    }
-    unsafe impl Send for StatePtr {}
-    unsafe impl Sync for StatePtr {}
-    let state_ptr = StatePtr(state as *mut SimulationState);
-
-    (0..n).into_par_iter().for_each(|i| {
-            // SAFETY: see StatePtr SAFETY note above; each closure invocation has
-            // a unique `i` and operates on disjoint memory.
-            let state: &mut SimulationState = unsafe { state_ptr.as_mut() };
-            let id = state.scratch.alive_ids[i];
-            let seed = phase1_seed_for(rng_seed, generation, sim_step, id);
-
-            let action_levels_ptr: *mut Vec<f32> =
-                &mut state.scratch.per_agent_action_levels[i];
-            let neuron_accum_ptr: *mut Vec<f32> =
-                &mut state.scratch.per_agent_neuron_accum[i];
-
-            unsafe {
-                phase1_one_agent(
-                    state,
-                    id,
-                    seed,
-                    action_count,
-                    sim_step,
-                    generation,
-                    size_x,
-                    size_y,
-                    steps_per_gen,
-                    action_levels_ptr,
-                    neuron_accum_ptr,
-                );
-            }
-        });
-    }
 
 /// Phase 1 for a single agent. Reads world state immutably; mutates only this
 /// agent's `nnet` and the per-agent scratch buffers passed in by pointer.
@@ -280,18 +242,13 @@ unsafe fn phase1_one_agent(
     action_levels_out: *mut Vec<f32>,
     neuron_accum_out: *mut Vec<f32>,
 ) {
-    // Skip dead agents — defensive; alive_ids snapshot should never contain
-    // dead slots, but a challenge hook could conceivably kill someone after
-    // the snapshot is taken.
+    // Skip dead agents defensively — a challenge hook may have killed
+    // someone after the snapshot.
     if state.population.get(id).is_none_or(|a| !a.alive) {
         unsafe { (*action_levels_out).clear(); }
         return;
     }
 
-    // SAFETY: we need both `&mut agent.nnet` (to update neuron outputs in
-    // place) and `&Population` (for neighbor-scanning sensors). These overlap
-    // only at the type level — sensors never read `nnet`, and `nnet` is a
-    // distinct sub-field of `agent`. Raw pointers split the borrow.
     let agent_ptr: *mut crate::agent::Agent = match state.population.get_mut(id) {
         Some(a) if a.alive => a as *mut _,
         _ => {
@@ -321,8 +278,6 @@ unsafe fn phase1_one_agent(
         step: sim_step,
     };
 
-    // SAFETY: action_levels_out and neuron_accum_out are unique per-agent
-    // slots in scratch; see function-level SAFETY note.
     let action_accum: &mut Vec<f32> = unsafe { &mut *action_levels_out };
     let neuron_accum: &mut Vec<f32> = unsafe { &mut *neuron_accum_out };
 
@@ -338,226 +293,248 @@ unsafe fn phase1_one_agent(
     });
 }
 
-/// Phase 2 — run action execution + age increment for every alive agent.
-/// Parallelizable via `parallel` feature; each thread gets its own
-/// move_queue, death_queue, and Rng, merged into the population's queues
-/// after the parallel section finishes.
+// ── Phase 2: actions + aging ───────────────────────────────────────────────
+
+/// Per-step args we want once at the top so the inner loops don't keep
+/// reborrowing them out of `state.config`.
+struct Phase2Args {
+    sim_step: u32,
+    generation: u32,
+    kill_enable: bool,
+    size_x: u16,
+    size_y: u16,
+    steps_per_gen: u32,
+}
+
 fn phase2_actions_all(state: &mut SimulationState, n: usize) {
-    #[cfg(feature = "parallel")]
-    {
-        let num_threads = state.config.num_threads.max(1) as usize;
-        if num_threads > 1 && n > 1 {
-            phase2_actions_all_parallel(state, n, num_threads);
+    let args = Phase2Args {
+        sim_step: state.sim_step,
+        generation: state.generation,
+        kill_enable: state.config.kill_enable,
+        size_x: state.config.size_x,
+        size_y: state.config.size_y,
+        steps_per_gen: state.config.steps_per_generation,
+    };
+
+    if use_parallel(state, n) {
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            let state_ptr = StatePtr(state as *mut SimulationState);
+
+            // Per-worker accumulator: thread-local move/death queues + Rng.
+            // Rayon `fold` calls the init closure once per worker, so each
+            // worker pays the Rng/Vec allocation cost once per step (not per
+            // agent). The reduce step then merges accumulators in arbitrary
+            // work-stealing order — non-deterministic but cheap.
+            let merged: (Vec<(AgentId, Coord)>, Vec<AgentId>) = (0..n)
+                .into_par_iter()
+                .fold(
+                    || (Vec::<(AgentId, Coord)>::with_capacity(64),
+                        Vec::<AgentId>::with_capacity(8),
+                        Rng::from_entropy()),
+                    |(mut moves, mut deaths, mut rng), i| {
+                        // SAFETY: unique `i` ⇒ unique agent_id ⇒ disjoint
+                        // mutation target. Signal writes are atomic. Queue
+                        // pushes go into thread-local Vecs.
+                        let state: &mut SimulationState = unsafe { state_ptr.as_mut() };
+                        unsafe {
+                            phase2_one_agent(state, i, &args, &mut moves, &mut deaths, &mut rng);
+                        }
+                        (moves, deaths, rng)
+                    },
+                )
+                .map(|(m, d, _rng)| (m, d))
+                .reduce(
+                    || (Vec::new(), Vec::new()),
+                    |(mut ma, mut da), (mb, db)| {
+                        ma.extend(mb);
+                        da.extend(db);
+                        (ma, da)
+                    },
+                );
+
+            state.population.move_queue.extend(merged.0);
+            state.population.death_queue.extend(merged.1);
             return;
         }
     }
-    phase2_actions_all_sequential(state, n);
-}
 
-fn phase2_actions_all_sequential(state: &mut SimulationState, n: usize) {
-    let sim_step = state.sim_step;
-    let generation = state.generation;
-    let kill_enable = state.config.kill_enable;
-    let size_x = state.config.size_x;
-    let size_y = state.config.size_y;
-    let steps_per_gen = state.config.steps_per_generation;
-
+    // Sequential fallback. Uses `state.rng` directly so single-thread runs
+    // stay bit-exact at a fixed seed.
+    let state_ptr: *mut SimulationState = state as *mut _;
     for i in 0..n {
-        let id = state.scratch.alive_ids[i];
-        if state.population.get(id).is_none_or(|a| !a.alive) { continue; }
-
-        // SAFETY: phase 2 holds `&mut Agent` for the unique id and `&mut`
-        // references to the population's queues + state.rng — all disjoint
-        // fields. Sensors aren't run here; the world view is read-only.
-        let agent_ptr: *mut crate::agent::Agent = match state.population.get_mut(id) {
-            Some(a) if a.alive => a as *mut _,
-            _ => continue,
-        };
-
-        let grid_ptr = &state.grid as *const _;
-        let signals_ptr = &state.signals as *const _;
-        let food_ptr = &state.food as *const _;
-        let pop_ptr = &state.population as *const _;
-        let action_levels_ptr: *const Vec<f32> = &state.scratch.per_agent_action_levels[i];
-
-        let world = World {
-            grid: unsafe { &*grid_ptr },
-            signals: unsafe { &*signals_ptr },
-            food: unsafe { &*food_ptr },
-            population: unsafe { &*pop_ptr },
-            size_x,
-            size_y,
-            steps_per_generation: steps_per_gen,
-            generation,
-            step: sim_step,
-        };
-
-        let agent: &mut crate::agent::Agent = unsafe { &mut *agent_ptr };
-
-        let mut ctx = ActionContext {
-            agent,
-            world: &world,
-            move_queue: &mut state.population.move_queue,
-            death_queue: &mut state.population.death_queue,
-            signals: &state.signals,
-            rng: &mut state.rng,
-            config_kill_enable: kill_enable,
-        };
-
-        let action_levels: &[f32] = unsafe { &*action_levels_ptr };
-        for (action_idx, &level) in action_levels.iter().enumerate() {
-            state.actions.execute(action_idx as u16, level, &mut ctx);
-        }
-
-        if let Some(agent) = state.population.get_mut(id) {
-            agent.age += 1;
+        // SAFETY: sequential loop. Each iteration uniquely owns the state
+        // mutations it makes; the raw pointer just sidesteps the borrow
+        // checker since `phase2_one_agent` needs split borrows of state.
+        unsafe {
+            let s: &mut SimulationState = &mut *state_ptr;
+            let move_q: *mut Vec<(AgentId, Coord)> = &mut s.population.move_queue;
+            let death_q: *mut Vec<AgentId> = &mut s.population.death_queue;
+            let rng: *mut Rng = &mut s.rng;
+            phase2_one_agent(s, i, &args, &mut *move_q, &mut *death_q, &mut *rng);
         }
     }
 }
 
-#[cfg(feature = "parallel")]
-fn phase2_actions_all_parallel(state: &mut SimulationState, n: usize, num_threads: usize) {
-    use rayon::prelude::*;
+/// Per-agent body shared by the parallel and sequential paths.
+///
+/// # Safety
+///
+/// - `agent_levels[i]` must be uniquely owned by this call (parallel mode
+///   guarantees this through `i` uniqueness).
+/// - `moves`, `deaths`, `rng` are thread-local accumulators in the parallel
+///   path and the population's queues in the sequential path; either way,
+///   no other concurrent reader/writer touches them during this call.
+unsafe fn phase2_one_agent(
+    state: &mut SimulationState,
+    i: usize,
+    args: &Phase2Args,
+    moves: &mut Vec<(AgentId, Coord)>,
+    deaths: &mut Vec<AgentId>,
+    rng: &mut Rng,
+) {
+    let id = state.scratch.alive_ids[i];
+    if state.population.get(id).is_none_or(|a| !a.alive) { return; }
 
-    let sim_step = state.sim_step;
-    let generation = state.generation;
-    let kill_enable = state.config.kill_enable;
-    let size_x = state.config.size_x;
-    let size_y = state.config.size_y;
-    let steps_per_gen = state.config.steps_per_generation;
+    let agent_ptr: *mut crate::agent::Agent = match state.population.get_mut(id) {
+        Some(a) if a.alive => a as *mut _,
+        _ => return,
+    };
 
-    // Per-thread Rng seeds — drawn sequentially from state.rng so each
-    // worker gets an independent stream that's reproducible across runs.
-    let rng_base: u64 = rand::RngCore::next_u64(&mut state.rng);
+    let grid_ptr = &state.grid as *const _;
+    let signals_ptr = &state.signals as *const _;
+    let food_ptr = &state.food as *const _;
+    let pop_ptr = &state.population as *const _;
+    let action_levels_ptr: *const Vec<f32> = &state.scratch.per_agent_action_levels[i];
 
-    // Build chunks. Each chunk processes a contiguous range of `i` and has
-    // its own local move_queue, death_queue, and Rng.
-    let chunk_size = n.div_ceil(num_threads.max(1)).max(1);
-    let chunk_starts: Vec<usize> = (0..n).step_by(chunk_size).collect();
+    let world = World {
+        grid: unsafe { &*grid_ptr },
+        signals: unsafe { &*signals_ptr },
+        food: unsafe { &*food_ptr },
+        population: unsafe { &*pop_ptr },
+        size_x: args.size_x,
+        size_y: args.size_y,
+        steps_per_generation: args.steps_per_gen,
+        generation: args.generation,
+        step: args.sim_step,
+    };
 
-    #[derive(Copy, Clone)]
-    struct StatePtr(*mut SimulationState);
-    impl StatePtr {
-        #[allow(clippy::mut_from_ref)]
-        unsafe fn as_mut<'a>(&self) -> &'a mut SimulationState {
-            unsafe { &mut *self.0 }
-        }
+    let agent: &mut crate::agent::Agent = unsafe { &mut *agent_ptr };
+
+    let mut ctx = ActionContext {
+        agent,
+        world: &world,
+        move_queue: moves,
+        death_queue: deaths,
+        signals: &state.signals,
+        rng,
+        config_kill_enable: args.kill_enable,
+    };
+
+    let action_levels: &[f32] = unsafe { &*action_levels_ptr };
+    for (action_idx, &level) in action_levels.iter().enumerate() {
+        state.actions.execute(action_idx as u16, level, &mut ctx);
     }
-    unsafe impl Send for StatePtr {}
-    unsafe impl Sync for StatePtr {}
-    let state_ptr = StatePtr(state as *mut SimulationState);
 
-    // Each chunk returns its local queues; merge sequentially after.
-    let chunk_results: Vec<(Vec<(AgentId, Coord)>, Vec<AgentId>)> = chunk_starts
-        .into_par_iter()
-        .enumerate()
-        .map(|(chunk_idx, start)| {
-            let end = (start + chunk_size).min(n);
-
-            let mut local_move = Vec::with_capacity(end - start);
-            let mut local_death = Vec::with_capacity(8);
-            let mut local_rng = Rng::seeded(rng_base.wrapping_add(chunk_idx as u64 + 1));
-
-            // SAFETY: each chunk processes a disjoint range of `i`, mapping
-            // to disjoint agent_ids in alive_ids. The state mutations are:
-            //   - agents[id].{responsiveness, osc_period, ..., age} — unique
-            //     id per chunk iteration
-            //   - state.signals (atomic AtomicU8 cells, &Signals)
-            //   - local_move, local_death, local_rng — chunk-local
-            // No two chunks alias on agent state.
-            let state: &mut SimulationState = unsafe { state_ptr.as_mut() };
-
-            for i in start..end {
-                let id = state.scratch.alive_ids[i];
-                if state.population.get(id).is_none_or(|a| !a.alive) { continue; }
-
-                let agent_ptr: *mut crate::agent::Agent = match state.population.get_mut(id) {
-                    Some(a) if a.alive => a as *mut _,
-                    _ => continue,
-                };
-
-                let grid_ptr = &state.grid as *const _;
-                let signals_ptr = &state.signals as *const _;
-                let food_ptr = &state.food as *const _;
-                let pop_ptr = &state.population as *const _;
-                let action_levels_ptr: *const Vec<f32> =
-                    &state.scratch.per_agent_action_levels[i];
-
-                let world = World {
-                    grid: unsafe { &*grid_ptr },
-                    signals: unsafe { &*signals_ptr },
-                    food: unsafe { &*food_ptr },
-                    population: unsafe { &*pop_ptr },
-                    size_x,
-                    size_y,
-                    steps_per_generation: steps_per_gen,
-                    generation,
-                    step: sim_step,
-                };
-
-                let agent: &mut crate::agent::Agent = unsafe { &mut *agent_ptr };
-
-                let mut ctx = ActionContext {
-                    agent,
-                    world: &world,
-                    move_queue: &mut local_move,
-                    death_queue: &mut local_death,
-                    signals: &state.signals,
-                    rng: &mut local_rng,
-                    config_kill_enable: kill_enable,
-                };
-
-                let action_levels: &[f32] = unsafe { &*action_levels_ptr };
-                for (action_idx, &level) in action_levels.iter().enumerate() {
-                    state.actions.execute(action_idx as u16, level, &mut ctx);
-                }
-
-                // Age advance — per-agent, safe to do here.
-                if let Some(agent) = state.population.get_mut(id) {
-                    agent.age += 1;
-                }
-            }
-
-            (local_move, local_death)
-        })
-        .collect();
-
-    // Merge chunk-local queues into the population's queues.
-    for (moves, deaths) in chunk_results {
-        state.population.move_queue.extend(moves);
-        state.population.death_queue.extend(deaths);
+    if let Some(agent) = state.population.get_mut(id) {
+        agent.age += 1;
     }
 }
 
-/// Sequential post-step: apply food eating + energy decrement + queue any
-/// agents that ran out of energy for death. Runs after all parallel action
-/// execution so food cell writes don't need synchronization (each agent
-/// touches only its own loc, which is unique per the grid invariant).
-fn phase2_energy_sequential(state: &mut SimulationState, n: usize) {
+// ── Phase 2b: energy bookkeeping ───────────────────────────────────────────
+
+fn phase2_energy_all(state: &mut SimulationState, n: usize) {
     let cost = state.config.energy_per_step_cost;
 
-    for i in 0..n {
-        let id = state.scratch.alive_ids[i];
-        let Some(agent) = state.population.get(id) else { continue };
-        if !agent.alive { continue; }
+    if use_parallel(state, n) {
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            let state_ptr = StatePtr(state as *mut SimulationState);
 
-        let loc = agent.loc;
-        let food_val = state.food.get(loc);
-        let absorbed = if food_val > 0.0 {
-            let v = food_val.min(cost * 3.0);
-            state.food.set(loc, food_val - v);
-            v
-        } else {
-            0.0
-        };
+            // Each agent only touches its own cell in `food` (grid invariant:
+            // one agent per cell). Per-agent energy mutation is unique by
+            // agent id. Thread-local death queues are merged at the end.
+            let merged_deaths: Vec<AgentId> = (0..n)
+                .into_par_iter()
+                .fold(
+                    || Vec::<AgentId>::with_capacity(8),
+                    |mut deaths, i| {
+                        let state: &mut SimulationState = unsafe { state_ptr.as_mut() };
+                        unsafe {
+                            energy_one_agent(state, i, cost, &mut deaths);
+                        }
+                        deaths
+                    },
+                )
+                .reduce(Vec::new, |mut a, b| { a.extend(b); a });
 
-        if let Some(agent) = state.population.get_mut(id) {
-            agent.energy = (agent.energy + absorbed).clamp(0.0, 1.0);
-            agent.energy -= cost;
-            if agent.energy <= 0.0 {
-                agent.energy = 0.0;
-                state.population.death_queue.push(id);
-            }
+            state.population.death_queue.extend(merged_deaths);
+            return;
         }
+    }
+
+    // Sequential fallback.
+    let state_ptr: *mut SimulationState = state as *mut _;
+    for i in 0..n {
+        unsafe {
+            let s: &mut SimulationState = &mut *state_ptr;
+            let dq: *mut Vec<AgentId> = &mut s.population.death_queue;
+            energy_one_agent(s, i, cost, &mut *dq);
+        }
+    }
+}
+
+/// # Safety
+///
+/// `deaths` must not be aliased by any other thread for the duration of this
+/// call. `state.food` is mutated only at the agent's own loc, which is unique
+/// per (agent_id, step) by the grid-occupancy invariant.
+unsafe fn energy_one_agent(
+    state: &mut SimulationState,
+    i: usize,
+    cost: f32,
+    deaths: &mut Vec<AgentId>,
+) {
+    let id = state.scratch.alive_ids[i];
+    let Some(agent) = state.population.get(id) else { return };
+    if !agent.alive { return; }
+
+    let loc = agent.loc;
+    let food_val = state.food.get(loc);
+    let absorbed = if food_val > 0.0 {
+        let v = food_val.min(cost * 3.0);
+        state.food.set(loc, food_val - v);
+        v
+    } else {
+        0.0
+    };
+
+    if let Some(agent) = state.population.get_mut(id) {
+        agent.energy = (agent.energy + absorbed).clamp(0.0, 1.0);
+        agent.energy -= cost;
+        if agent.energy <= 0.0 {
+            agent.energy = 0.0;
+            deaths.push(id);
+        }
+    }
+}
+
+// ── Signal fade ────────────────────────────────────────────────────────────
+
+fn fade_signals(state: &mut SimulationState) {
+    let layer_count = state.signals.layer_count();
+    if layer_count == 0 { return; }
+
+    #[cfg(feature = "parallel")]
+    {
+        if state.config.num_threads.max(1) > 1 {
+            state.signals.fade_all_parallel();
+            return;
+        }
+    }
+    for layer in 0..layer_count {
+        state.signals.fade(layer);
     }
 }

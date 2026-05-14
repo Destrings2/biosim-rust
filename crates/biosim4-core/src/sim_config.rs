@@ -32,7 +32,6 @@ pub struct SimConfig {
     pub size_y: u16,
     pub population: u32,
     pub num_threads: u32,
-    pub deterministic: bool,
     pub rng_seed: u64,
     pub signal_layers: u8,
 
@@ -82,7 +81,6 @@ impl Default for SimConfig {
             size_y: 128,
             population: 3000,
             num_threads: 4,
-            deterministic: false,
             rng_seed: 12345,
             signal_layers: 1,
             steps_per_generation: 300,
