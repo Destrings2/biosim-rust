@@ -16,14 +16,14 @@
 //!   actions at runtime.
 //! - **Challenge tracking**: `challenge_bits` — 32-bit bitmask for challenges
 //!   that require per-agent per-step state (e.g., `touch_any_wall`).
-//! - **Breed/extensibility**: `breed_id`, `props` — a NetLogo-style property
-//!   bag. `PropValue` supports f32, i32, bool, and String.
+//! - **Extensibility**: `props` — a NetLogo-style property bag. `PropValue`
+//!   supports f32, i32, bool, and String.
 //!
-//! `AgentSnapshot` is a lightweight serialization DTO for WASM/frontend use.
+//! `AgentSnapshot` is a lightweight serialization DTO for embedders that
+//! need to ship per-agent state across an FFI / network boundary.
 
 use std::collections::HashMap;
 use crate::genome::{Genome, NeuralNet};
-use crate::registry::breed::{BreedId, DEFAULT_BREED};
 use crate::types::{Coord, Dir};
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +51,7 @@ pub struct Agent {
     // Turtle-style properties
     /// Persistent heading — kept even when stationary.
     pub heading: Dir,
-    /// RGB color. Derived from genome by default; breed or props can override.
+    /// RGB color. Derived from genome by default; `props` can override.
     pub color: [u8; 3],
 
     // Life state
@@ -76,8 +76,7 @@ pub struct Agent {
     // Memory registers — persist across steps, reset to 0 each generation
     pub memory: [f32; 4],
 
-    // Breed and extensible properties
-    pub breed_id: BreedId,
+    // Extensible property bag (NetLogo-style turtle variables).
     pub props: HashMap<String, PropValue>,
 }
 
@@ -101,7 +100,6 @@ impl Agent {
             last_move_dir: Dir::default(),
             challenge_bits: 0,
             memory: [0.0; 4],
-            breed_id: DEFAULT_BREED,
             props: HashMap::new(),
         }
     }
@@ -126,7 +124,8 @@ fn genome_color(genome: &Genome) -> [u8; 3] {
     }
 }
 
-/// Lightweight snapshot for WASM/frontend serialization.
+/// Lightweight snapshot for embedders that ship per-agent state across an
+/// FFI / network boundary.
 #[derive(Serialize, Deserialize)]
 pub struct AgentSnapshot {
     pub id: AgentId,
@@ -136,7 +135,6 @@ pub struct AgentSnapshot {
     pub color: [u8; 3],
     pub age: u32,
     pub alive: bool,
-    pub breed_id: BreedId,
     pub responsiveness: f32,
     pub genome_length: usize,
 }
@@ -151,7 +149,6 @@ impl AgentSnapshot {
             color: a.color,
             age: a.age,
             alive: a.alive,
-            breed_id: a.breed_id,
             responsiveness: a.responsiveness,
             genome_length: a.genome.len(),
         }

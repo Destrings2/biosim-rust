@@ -29,7 +29,6 @@ use crate::barriers::create_barrier;
 use crate::grid::Grid;
 use crate::population::Population;
 use crate::registry::action::ActionRegistry;
-use crate::registry::breed::BreedRegistry;
 use crate::registry::challenge::{ChallengeConfig, ChallengeRegistry};
 use crate::registry::sensor::SensorRegistry;
 use crate::rng::Rng;
@@ -62,7 +61,6 @@ pub struct SimulationState {
     pub sensors: SensorRegistry,
     pub actions: ActionRegistry,
     pub challenges: ChallengeRegistry,
-    pub breeds: BreedRegistry,
     pub rng: Rng,
     /// Scratch buffers reused each step. Not part of the simulation state proper
     /// — they hold no semantic information between steps. Public so `sim_step`
@@ -128,8 +126,6 @@ impl SimulationState {
         let mut challenges = ChallengeRegistry::new();
         crate::challenges::register_builtin_challenges(&mut challenges);
 
-        let breeds = BreedRegistry::new();
-
         let mut grid = Grid::new(config.size_x, config.size_y);
         create_barrier(&mut grid, config.barrier_type);
 
@@ -153,7 +149,6 @@ impl SimulationState {
             sensors,
             actions,
             challenges,
-            breeds,
             rng,
             scratch: StepScratch::default(),
             user_barriers: HashMap::new(),
