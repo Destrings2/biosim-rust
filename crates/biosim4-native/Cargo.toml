@@ -9,3 +9,6 @@ serde_json = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
 rayon = "1.8"
+
+[lints]
+workspace = true

@@ -68,7 +68,7 @@ fn every_sensor_returns_in_unit_interval() {
 
     // Set up a world with a few agents and some signals so density sensors have data
     let grid = Grid::new(cfg.size_x, cfg.size_y);
-    let mut signals = Signals::new(3, cfg.size_x, cfg.size_y);
+    let signals = Signals::new(3, cfg.size_x, cfg.size_y);
     let mut population = Population::new(cfg.population);
 
     // Spawn a "self" agent at center

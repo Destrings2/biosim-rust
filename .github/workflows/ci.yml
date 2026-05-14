@@ -18,7 +18,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       # Bevy needs system libs on Linux runners.
       - name: Install Linux Bevy deps
@@ -57,33 +56,6 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
-
-  wasm:
-    name: wasm build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build -p biosim4-wasm --target wasm32-unknown-unknown --release
-
-  frontend:
-    name: frontend typecheck
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
 
   deny:
     name: cargo deny

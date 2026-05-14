@@ -4,13 +4,12 @@ A Rust port of a genetic neural-net artificial-life simulator. Agents
 evolve over generations on a 2D grid, guided by pluggable sensors,
 actions, and survival challenges.
 
-The same simulation engine runs in three places:
+The same simulation engine powers two frontends:
 
-- **Native CLI** (`biosim4-native`) — JSON config in, stats out.
 - **Native GUI** (`biosim4-bevy`) — Bevy + egui frontend with live
   inspection, parameter tweaking, and a GPU fast-forward path.
-- **Web** (`biosim4-wasm` + `frontend/`) — `wasm-bindgen`-driven
-  `Simulator` class wrapped by a React/Vite SPA.
+  This is the primary interface.
+- **Native CLI** (`biosim4-native`) — JSON config in, stats out.
 
 ## Crate map
 
@@ -19,7 +18,6 @@ The same simulation engine runs in three places:
 | [`biosim4-core`](crates/biosim4-core) | Platform-agnostic engine. All genetics, neural nets, environment, stepping, and reproduction logic. |
 | [`biosim4-native`](crates/biosim4-native) | CLI binary. Reads a JSON config, runs the simulation, prints stats. |
 | [`biosim4-bevy`](crates/biosim4-bevy) | Bevy frontend. Parallel stepping via rayon, optional GPU fast-forward. |
-| [`biosim4-wasm`](crates/biosim4-wasm) | WebAssembly bindings consumed by the React frontend. |
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the module DAG,
 generation lifecycle, and cross-cutting patterns
@@ -30,14 +28,11 @@ documents the per-step execution path.
 ## Quick start
 
 ```sh
-# Native CLI
-cargo run -p biosim4-native --release -- --config configs/default.json
-
 # Native GUI (recommended for exploration)
 cargo run -p biosim4-bevy --release
 
-# Web frontend
-cd frontend && npm install && npm run dev
+# Native CLI
+cargo run -p biosim4-native --release -- --config configs/default.json
 ```
 
 Release mode is strongly recommended for both native binaries. Dev mode
@@ -54,20 +49,6 @@ is first on `PATH`:
 ```sh
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
-
-## Building the WASM frontend
-
-```sh
-cd frontend
-npm install      # one-time
-npm run dev      # builds wasm in dev mode, starts Vite
-npm run build    # production build: wasm-opt -O3 + Vite build
-npm run typecheck
-```
-
-The WASM build script (`frontend/scripts/build-wasm.mjs`) wraps
-`wasm-pack` and outputs to `frontend/pkg/` (gitignored). Both `pkg/`
-and `dist/` are local build artifacts.
 
 ## Testing
 
@@ -103,8 +84,7 @@ full contract.
 ## Extending
 
 Adding a sensor, action, or challenge is a single trait impl. See
-"Extension Points" in `docs/ARCHITECTURE.md`. Custom JS sensors and
-actions can also be registered at runtime through the WASM API.
+"Extension Points" in `docs/ARCHITECTURE.md`.
 
 ## License
 

@@ -23,7 +23,7 @@ fn new_signals_layer_starts_at_zero() {
 #[test]
 fn increment_center_gets_plus_2_neighbors_get_plus_1() {
     let grid = Grid::new(10, 10);
-    let mut s = Signals::new(1, 10, 10);
+    let s = Signals::new(1, 10, 10);
     let center = Coord::new(5, 5);
     s.increment(0, center, &grid);
     assert_eq!(s.get(0, center), 2, "center should get +2");
@@ -52,7 +52,7 @@ fn fade_decreases_all_values_by_one_with_floor() {
 #[test]
 fn increment_saturates_at_signal_max() {
     let grid = Grid::new(5, 5);
-    let mut s = Signals::new(1, 5, 5);
+    let s = Signals::new(1, 5, 5);
     let center = Coord::new(2, 2);
     // Many increments should never overflow u8
     for _ in 0..1000 {
@@ -64,7 +64,7 @@ fn increment_saturates_at_signal_max() {
 #[test]
 fn increment_at_corner_does_not_panic() {
     let grid = Grid::new(10, 10);
-    let mut s = Signals::new(1, 10, 10);
+    let s = Signals::new(1, 10, 10);
     s.increment(0, Coord::new(0, 0), &grid);
     s.increment(0, Coord::new(9, 9), &grid);
     assert_eq!(s.get(0, Coord::new(0, 0)), 2);
@@ -74,7 +74,7 @@ fn increment_at_corner_does_not_panic() {
 #[test]
 fn get_density_normalized_to_unit_interval() {
     let grid = Grid::new(10, 10);
-    let mut s = Signals::new(1, 10, 10);
+    let s = Signals::new(1, 10, 10);
     // Empty layer → 0
     let d_empty = s.get_density(0, Coord::new(5, 5), 2.0, &grid);
     assert!(d_empty.abs() < 1e-6);

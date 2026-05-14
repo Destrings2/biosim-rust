@@ -126,7 +126,7 @@ fn move_east_with_high_level_queues_move_to_x_plus_1() {
         &cfg, &grid, &mut signals, &mut population, id, &mut arng,
         |ctx| {
             for _ in 0..20 {
-                reg.execute(east_idx as u16, 5.0, ctx);
+                reg.execute(east_idx, 5.0, ctx);
             }
             ctx.move_queue.clone()
         },
@@ -158,7 +158,7 @@ fn move_west_queues_move_to_x_minus_1() {
     let mut arng = Rng::seeded(123);
     let queued: Vec<(AgentId, Coord)> = with_action_ctx(
         &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| { for _ in 0..20 { reg.execute(idx as u16, 5.0, ctx); } ctx.move_queue.clone() },
+        |ctx| { for _ in 0..20 { reg.execute(idx, 5.0, ctx); } ctx.move_queue.clone() },
     );
     for (_, t) in &queued {
         assert_eq!(t.x, 4, "west move should be x-1");
@@ -184,7 +184,7 @@ fn move_north_queues_move_to_y_plus_1() {
     let mut arng = Rng::seeded(123);
     let queued: Vec<(AgentId, Coord)> = with_action_ctx(
         &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| { for _ in 0..20 { reg.execute(idx as u16, 5.0, ctx); } ctx.move_queue.clone() },
+        |ctx| { for _ in 0..20 { reg.execute(idx, 5.0, ctx); } ctx.move_queue.clone() },
     );
     for (_, t) in &queued {
         assert_eq!(t.x, 5);
@@ -210,7 +210,7 @@ fn move_blocked_by_grid_boundary_does_not_queue() {
     let mut arng = Rng::seeded(0);
     let queued: Vec<(AgentId, Coord)> = with_action_ctx(
         &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| { for _ in 0..50 { reg.execute(east_idx as u16, 10.0, ctx); } ctx.move_queue.clone() },
+        |ctx| { for _ in 0..50 { reg.execute(east_idx, 10.0, ctx); } ctx.move_queue.clone() },
     );
     assert!(queued.is_empty(), "move_east at right edge must not queue any moves");
 }
@@ -236,7 +236,7 @@ fn move_blocked_by_occupied_cell_does_not_queue() {
     let mut arng = Rng::seeded(0);
     let queued: Vec<(AgentId, Coord)> = with_action_ctx(
         &cfg, &grid, &mut signals, &mut population, id_a, &mut arng,
-        |ctx| { for _ in 0..50 { reg.execute(east_idx as u16, 10.0, ctx); } ctx.move_queue.clone() },
+        |ctx| { for _ in 0..50 { reg.execute(east_idx, 10.0, ctx); } ctx.move_queue.clone() },
     );
     // try_move() filters by is_empty_at — should not queue
     assert!(queued.is_empty(), "move into occupied cell must not queue, got {:?}", queued);
@@ -260,9 +260,9 @@ fn set_responsiveness_clamps_to_unit_interval() {
     let (high, low) = with_action_ctx(
         &cfg, &grid, &mut signals, &mut population, id, &mut arng,
         |ctx| {
-            reg.execute(idx as u16, 100.0, ctx);
+            reg.execute(idx, 100.0, ctx);
             let h = ctx.agent.responsiveness;
-            reg.execute(idx as u16, -100.0, ctx);
+            reg.execute(idx, -100.0, ctx);
             let l = ctx.agent.responsiveness;
             (h, l)
         },
@@ -289,7 +289,7 @@ fn set_oscillator_period_produces_positive_period() {
     let mut arng = Rng::seeded(0);
     with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
         for &lvl in &[-10.0, -1.0, 0.0, 1.0, 10.0] {
-            reg.execute(idx as u16, lvl, ctx);
+            reg.execute(idx, lvl, ctx);
             assert!(ctx.agent.osc_period > 0, "osc_period must be positive after level {}", lvl);
         }
     });
@@ -397,7 +397,7 @@ fn kill_forward_disabled_never_queues_death() {
     let death_q = with_action_ctx(
         &cfg, &grid, &mut signals, &mut population, id_killer, &mut arng,
         |ctx| {
-            for _ in 0..30 { reg.execute(kill_idx as u16, 10.0, ctx); }
+            for _ in 0..30 { reg.execute(kill_idx, 10.0, ctx); }
             ctx.death_queue.clone()
         },
     );
@@ -437,7 +437,7 @@ fn kill_forward_enabled_queues_victim_when_adjacent() {
     let death_q = with_kill_ctx(
         &cfg, &grid, &mut signals, &mut population, id_killer, &mut arng,
         |ctx| {
-            reg.execute(kill_idx as u16, 10.0, ctx);
+            reg.execute(kill_idx, 10.0, ctx);
             ctx.death_queue.clone()
         },
     );
@@ -484,7 +484,7 @@ fn kill_forward_drain_marks_victim_dead_and_clears_grid() {
     let death_q = with_kill_ctx(
         &cfg, &grid, &mut signals, &mut population, id_killer, &mut arng,
         |ctx| {
-            reg.execute(kill_idx as u16, 10.0, ctx);
+            reg.execute(kill_idx, 10.0, ctx);
             ctx.death_queue.clone()
         },
     );
@@ -528,7 +528,7 @@ fn kill_forward_no_victim_in_front_does_not_crash() {
     let death_q = with_kill_ctx(
         &cfg, &grid, &mut signals, &mut population, id, &mut arng,
         |ctx| {
-            for _ in 0..20 { reg.execute(kill_idx as u16, 10.0, ctx); }
+            for _ in 0..20 { reg.execute(kill_idx, 10.0, ctx); }
             ctx.death_queue.clone()
         },
     );

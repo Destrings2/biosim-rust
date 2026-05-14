@@ -280,7 +280,7 @@ fn disabled_sensor_returns_zero_before_commit() {
 
     let agent_ref = population.get(1).unwrap();
     let mut srng = Rng::seeded(0);
-    let before = reg.evaluate(loc_x_enabled_idx as u16, &mut SensorContext {
+    let before = reg.evaluate(loc_x_enabled_idx, &mut SensorContext {
         agent: agent_ref, world: &world, sim_step: 0, rng: &mut srng,
     });
     assert!(before > 0.0, "loc_x at center should be non-zero before disable: {}", before);
@@ -288,7 +288,7 @@ fn disabled_sensor_returns_zero_before_commit() {
     // Disable it (pending — no commit). The active_map still points to loc_x,
     // but evaluate() checks the pending disabled set and returns 0.0.
     reg.set_enabled("loc_x", false);
-    let after = reg.evaluate(loc_x_enabled_idx as u16, &mut SensorContext {
+    let after = reg.evaluate(loc_x_enabled_idx, &mut SensorContext {
         agent: agent_ref, world: &world, sim_step: 0, rng: &mut srng,
     });
     assert_eq!(after, 0.0, "disabled sensor must return 0.0 immediately (mid-gen)");
@@ -323,7 +323,7 @@ fn disabled_action_is_not_executed_before_commit() {
     let queued_before = with_action_ctx(
         &cfg, &grid, &mut signals, &mut population, id, &mut arng,
         |ctx| {
-            for _ in 0..20 { reg.execute(east_enabled_idx as u16, 10.0, ctx); }
+            for _ in 0..20 { reg.execute(east_enabled_idx, 10.0, ctx); }
             ctx.move_queue.clone()
         },
     );
@@ -336,7 +336,7 @@ fn disabled_action_is_not_executed_before_commit() {
     let queued_after = with_action_ctx(
         &cfg, &grid, &mut signals, &mut population, id, &mut arng2,
         |ctx| {
-            for _ in 0..20 { reg.execute(east_enabled_idx as u16, 10.0, ctx); }
+            for _ in 0..20 { reg.execute(east_enabled_idx, 10.0, ctx); }
             ctx.move_queue.clone()
         },
     );
