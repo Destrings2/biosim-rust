@@ -49,7 +49,7 @@ impl Gene {
 
     /// Weight scaled to approximately -4.0..4.0
     pub fn weight_as_float(&self) -> f32 {
-        self.weight_raw() as f32 / 8192.0
+        self.weight_raw() as f32 / crate::constants::GENE_WEIGHT_SCALE
     }
 
     pub fn is_sensor_source(&self) -> bool { self.source_type() == SOURCE_SENSOR }

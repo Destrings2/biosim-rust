@@ -170,13 +170,16 @@ impl Sensor for PopulationSensor {
     fn id(&self) -> &str { "population" }
     fn name(&self) -> &str { "population density" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        let radius = 2.5; // default population sensor radius
         let mut count = 0u32;
         let mut total = 0u32;
-        crate::grid::visit_neighborhood(ctx.world.grid, ctx.agent.loc, radius, |loc| {
-            total += 1;
-            if ctx.world.grid.is_occupied_at(loc) { count += 1; }
-        });
+        crate::grid::visit_neighborhood(
+            ctx.world.grid, ctx.agent.loc,
+            crate::constants::POPULATION_SENSOR_RADIUS,
+            |loc| {
+                total += 1;
+                if ctx.world.grid.is_occupied_at(loc) { count += 1; }
+            },
+        );
         if total == 0 { return 0.0; }
         count as f32 / total as f32
     }
@@ -188,7 +191,8 @@ impl Sensor for PopulationFwd {
     fn name(&self) -> &str { "population fwd" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         population_density_along_axis(
-            ctx.agent.loc, ctx.agent.last_move_dir, 2.5,
+            ctx.agent.loc, ctx.agent.last_move_dir,
+            crate::constants::POPULATION_SENSOR_RADIUS,
             ctx.world.grid, ctx.world.population,
         )
     }
@@ -199,12 +203,13 @@ impl Sensor for PopulationLR {
     fn id(&self) -> &str { "population_lr" }
     fn name(&self) -> &str { "population LR" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+        let r = crate::constants::POPULATION_SENSOR_RADIUS;
         let left = population_density_along_axis(
-            ctx.agent.loc, ctx.agent.last_move_dir.rotate90ccw(), 2.5,
+            ctx.agent.loc, ctx.agent.last_move_dir.rotate90ccw(), r,
             ctx.world.grid, ctx.world.population,
         );
         let right = population_density_along_axis(
-            ctx.agent.loc, ctx.agent.last_move_dir.rotate90cw(), 2.5,
+            ctx.agent.loc, ctx.agent.last_move_dir.rotate90cw(), r,
             ctx.world.grid, ctx.world.population,
         );
         ((left + right) / 2.0).clamp(0.0, 1.0)
@@ -219,7 +224,7 @@ impl Sensor for GeneticSimFwd {
         let step = ctx.agent.last_move_dir.as_normalized_coord();
         let grid = ctx.world.grid;
         let pop  = ctx.world.population;
-        for i in 1..=4i16 {
+        for i in 1..=crate::constants::GENETIC_SIM_PROBE_DIST {
             let target = crate::types::Coord::new(
                 ctx.agent.loc.x + step.x * i,
                 ctx.agent.loc.y + step.y * i,
@@ -243,7 +248,8 @@ impl Sensor for BarrierFwd {
     fn name(&self) -> &str { "barrier fwd" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         1.0 - short_probe_barrier_fwd(
-            ctx.agent.loc, ctx.agent.last_move_dir, 4, ctx.world.grid,
+            ctx.agent.loc, ctx.agent.last_move_dir,
+            crate::constants::SHORT_PROBE_DIST, ctx.world.grid,
         )
     }
 }
@@ -253,7 +259,10 @@ impl Sensor for BarrierLR {
     fn id(&self) -> &str { "barrier_lr" }
     fn name(&self) -> &str { "barrier LR" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        1.0 - short_probe_barrier_lr(ctx.agent.loc, ctx.agent.last_move_dir, 4, ctx.world.grid)
+        1.0 - short_probe_barrier_lr(
+            ctx.agent.loc, ctx.agent.last_move_dir,
+            crate::constants::SHORT_PROBE_DIST, ctx.world.grid,
+        )
     }
 }
 
@@ -268,7 +277,7 @@ impl Sensor for KillBarrierFwd {
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let step = ctx.agent.last_move_dir.as_normalized_coord();
         if step.x == 0 && step.y == 0 { return 0.0; }
-        let max = 4i16;
+        let max = crate::constants::GENETIC_SIM_PROBE_DIST;
         for i in 1..=max {
             let p = crate::types::Coord::new(
                 ctx.agent.loc.x + step.x * i,
@@ -318,7 +327,7 @@ impl Sensor for Osc1 {
     fn name(&self) -> &str { "oscillator 1" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let phase = ctx.sim_step % ctx.agent.osc_period;
-        (std::f32::consts::PI * 2.0 * phase as f32 / ctx.agent.osc_period as f32).sin() * 0.5 + 0.5
+        (std::f32::consts::TAU * phase as f32 / ctx.agent.osc_period as f32).sin() * 0.5 + 0.5
     }
 }
 
@@ -351,7 +360,10 @@ macro_rules! signal_sensors {
             fn id(&self)   -> &str { $id }
             fn name(&self) -> &str { $name }
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-                ctx.world.signals.get_density($layer, ctx.agent.loc, 2.0, ctx.world.grid)
+                ctx.world.signals.get_density(
+                    $layer, ctx.agent.loc,
+                    crate::constants::SIGNAL_SENSOR_RADIUS, ctx.world.grid,
+                )
             }
         }
         struct $sf;
@@ -361,7 +373,8 @@ macro_rules! signal_sensors {
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
                 signal_density_along_axis(
                     $layer, ctx.agent.loc, ctx.agent.last_move_dir,
-                    2.0, ctx.world.grid, ctx.world.signals,
+                    crate::constants::SIGNAL_SENSOR_RADIUS,
+                    ctx.world.grid, ctx.world.signals,
                 )
             }
         }
@@ -370,10 +383,11 @@ macro_rules! signal_sensors {
             fn id(&self)   -> &str { $idlr }
             fn name(&self) -> &str { $namelr }
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+                let r = crate::constants::SIGNAL_SENSOR_RADIUS;
                 let left  = signal_density_along_axis($layer, ctx.agent.loc,
-                    ctx.agent.last_move_dir.rotate90ccw(), 2.0, ctx.world.grid, ctx.world.signals);
+                    ctx.agent.last_move_dir.rotate90ccw(), r, ctx.world.grid, ctx.world.signals);
                 let right = signal_density_along_axis($layer, ctx.agent.loc,
-                    ctx.agent.last_move_dir.rotate90cw(),  2.0, ctx.world.grid, ctx.world.signals);
+                    ctx.agent.last_move_dir.rotate90cw(),  r, ctx.world.grid, ctx.world.signals);
                 ((left + right) / 2.0).clamp(0.0, 1.0)
             }
         }
@@ -440,7 +454,10 @@ impl Sensor for FoodFwd {
     fn id(&self)   -> &str { "food_fwd" }
     fn name(&self) -> &str { "food fwd" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        ctx.world.food.get_density_fwd(ctx.agent.loc, ctx.agent.last_move_dir, 3.0, ctx.world.grid)
+        ctx.world.food.get_density_fwd(
+            ctx.agent.loc, ctx.agent.last_move_dir,
+            crate::constants::FOOD_SENSOR_RADIUS, ctx.world.grid,
+        )
     }
 }
 
@@ -449,10 +466,11 @@ impl Sensor for FoodLR {
     fn id(&self)   -> &str { "food_lr" }
     fn name(&self) -> &str { "food LR" }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+        let r = crate::constants::FOOD_SENSOR_RADIUS;
         let left  = ctx.world.food.get_density_fwd(ctx.agent.loc,
-            ctx.agent.last_move_dir.rotate90ccw(), 3.0, ctx.world.grid);
+            ctx.agent.last_move_dir.rotate90ccw(), r, ctx.world.grid);
         let right = ctx.world.food.get_density_fwd(ctx.agent.loc,
-            ctx.agent.last_move_dir.rotate90cw(),  3.0, ctx.world.grid);
+            ctx.agent.last_move_dir.rotate90cw(),  r, ctx.world.grid);
         ((left + right) / 2.0).clamp(0.0, 1.0)
     }
 }

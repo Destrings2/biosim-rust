@@ -1,5 +1,6 @@
 pub mod types;
 pub mod rng;
+pub mod constants;
 pub mod sim_config;
 pub mod registry;
 pub mod genome;

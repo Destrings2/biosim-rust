@@ -45,8 +45,8 @@
 //! incorrect results — each neuron's accumulator must be fully summed before
 //! clamping.
 
-use std::collections::HashMap;
 use crate::genome::gene::Gene;
+use std::collections::HashMap;
 
 /// Parameters needed to wire a genome into a NeuralNet.
 #[derive(Clone, Copy, Debug)]
@@ -89,41 +89,43 @@ impl NeuralNet {
     }
 }
 
-/// Compile a genome into a NeuralNet.
-pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
-    if genome.is_empty() || cfg.sensor_count == 0 || cfg.action_count == 0 {
-        return NeuralNet::default();
-    }
+/// Per-neuron bookkeeping during wiring.
+#[derive(Default)]
+struct NodeInfo {
+    num_outputs: u32,
+    num_self_inputs: u32,
+    num_other_inputs: u32,
+    /// Compact index 0..N assigned after culling; meaningless before Step 4.
+    remapped_idx: u16,
+}
+
+/// Step 1: remap raw gene indices via modulo so the genome is valid against
+/// the current sensor/action/neuron counts.
+fn remap_gene_indices(genome: &[Gene], cfg: WiringConfig) -> Vec<Gene> {
     let max_n = cfg.max_neurons as u8;
+    genome
+        .iter()
+        .map(|g| {
+            let sn = if g.is_sensor_source() {
+                g.source_num() % cfg.sensor_count as u8
+            } else {
+                g.source_num() % max_n
+            };
+            let sk = if g.is_action_sink() {
+                g.sink_num() % cfg.action_count as u8
+            } else {
+                g.sink_num() % max_n
+            };
+            Gene::new(g.source_type(), sn, g.sink_type(), sk, g.weight_raw())
+        })
+        .collect()
+}
 
-    // Step 1: remap raw indices via modulo
-    let remapped: Vec<Gene> = genome.iter().map(|g| {
-        let sn = if g.is_sensor_source() {
-            g.source_num() % cfg.sensor_count as u8
-        } else {
-            g.source_num() % max_n
-        };
-        let sk = if g.is_action_sink() {
-            g.sink_num() % cfg.action_count as u8
-        } else {
-            g.sink_num() % max_n
-        };
-        Gene::new(g.source_type(), sn, g.sink_type(), sk, g.weight_raw())
-    }).collect();
-
-    // Step 2: build node map — count inputs/outputs per neuron index
-    #[derive(Default)]
-    struct NodeInfo {
-        num_outputs: u32,
-        num_self_inputs: u32,
-        num_other_inputs: u32,
-        remapped_idx: u16, // assigned after culling
-    }
+/// Step 2: count inputs/outputs per neuron from the remapped gene list.
+fn build_node_map(remapped: &[Gene]) -> HashMap<u8, NodeInfo> {
     let mut nodes: HashMap<u8, NodeInfo> = HashMap::new();
-
-    for g in &remapped {
+    for g in remapped {
         if !g.is_sensor_source() {
-            // neuron as source
             let e = nodes.entry(g.source_num()).or_default();
             if !g.is_action_sink() && g.source_num() == g.sink_num() {
                 e.num_self_inputs += 1;
@@ -132,31 +134,37 @@ pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
             }
         }
         if !g.is_action_sink() {
-            // neuron as sink
             let e = nodes.entry(g.sink_num()).or_default();
-            if !g.is_sensor_source() && g.source_num() == g.sink_num() {
-                // already counted above
-            } else {
+            if !(!g.is_sensor_source() && g.source_num() == g.sink_num()) {
                 e.num_other_inputs += 1;
             }
         }
     }
+    nodes
+}
 
-    // Step 3: iteratively cull useless neurons.
-    // A neuron is useless if it has no outputs (nothing it connects to that survives).
-    // When we remove a neuron, we decrement the output count of neurons that fed into it.
-    let mut changed = true;
-    while changed {
-        changed = false;
-        let culled: Vec<u8> = nodes.iter()
-            .filter(|(_, n)| n.num_outputs == 0)
-            .map(|(&k, _)| k)
-            .collect();
+/// Step 3: iteratively cull neurons with no outputs. Each pass removes at
+/// least one neuron or terminates, so the loop runs at most `initial_count`
+/// times — the `debug_assert!` catches any algorithmic regression that
+/// would let it run longer.
+fn prune_dead_nodes(nodes: &mut HashMap<u8, NodeInfo>, remapped: &[Gene]) {
+    let initial_count = nodes.len();
+    let mut iter = 0;
+    loop {
+        let culled: Vec<u8> =
+            nodes.iter().filter(|(_, n)| n.num_outputs == 0).map(|(&k, _)| k).collect();
+        if culled.is_empty() {
+            break;
+        }
+        iter += 1;
+        debug_assert!(
+            iter <= initial_count + 1,
+            "neural-net culling did not converge within {initial_count} passes",
+        );
         for culled_id in culled {
             nodes.remove(&culled_id);
-            changed = true;
-            // Decrement num_outputs for every neuron that was feeding into culled_id
-            for g in &remapped {
+            // Decrement num_outputs for every neuron that fed into culled_id.
+            for g in remapped {
                 if !g.is_action_sink() && g.sink_num() == culled_id && !g.is_sensor_source() {
                     let src = g.source_num();
                     if src != culled_id {
@@ -168,8 +176,20 @@ pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
             }
         }
     }
+}
 
-    // Step 4: assign sequential indices to surviving neurons
+/// Compile a genome into a NeuralNet.
+pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
+    if genome.is_empty() || cfg.sensor_count == 0 || cfg.action_count == 0 {
+        return NeuralNet::default();
+    }
+
+    let remapped = remap_gene_indices(genome, cfg);
+    let mut nodes = build_node_map(&remapped);
+    prune_dead_nodes(&mut nodes, &remapped);
+
+    // Step 4: assign sequential indices to surviving neurons (sorted by
+    // original ID for determinism).
     let mut sorted_ids: Vec<u8> = nodes.keys().copied().collect();
     sorted_ids.sort_unstable();
     for (new_idx, &old_id) in sorted_ids.iter().enumerate() {
@@ -177,33 +197,24 @@ pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
     }
     let neuron_count = sorted_ids.len();
 
-    // Step 5: build connection list — neuron→neuron first, then →action
+    // Step 5: build connection lists, dropping connections that reference
+    // culled neurons. neuron→neuron first, then →action.
     let mut neuron_to_neuron: Vec<Gene> = Vec::new();
     let mut to_action: Vec<Gene> = Vec::new();
-
     for g in &remapped {
-        let src_valid = if g.is_sensor_source() {
-            true // sensors always valid
-        } else {
-            nodes.contains_key(&g.source_num())
-        };
-        let sink_valid = if g.is_action_sink() {
-            true
-        } else {
-            nodes.contains_key(&g.sink_num())
-        };
-        if !src_valid || !sink_valid { continue; }
+        let src_valid = g.is_sensor_source() || nodes.contains_key(&g.source_num());
+        let sink_valid = g.is_action_sink() || nodes.contains_key(&g.sink_num());
+        if !src_valid || !sink_valid {
+            continue;
+        }
 
         let new_src = if g.is_sensor_source() {
             g.source_num()
         } else {
             nodes[&g.source_num()].remapped_idx as u8
         };
-        let new_sink = if g.is_action_sink() {
-            g.sink_num()
-        } else {
-            nodes[&g.sink_num()].remapped_idx as u8
-        };
+        let new_sink =
+            if g.is_action_sink() { g.sink_num() } else { nodes[&g.sink_num()].remapped_idx as u8 };
         let wired = Gene::new(g.source_type(), new_src, g.sink_type(), new_sink, g.weight_raw());
         if g.is_action_sink() {
             to_action.push(wired);
@@ -212,21 +223,18 @@ pub fn create_wiring(genome: &[Gene], cfg: WiringConfig) -> NeuralNet {
         }
     }
 
-    // Step 6: build neuron list
-    let neurons = (0..neuron_count).map(|i| {
-        let old_id = sorted_ids[i];
-        let info = &nodes[&old_id];
-        Neuron {
-            output: 0.5,
-            driven: info.num_other_inputs > 0 || info.num_self_inputs > 0,
-        }
-    }).collect();
+    // Step 6: build neuron list.
+    let neurons = (0..neuron_count)
+        .map(|i| {
+            let info = &nodes[&sorted_ids[i]];
+            Neuron {
+                output: crate::constants::NEURON_INITIAL_OUTPUT,
+                driven: info.num_other_inputs > 0 || info.num_self_inputs > 0,
+            }
+        })
+        .collect();
 
-    NeuralNet {
-        neuron_connections: neuron_to_neuron,
-        action_connections: to_action,
-        neurons,
-    }
+    NeuralNet { neuron_connections: neuron_to_neuron, action_connections: to_action, neurons }
 }
 
 /// Allocating wrapper around [`feed_forward`]. Convenient for tests and
