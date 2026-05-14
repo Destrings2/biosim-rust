@@ -86,7 +86,7 @@ impl Challenge for SunTrackerChallenge {
     fn on_sim_step(&mut self, ctx: &mut WorldMut) {
         // Sample warmth roughly 32 times across the generation
         let stride = (ctx.config.steps_per_generation / 32).max(1);
-        if ctx.step % stride != 0 { return; }
+        if !ctx.step.is_multiple_of(stride) { return; }
 
         let (sx, sy) = sun_pos_at(self, ctx.step, ctx.config.steps_per_generation,
                                    ctx.config.size_x, ctx.config.size_y);
@@ -219,7 +219,7 @@ impl Challenge for SurvivorChallenge {
     }
     fn on_sim_step(&mut self, ctx: &mut WorldMut) {
         // Re-roll the centre every `period` steps.
-        if self.period > 0 && ctx.step > 0 && ctx.step % self.period == 0 {
+        if self.period > 0 && ctx.step > 0 && ctx.step.is_multiple_of(self.period) {
             let sx = ctx.config.size_x as u32;
             let sy = ctx.config.size_y as u32;
             self.centre = (

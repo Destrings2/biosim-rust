@@ -90,11 +90,9 @@ impl Population {
     /// `queue_for_death`/`drain_death_queue`. O(capacity).
     pub fn rebuild_alive_ids(&mut self) {
         self.alive_ids.clear();
-        for slot in self.agents.iter().skip(1) {
-            if let Some(a) = slot {
-                if a.alive {
-                    self.alive_ids.push(a.id);
-                }
+        for a in self.agents.iter().skip(1).flatten() {
+            if a.alive {
+                self.alive_ids.push(a.id);
             }
         }
     }

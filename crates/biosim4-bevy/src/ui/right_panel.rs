@@ -522,7 +522,7 @@ fn render_param_field(
                         .get(key)
                         .and_then(|v| v.as_f64())
                         .unwrap_or_else(|| prop.get("default").and_then(|v| v.as_f64()).unwrap_or(0.0));
-                    let speed = ((max - min).abs() / 200.0).max(0.001) as f64;
+                    let speed = ((max - min).abs() / 200.0).max(0.001);
                     let r = ui.add(
                         egui::DragValue::new(&mut v)
                             .range(min..=max)

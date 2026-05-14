@@ -250,7 +250,7 @@ fn left_column(ui: &mut egui::Ui, sim: &Sim, a: &biosim4_core::agent::Agent) {
 /// Look up the agent's action-level vector from the last step's scratch.
 /// Returns `None` if the simulation hasn't stepped yet, or if the agent was
 /// born after the last `alive_ids` snapshot.
-fn agent_action_levels<'a>(sim: &'a Sim, agent_id: u32) -> Option<&'a [f32]> {
+fn agent_action_levels(sim: &Sim, agent_id: u32) -> Option<&[f32]> {
     let pos = sim
         .state
         .scratch
@@ -889,7 +889,7 @@ fn build_initial_nodes(
     // Neurons start jittered around the middle so the simulation has gradient
     // to climb. Deterministic seed from neuron index — same layout every run.
     for &idx in neurons {
-        let theta = (idx as f32) * 2.39996323; // golden angle scatter
+        let theta = (idx as f32) * 2.399_963_1; // golden angle scatter
         let r = 40.0 + (idx as f32 * 7.0) % 30.0;
         let x = inner.center().x + r * theta.cos();
         let y = inner.center().y + r * theta.sin();

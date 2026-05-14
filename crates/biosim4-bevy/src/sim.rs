@@ -2,9 +2,10 @@
 //!
 //! Wraps [`SimulationState`] in a Bevy [`Resource`] and drives it forward at a
 //! configurable speed. The parallel feature of `biosim4-core` is enabled via
-//! Cargo, so `step_one` internally uses rayon for the per-agent Phase 1
-//! computation. We configure the rayon global pool size at startup from
-//! [`SimControls::num_threads`].
+//! Cargo, so `step_one` internally uses rayon for the per-agent Phase 1 and
+//! Phase 2 work. [`Sim`] owns a local [`rayon::ThreadPool`] and wraps every
+//! step in `pool.install`, so changes to [`SimControls::num_threads`] take
+//! effect immediately on the next step (no restart required).
 //!
 //! # Per-frame budget
 //!
@@ -53,17 +54,46 @@ pub struct Sim {
     /// Stashed config JSON used to recreate the simulation on reset. Kept in
     /// sync with `state.config` whenever the UI applies a patch.
     pub config_json: String,
+    /// Worker pool used to run sim phases. Local (not the global rayon pool)
+    /// so we can rebuild it when the user changes the thread count at runtime.
+    pool: std::sync::Arc<rayon::ThreadPool>,
 }
 
 impl Sim {
     pub fn new(config: SimConfig) -> Self {
+        let pool = build_pool(config.num_threads);
         let json = serde_json::to_string_pretty(&config).unwrap_or_default();
         let state = SimulationState::new(config);
-        Self { state, config_json: json }
+        Self { state, config_json: json, pool }
     }
 
     /// Convenience: alive count snapshot (cheap — just a length read).
     pub fn alive(&self) -> u32 { self.state.population.alive_count() as u32 }
+
+    /// Run a single sim step on the owned worker pool. All `step_one` calls
+    /// must go through this so phase 1/2 use the configured thread count.
+    pub fn step(&mut self, sim_step: u32) {
+        let pool = self.pool.clone();
+        let state = &mut self.state;
+        pool.install(|| step_one(state, sim_step));
+    }
+
+    /// Tear down the current pool and build a fresh one with `threads`
+    /// workers. Cheap enough to call from the UI thread on a slider change.
+    pub fn rebuild_pool(&mut self, threads: u32) {
+        self.pool = build_pool(threads);
+    }
+}
+
+fn build_pool(threads: u32) -> std::sync::Arc<rayon::ThreadPool> {
+    let n = threads.max(1) as usize;
+    std::sync::Arc::new(
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .thread_name(|i| format!("biosim4-worker-{i}"))
+            .build()
+            .expect("rayon pool build"),
+    )
 }
 
 /// Tool currently selected in the floating toolbar.
@@ -264,13 +294,6 @@ impl Plugin for SimPlugin {
         let cfg = default_config();
         let threads = cfg.num_threads;
 
-        // Make the rayon thread pool match the configured thread count. Ignore
-        // the error — if the pool was already initialized (e.g. by a test
-        // harness in the same process) the old one stays in use.
-        let _ = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads.max(1) as usize)
-            .build_global();
-
         app
             .insert_resource(Sim::new(cfg.clone()))
             .insert_resource(SimControls {
@@ -322,7 +345,7 @@ fn process_commands(
                 if let Ok(json) = serde_json::to_string_pretty(&cfg) {
                     sim.config_json = json;
                 }
-                rebuild_rayon_pool(cfg.num_threads);
+                sim.rebuild_pool(cfg.num_threads);
                 controls.num_threads = cfg.num_threads;
                 sim.state = SimulationState::new(cfg);
                 history.clear();
@@ -368,7 +391,7 @@ fn process_commands(
                 let n = n.max(1);
                 controls.num_threads = n;
                 sim.state.config.num_threads = n;
-                rebuild_rayon_pool(n);
+                sim.rebuild_pool(n);
             }
             SimCommand::SetSensorEnabled(id, on) => sim.state.sensors.set_enabled(&id, on),
             SimCommand::SetActionEnabled(id, on) => sim.state.actions.set_enabled(&id, on),
@@ -503,7 +526,7 @@ fn step_simulation(
             advance_generation(&mut sim, &mut history);
         } else {
             let cur = sim.state.sim_step;
-            step_one(&mut sim.state, cur);
+            sim.step(cur);
             sim.state.sim_step = cur + 1;
         }
     }
@@ -512,22 +535,13 @@ fn step_simulation(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-fn rebuild_rayon_pool(_threads: u32) {
-    // rayon's global pool is initialize-once. We can't actually rebuild it
-    // mid-run — log so the user knows a restart is needed for thread changes
-    // to affect Phase 1. The `num_threads` field still flows into per-step
-    // chunking inside `phase2_actions_all_parallel`, which honors the new
-    // value immediately.
-    info!("Note: rayon thread pool is global and immutable; phase 2 chunking will pick up the new thread count, phase 1 will continue to use the original pool.");
-}
-
 fn single_step(sim: &mut Sim, history: &mut SimHistory) {
     let total = sim.state.config.steps_per_generation;
     if sim.state.sim_step >= total {
         advance_generation(sim, history);
     } else {
         let cur = sim.state.sim_step;
-        step_one(&mut sim.state, cur);
+        sim.step(cur);
         sim.state.sim_step = cur + 1;
     }
 }
@@ -541,7 +555,7 @@ fn finish_or_advance_generation(sim: &mut Sim, history: &mut SimHistory) {
         advance_generation(sim, history);
     } else {
         for s in sim.state.sim_step..total {
-            step_one(&mut sim.state, s);
+            sim.step(s);
         }
         sim.state.sim_step = total;
     }
@@ -550,7 +564,7 @@ fn finish_or_advance_generation(sim: &mut Sim, history: &mut SimHistory) {
 fn run_full_epoch(sim: &mut Sim, history: &mut SimHistory) {
     let total = sim.state.config.steps_per_generation;
     for s in sim.state.sim_step..total {
-        step_one(&mut sim.state, s);
+        sim.step(s);
     }
     sim.state.sim_step = total;
     advance_generation(sim, history);

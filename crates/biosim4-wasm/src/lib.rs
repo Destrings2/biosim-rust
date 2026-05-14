@@ -163,7 +163,7 @@ impl Simulator {
     /// Create a new simulator. Pass an empty string or `"{}"` for defaults.
     #[wasm_bindgen(constructor)]
     pub fn new(config_json: &str) -> Result<Simulator, JsValue> {
-        #[cfg(feature = "console_error_panic_hook")]
+        #[cfg(feature = "debug-hooks")]
         console_error_panic_hook::set_once();
 
         let trimmed = config_json.trim();

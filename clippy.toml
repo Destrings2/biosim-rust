@@ -1,0 +1,5 @@
+# Several systems and sim-step internals take 8–11 args by design (per-agent
+# context fan-out, Bevy system params). The audit schedules these for
+# decomposition in a later phase; until then, raise the threshold so the
+# rest of the clippy::all lints can fail the build on real issues.
+too-many-arguments-threshold = 12

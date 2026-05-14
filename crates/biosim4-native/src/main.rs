@@ -121,7 +121,7 @@ fn main() {
         } else if verbose {
             true
         } else {
-            stats.generation % 10 == 0 || stats.generation == max_generations
+            stats.generation.is_multiple_of(10) || stats.generation == max_generations
         };
 
         if log_this_gen {
@@ -145,7 +145,7 @@ fn main() {
 
         if display_sample_count > 0
             && verbose
-            && stats.generation % analysis_stride == 0
+            && stats.generation.is_multiple_of(analysis_stride)
         {
             // display_sample_genomes prints to stdout; capture-and-emit via bar
             // would require restructuring, so just route through bar.suspend.
