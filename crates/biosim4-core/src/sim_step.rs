@@ -315,17 +315,10 @@ unsafe fn step_one_agent(
 // ── Determinism / parallelism dispatch ──────────────────────────────────────
 
 /// Decide whether to run the parallel path. Centralised so all phases agree.
+#[cfg(feature = "parallel")]
 #[inline]
 fn use_parallel(state: &SimulationState, n: usize) -> bool {
-    #[cfg(feature = "parallel")]
-    {
-        state.config.num_threads.max(1) as usize > 1 && n > 1
-    }
-    #[cfg(not(feature = "parallel"))]
-    {
-        let _ = (state, n);
-        false
-    }
+    state.config.num_threads.max(1) as usize > 1 && n > 1
 }
 
 /// Raw-pointer wrapper used to thread `&mut SimulationState` through rayon
@@ -407,8 +400,17 @@ unsafe fn phase1_one_agent(
         Some(a) if a.alive => a as *mut _,
         _ => { action_levels.clear(); return; }
     };
+    // SAFETY: `nnet` is a sub-field projection; only this thread owns the
+    // unique agent slot named by `id` (caller contract). The read-only
+    // `agent_read` reborrow below names a disjoint sub-field set — feed_forward
+    // touches only `nnet.*`, and sensors read only `agent.{loc, heading,
+    // last_move_dir, oscillator_period, long_probe_dist, responsiveness, age,
+    // memory, energy, challenge_bits, genome, genome_color}`. Phase 2 will not
+    // run until feed_forward returns, so the agent record is effectively
+    // partitioned for this phase.
     let nnet: &mut crate::genome::neural_net::NeuralNet =
         unsafe { &mut (*agent_ptr).nnet };
+    let agent_read: &crate::agent::Agent = unsafe { &*agent_ptr };
 
     let mut sensor_rng = Rng::seeded(seed);
 
@@ -430,9 +432,8 @@ unsafe fn phase1_one_agent(
     };
 
     feed_forward(nnet, args.action_count, action_levels, neuron_accum, |sensor_idx| {
-        let agent_ref = world.population.get(id).unwrap();
         let mut ctx = SensorContext {
-            agent: agent_ref,
+            agent: agent_read,
             world: &world,
             sim_step: args.sim_step,
             rng: &mut sensor_rng,

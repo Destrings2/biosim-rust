@@ -102,22 +102,19 @@ impl Population {
         self.alive_ids.iter().filter_map(|&id| self.get(id))
     }
 
-    /// Iterate alive agents mutably. O(N) — walks `alive_ids` directly and
-    /// returns `&mut Agent` for each. Replaces a previous O(N²) implementation
-    /// that did a linear `Vec::contains` per slot.
+    /// Iterate alive agents mutably. Walks `agents` slots directly and
+    /// filters dead/empty slots. Slot order matches insertion order, which
+    /// matches the order of `alive_ids` because slots are append-only.
+    ///
+    /// Used by challenge `on_generation_start` / `on_sim_step` hooks, which
+    /// run once per step (not per agent), so the cost of scanning the few
+    /// dead slots that may exist is negligible vs. the per-agent fold body.
     pub fn iter_alive_mut(&mut self) -> impl Iterator<Item = &mut Agent> {
-        // SAFETY: `alive_ids` contains unique AgentId values, so each call to
-        // `next()` borrows a distinct slot of `agents`. The lifetime of every
-        // yielded reference is bound to `&mut self` via the pointer's tied
-        // lifetime, and the returned Iterator object holds the unique &mut
-        // borrow of the population for its full lifetime.
-        let ids: *const [AgentId] = self.alive_ids.as_slice();
-        let agents: *mut Vec<Option<Agent>> = &mut self.agents;
-        unsafe {
-            (*ids).iter().filter_map(move |&id| {
-                (*agents).as_mut_slice().get_mut(id as usize).and_then(|s| s.as_mut())
-            })
-        }
+        self.agents
+            .iter_mut()
+            .skip(1)
+            .filter_map(|s| s.as_mut())
+            .filter(|a| a.alive)
     }
 
     // ── Deferred queues ───────────────────────────────────────────────

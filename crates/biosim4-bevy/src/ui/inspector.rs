@@ -727,8 +727,12 @@ fn draw_force(
         theme::MUTED,
     );
 
-    // (Re)build node list if the agent changed or this is the first render.
-    let needs_rebuild = state.agent_id != agent.id || state.nodes.is_empty();
+    // (Re)build node list if the agent changed, the topology changed (agent IDs
+    // restart from 1 each generation so the same ID can have a different genome),
+    // or this is the first render.
+    let expected_node_count = sensors.len() + actions.len() + neurons.len();
+    let needs_rebuild = state.agent_id != agent.id
+        || state.nodes.len() != expected_node_count;
     if needs_rebuild {
         state.agent_id = agent.id;
         state.nodes = build_initial_nodes(inner, gutter, sensors, neurons, actions);
