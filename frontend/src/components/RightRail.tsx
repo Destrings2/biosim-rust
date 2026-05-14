@@ -2,7 +2,7 @@
 // Drawers: Stats (live + sparklines), Challenge (current + params),
 // Registry (sensors + actions), Config (JSON editor).
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { Simulator } from "../../pkg/biosim4_wasm.js";
 import type { ChallengeConfig, ChallengeSchema, EpochResult, RegistryEntry, SimStats } from "../types";
 import { IcChallenge, IcConfig, IcRegistry, IcStats } from "./Icons";
@@ -12,6 +12,7 @@ import type { TelemetryHistory } from "./Telemetry";
 import { CfgGroup, CfgRow, Stepper, SliderNum, RangeDual, Toggle, SeedInput, BarrierPicker, GridPreview } from "./ConfigControls";
 
 type DrawerId = "stats" | "challenge" | "registry" | "config" | null;
+type CfgMap = Record<string, unknown>;
 
 interface Props {
   simulator: Simulator;
@@ -45,7 +46,23 @@ export function RightRail(props: Props) {
     { id: "registry",  label: "Registry",   Ic: IcRegistry },
     { id: "config",    label: "Config",     Ic: IcConfig },
   ];
-  const { drawer, onDrawer } = props;
+  const { drawer, onDrawer, configJson } = props;
+
+  // Config form state is held here (not in ConfigPanel) so that switching drawers
+  // doesn't unmount the form and discard in-progress edits.
+  const [cfg, setCfg] = useState<CfgMap>(() => JSON.parse(configJson) as CfgMap);
+  const [dirty, setDirty] = useState(false);
+  const [showJson, setShowJson] = useState(false);
+  const [jsonText, setJsonText] = useState(() => JSON.stringify(JSON.parse(configJson), null, 2));
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const parsed = JSON.parse(configJson) as CfgMap;
+    setCfg(parsed);
+    setJsonText(JSON.stringify(parsed, null, 2));
+    setJsonError(null);
+    setDirty(false);
+  }, [configJson]);
 
   return (
     <div className="rail">
@@ -67,7 +84,16 @@ export function RightRail(props: Props) {
           {drawer === "stats"     && <StatsPanel {...props} />}
           {drawer === "challenge" && <ChallengePanel {...props} />}
           {drawer === "registry"  && <RegistryPanel simulator={props.simulator} />}
-          {drawer === "config"    && <ConfigPanel {...props} />}
+          {drawer === "config"    && (
+            <ConfigPanel
+              {...props}
+              cfg={cfg} setCfg={setCfg}
+              dirty={dirty} setDirty={setDirty}
+              showJson={showJson} setShowJson={setShowJson}
+              jsonText={jsonText} setJsonText={setJsonText}
+              jsonError={jsonError} setJsonError={setJsonError}
+            />
+          )}
         </div>
       )}
     </div>
@@ -345,26 +371,26 @@ function RegistryPanel({ simulator }: { simulator: Simulator }) {
 }
 
 // ── Config ───────────────────────────────────────────────────────────
+type ConfigPanelProps = Pick<Props, "paintedCount" | "onClearPaint" | "configJson" | "onApplyConfig"> & {
+  cfg: CfgMap;
+  setCfg: Dispatch<SetStateAction<CfgMap>>;
+  dirty: boolean;
+  setDirty: Dispatch<SetStateAction<boolean>>;
+  showJson: boolean;
+  setShowJson: Dispatch<SetStateAction<boolean>>;
+  jsonText: string;
+  setJsonText: Dispatch<SetStateAction<string>>;
+  jsonError: string | null;
+  setJsonError: Dispatch<SetStateAction<string | null>>;
+};
+
 function ConfigPanel({
   paintedCount, onClearPaint, configJson, onApplyConfig,
-}: Pick<Props, "paintedCount" | "onClearPaint" | "configJson" | "onApplyConfig">) {
-  type CfgMap = Record<string, unknown>;
-  const [cfg, setCfg] = useState<CfgMap>(() => JSON.parse(configJson) as CfgMap);
-  const [dirty, setDirty] = useState(false);
-  const [showJson, setShowJson] = useState(false);
-  const [jsonText, setJsonText] = useState(() => JSON.stringify(JSON.parse(configJson), null, 2));
-  const [jsonError, setJsonError] = useState<string | null>(null);
-
+  cfg, setCfg, dirty, setDirty, showJson, setShowJson, jsonText, setJsonText, jsonError, setJsonError,
+}: ConfigPanelProps) {
   // Typed accessors for known numeric/boolean fields — avoids `any` casts in JSX.
   const num = (k: string): number => cfg[k] as number;
   const bool = (k: string): boolean => cfg[k] as boolean;
-
-  useEffect(() => {
-    const parsed = JSON.parse(configJson) as CfgMap;
-    setCfg(parsed);
-    setJsonText(JSON.stringify(parsed, null, 2));
-    setDirty(false);
-  }, [configJson]);
 
   const set = (k: string, v: unknown) => {
     setCfg((prev) => ({ ...prev, [k]: v }));

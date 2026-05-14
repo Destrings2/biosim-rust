@@ -27,8 +27,8 @@ pub struct ActionContext<'a> {
     pub move_queue: &'a mut Vec<(AgentId, Coord)>,
     /// Deferred death: applied at end-of-step.
     pub death_queue: &'a mut Vec<AgentId>,
-    /// Signal layers — can be mutated immediately (thread-safe in parallel mode via AtomicU8).
-    pub signals: &'a mut Signals,
+    /// Signal layers — atomic cells, increments are thread-safe via `&Signals`.
+    pub signals: &'a Signals,
     pub rng: &'a mut Rng,
     pub config_kill_enable: bool,
 }

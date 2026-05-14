@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 biosim4-core = { path = "../biosim4-core", features = ["parallel"] }
 serde_json = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
+rayon = "1.8"

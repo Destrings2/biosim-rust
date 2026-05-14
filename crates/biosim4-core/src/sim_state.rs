@@ -51,9 +51,13 @@ pub struct StepScratch {
     /// so we can iterate while mutating the population (drains, kills, etc.).
     pub alive_ids: Vec<AgentId>,
     /// Per-agent action accumulator scratch reused by `feed_forward`.
-    pub action_accum: Vec<f32>,
+    /// Sized to `alive_ids.len()` at the start of each step. Phase 1 writes
+    /// to slot `i`; Phase 2 reads from slot `i`. This enables Phase 1 to run
+    /// in parallel — each thread touches a unique slot.
+    pub per_agent_action_levels: Vec<Vec<f32>>,
     /// Per-agent neuron accumulator scratch reused by `feed_forward`.
-    pub neuron_accum: Vec<f32>,
+    /// Same indexing as `per_agent_action_levels`.
+    pub per_agent_neuron_accum: Vec<Vec<f32>>,
 }
 
 pub struct SimulationState {

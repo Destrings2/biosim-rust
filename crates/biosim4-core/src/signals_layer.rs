@@ -15,24 +15,26 @@
 //! `fade(layer)` decrements every cell by 1 (saturating at 0), called once
 //! per step. This simulates pheromone evaporation with a fixed decay rate.
 //!
-//! # Mid-step aliasing note
+//! # Concurrent increments
 //!
-//! During Phase 2 of `step_one_agent`, `ActionContext` holds `&mut Signals`
-//! (for `EmitSignal0`) while `World` holds `&Signals` (for sensor reads).
-//! This is acknowledged in the `SAFETY` comments in `sim_step.rs`: no
-//! built-in action reads `world.signals` during Phase 2, making the alias
-//! benign in practice. A future refactor should remove `signals` from the
-//! Phase 2 `World` view to eliminate the technical unsoundness.
+//! Cells are `AtomicU8`, so `increment(&self, ...)` is safe to call from
+//! multiple threads concurrently during Phase 2 of `step_all_agents`. Reads
+//! happen during Phase 1 (sensors); the `fade` and `zero_fill` writes happen
+//! sequentially between steps. There is no data race.
+
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::types::Coord;
 use crate::grid::{visit_neighborhood, Grid};
 
 pub const SIGNAL_MAX: u8 = 255;
 
-/// Multi-layer pheromone grid. Each cell is a u8 magnitude (0..SIGNAL_MAX).
+/// Multi-layer pheromone grid. Each cell is an atomic `u8` magnitude
+/// (0..SIGNAL_MAX). Atomic so concurrent agent actions can increment cells
+/// without locking.
 pub struct Signals {
     /// layers[layer][x][y]
-    layers: Vec<Vec<Vec<u8>>>,
+    layers: Vec<Vec<Vec<AtomicU8>>>,
     pub size_x: u16,
     pub size_y: u16,
 }
@@ -40,7 +42,11 @@ pub struct Signals {
 impl Signals {
     pub fn new(num_layers: u8, size_x: u16, size_y: u16) -> Self {
         let layers = (0..num_layers)
-            .map(|_| vec![vec![0u8; size_y as usize]; size_x as usize])
+            .map(|_| {
+                (0..size_x as usize)
+                    .map(|_| (0..size_y as usize).map(|_| AtomicU8::new(0)).collect())
+                    .collect()
+            })
             .collect();
         Self { layers, size_x, size_y }
     }
@@ -48,7 +54,9 @@ impl Signals {
     pub fn zero_fill(&mut self) {
         for layer in self.layers.iter_mut() {
             for col in layer.iter_mut() {
-                col.fill(0);
+                for cell in col.iter_mut() {
+                    *cell.get_mut() = 0;
+                }
             }
         }
     }
@@ -56,19 +64,30 @@ impl Signals {
     pub fn layer_count(&self) -> u8 { self.layers.len() as u8 }
 
     pub fn get(&self, layer: u8, loc: Coord) -> u8 {
-        self.layers[layer as usize][loc.x as usize][loc.y as usize]
+        self.layers[layer as usize][loc.x as usize][loc.y as usize].load(Ordering::Relaxed)
     }
 
     /// Increment center by +2 and all neighbors within radius 1.5 by +1, clamped to SIGNAL_MAX.
-    pub fn increment(&mut self, layer: u8, center: Coord, grid: &Grid) {
-        let l = &mut self.layers[layer as usize];
-        let add = |l: &mut Vec<Vec<u8>>, loc: Coord, v: u8| {
+    ///
+    /// Takes `&self` (not `&mut`): cells are `AtomicU8` so concurrent calls
+    /// from different agents on different threads are safe.
+    pub fn increment(&self, layer: u8, center: Coord, grid: &Grid) {
+        let l = &self.layers[layer as usize];
+        let add = |l: &Vec<Vec<AtomicU8>>, loc: Coord, v: u8| {
             if loc.x >= 0 && loc.y >= 0
                 && (loc.x as u16) < grid.size_x
                 && (loc.y as u16) < grid.size_y
             {
-                let cell = &mut l[loc.x as usize][loc.y as usize];
-                *cell = cell.saturating_add(v);
+                let cell = &l[loc.x as usize][loc.y as usize];
+                // Saturating atomic add via fetch_update.
+                let _ = cell.fetch_update(
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                    |old| {
+                        let new = old.saturating_add(v);
+                        if new == old { None } else { Some(new) }
+                    },
+                );
             }
         };
 
@@ -91,7 +110,8 @@ impl Signals {
     pub fn fade(&mut self, layer: u8) {
         for col in self.layers[layer as usize].iter_mut() {
             for cell in col.iter_mut() {
-                *cell = cell.saturating_sub(1);
+                let v = cell.get_mut();
+                *v = v.saturating_sub(1);
             }
         }
     }
