@@ -47,38 +47,12 @@ pub fn draw_fast_forward_modal(
                 .show(ui, |ui| {
                     ui.set_min_width(420.0);
 
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("FAST FORWARD")
-                                .size(10.0)
-                                .color(theme::ACCENT)
-                                .strong(),
-                        );
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                let (txt, fg, bg, border) = if state.using_gpu {
-                                    ("GPU  ⚡", theme::ACCENT, theme::ACCENT_SOFT, theme::ACCENT)
-                                } else {
-                                    ("CPU", theme::TEXT_2, theme::PANEL_2, theme::LINE)
-                                };
-                                egui::Frame::default()
-                                    .fill(bg)
-                                    .stroke(egui::Stroke::new(1.0, border))
-                                    .corner_radius(egui::CornerRadius::same(3))
-                                    .inner_margin(egui::Margin::symmetric(6, 2))
-                                    .show(ui, |ui| {
-                                        ui.label(
-                                            egui::RichText::new(txt)
-                                                .monospace()
-                                                .size(9.5)
-                                                .color(fg)
-                                                .strong(),
-                                        );
-                                    });
-                            },
-                        );
-                    });
+                    ui.label(
+                        egui::RichText::new("FAST FORWARD")
+                            .size(10.0)
+                            .color(theme::ACCENT)
+                            .strong(),
+                    );
                     ui.label(
                         egui::RichText::new(format!(
                             "Generation {} → {}",
