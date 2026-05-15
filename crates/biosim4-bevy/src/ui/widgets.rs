@@ -536,7 +536,19 @@ fn styled_drag_value<T: Numeric>(ui: &mut egui::Ui, value: &mut T, range: RangeI
             state.corner_radius = egui::CornerRadius::same(4);
             state.fg_stroke.color = theme::TEXT;
         }
-        ui.add_sized(egui::vec2(width, BODY_HEIGHT), egui::DragValue::new(value).range(range));
+        // Reserve an exact rect first so the parent's cursor advances by
+        // exactly `width` no matter how wide the rendered digits are. A
+        // long u64 seed would otherwise let `DragValue` grow past its
+        // allocation and push neighbouring rows past the panel edge.
+        let (rect, _) =
+            ui.allocate_exact_size(egui::vec2(width, BODY_HEIGHT), egui::Sense::hover());
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        child.set_clip_rect(rect);
+        child.add_sized(egui::vec2(width, BODY_HEIGHT), egui::DragValue::new(value).range(range));
     });
 }
 

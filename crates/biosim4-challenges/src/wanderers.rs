@@ -92,7 +92,7 @@ impl Challenge for WanderersChallenge {
         "wanderers"
     }
     fn name(&self) -> &str {
-        "Wanderers (demo)"
+        "Wanderers"
     }
     fn description(&self) -> &str {
         "Smoke-test challenge that spawns N non-evolved wandering entities each generation. \
