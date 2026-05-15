@@ -15,23 +15,37 @@
 use super::coord::Coord;
 use serde::{Deserialize, Serialize};
 
-/// 9-value compass: 8 cardinal/ordinal directions plus center.
-/// Values match the C++ layout: SW=0..NE=8, CENTER=4.
+/// Nine-value compass: the 8 cardinal and ordinal directions plus center.
+///
+/// The numeric layout matches the original C++ implementation and is required
+/// by the rotation lookup table in [`Dir::rotate`]. Do not reorder variants.
+///
+/// Use [`Compass::ALL8`] to iterate the 8 non-center directions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum Compass {
+    /// South-west (down-left).
     SW = 0,
+    /// South (down).
     S = 1,
+    /// South-east (down-right).
     SE = 2,
+    /// West (left).
     W = 3,
+    /// No direction. Used as a default heading before an agent moves.
     CENTER = 4,
+    /// East (right).
     E = 5,
+    /// North-west (up-left).
     NW = 6,
+    /// North (up).
     N = 7,
+    /// North-east (up-right).
     NE = 8,
 }
 
 impl Compass {
+    /// All 8 non-center compass values. Useful for iterating every movement direction.
     pub const ALL8: [Compass; 8] = [
         Compass::SW,
         Compass::S,
@@ -60,7 +74,11 @@ impl From<u8> for Compass {
     }
 }
 
-/// A direction wrapper. Wraps one of 9 Compass values.
+/// A simulation direction, wrapping one of 9 [`Compass`] values.
+///
+/// [`Dir::default()`] returns `CENTER`. Use [`Dir::rotate`] to step clockwise
+/// or counter-clockwise. Use [`Dir::as_normalized_coord`] to get the unit
+/// offset vector for movement or sensor probing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Dir(pub Compass);
 
@@ -94,9 +112,12 @@ fn compass_to_row(c: Compass) -> usize {
 }
 
 impl Dir {
+    /// Construct a `Dir` from a [`Compass`] variant.
     pub fn new(c: Compass) -> Self {
         Dir(c)
     }
+
+    /// Return `Dir(Compass::CENTER)`.
     pub fn center() -> Self {
         Dir(Compass::CENTER)
     }
@@ -111,17 +132,22 @@ impl Dir {
         Dir(Compass::from(ROTATIONS[row * 8 + steps]))
     }
 
+    /// Rotate 90° clockwise (2 steps).
     pub fn rotate90cw(&self) -> Self {
         self.rotate(2)
     }
+
+    /// Rotate 90° counter-clockwise (2 steps).
     pub fn rotate90ccw(&self) -> Self {
         self.rotate(-2)
     }
+
+    /// Rotate 180° (4 steps), returning the opposite direction.
     pub fn rotate180(&self) -> Self {
         self.rotate(4)
     }
 
-    /// Unit offset vector for this direction (-1/0/1 per axis).
+    /// Unit offset vector for this direction. Each component is -1, 0, or 1.
     pub fn as_normalized_coord(&self) -> Coord {
         match self.0 {
             Compass::SW => Coord::new(-1, -1),
@@ -136,6 +162,7 @@ impl Dir {
         }
     }
 
+    /// Choose one of the 8 non-center directions uniformly at random.
     pub fn random8(rng: &mut impl rand::Rng) -> Self {
         Dir(Compass::ALL8[rng.gen_range(0..8)])
     }

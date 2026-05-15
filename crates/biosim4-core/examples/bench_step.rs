@@ -8,8 +8,10 @@
 use std::time::Instant;
 
 use biosim4_core::{
-    sim_config::SimConfig, sim_state::SimulationState, sim_step::step_generation,
-    spawn::spawn_new_generation,
+    sim_config::SimConfig,
+    sim_state::SimulationState,
+    sim_step::step_generation,
+    spawn::{initialize_generation_0, spawn_new_generation},
 };
 
 fn main() {
@@ -30,6 +32,9 @@ fn main() {
     cfg.enable_energy = false;
 
     let mut state = SimulationState::new(cfg.clone());
+    biosim4_sensors::register_builtin_sensors(&mut state.sensors);
+    biosim4_actions::register_builtin_actions(&mut state.actions);
+    initialize_generation_0(&mut state);
 
     let mut step_time = std::time::Duration::ZERO;
     let mut spawn_time = std::time::Duration::ZERO;

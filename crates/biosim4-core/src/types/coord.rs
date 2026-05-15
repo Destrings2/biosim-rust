@@ -13,17 +13,26 @@
 use super::dir::{Compass, Dir};
 use serde::{Deserialize, Serialize};
 
+/// 2D integer coordinate on the simulation grid.
+///
+/// All persistent positions use integer arithmetic. Floating-point values
+/// appear only within individual operations (distance, normalization) and are
+/// never stored in a `Coord`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct Coord {
+    /// Horizontal position. Increases toward the right (east).
     pub x: i16,
+    /// Vertical position. Increases upward (north).
     pub y: i16,
 }
 
 impl Coord {
+    /// Create a coordinate from `(x, y)` components.
     pub fn new(x: i16, y: i16) -> Self {
         Self { x, y }
     }
 
+    /// Euclidean length of the coordinate vector.
     pub fn length(&self) -> f32 {
         ((self.x as f32).powi(2) + (self.y as f32).powi(2)).sqrt()
     }
@@ -84,17 +93,22 @@ impl Coord {
         Dir(c)
     }
 
-    /// Normalize to the nearest unit vector (values in -1/0/1 per axis).
+    /// Clamp each axis to -1, 0, or 1.
     pub fn normalize(&self) -> Coord {
         Coord::new(self.x.signum(), self.y.signum())
     }
 
-    /// Convert to (magnitude, dir) polar form.
+    /// Convert to polar form `(magnitude, dir)`.
     pub fn as_polar(&self) -> Polar {
         Polar { mag: self.length() as i32, dir: self.as_dir() }
     }
 
-    /// Dot-product similarity with another coord, normalized to [-1, 1].
+    /// Normalized dot product of `self` and `other`, in [-1, 1].
+    ///
+    /// Returns 1.0 when both vectors point in the same direction, -1.0 when
+    /// opposite, and 0.0 when perpendicular or when either vector is zero.
+    /// Directional sensors use this to weight population and signal reads by
+    /// angular alignment.
     pub fn ray_sameness(&self, other: Coord) -> f32 {
         let mag_a = self.length();
         let mag_b = other.length();
@@ -105,6 +119,7 @@ impl Coord {
         (dot / (mag_a * mag_b)).clamp(-1.0, 1.0)
     }
 
+    /// [`ray_sameness`](Self::ray_sameness) against a unit `Dir` offset.
     pub fn ray_sameness_dir(&self, d: Dir) -> f32 {
         self.ray_sameness(d.as_normalized_coord())
     }
@@ -129,14 +144,24 @@ impl std::ops::Mul<i16> for Coord {
     }
 }
 
-/// Magnitude + direction.
+/// Displacement in polar form: a signed integer magnitude and a [`Dir`].
+///
+/// Convert from Cartesian with [`Coord::as_polar`] and back with
+/// [`Polar::as_coord`]. Diagonal directions are scaled by 1/√2 on
+/// the round-trip, so the conversion is lossy.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Polar {
+    /// Signed distance along `dir`.
     pub mag: i32,
+    /// Direction of the displacement.
     pub dir: Dir,
 }
 
 impl Polar {
+    /// Convert to the nearest Cartesian [`Coord`].
+    ///
+    /// Diagonal directions scale magnitude by 1/√2 ≈ 0.707 to preserve
+    /// Euclidean length. The result rounds toward zero.
     pub fn as_coord(&self) -> Coord {
         let unit = self.dir.as_normalized_coord();
         // For diagonal directions, scale by 1/sqrt(2) ≈ 45_341/64_000 (fixed point)

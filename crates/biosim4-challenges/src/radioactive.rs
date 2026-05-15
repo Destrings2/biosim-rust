@@ -5,7 +5,7 @@
 //! configurable. Agents that survive all steps in a non-lethal zone pass.
 
 use biosim4_core::agent::Agent;
-use biosim4_core::registry::challenge::{Challenge, WorldMut};
+use biosim4_core::registry::challenge::{Challenge, ChallengeOverlay, WorldMut};
 use biosim4_core::world::World;
 use serde_json::{json, Value};
 
@@ -86,5 +86,41 @@ impl Challenge for RadioactiveWallsChallenge {
         for id in victims {
             ctx.population.queue_for_death(id);
         }
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        let half_gen = world.steps_per_generation / 2;
+        let active_is_west = world.step < half_gen;
+
+        // Three concentric bands at half_life, 2*half_life, 3*half_life from
+        // the active wall. The gizmo renderer outlines each rect, so this
+        // shows up as three vertical lines marking the kill-prob isolines.
+        let h = sy;
+        let bands: [(f32, u8); 3] =
+            [(self.half_life, 90), (2.0 * self.half_life, 60), (3.0 * self.half_life, 35)];
+        let mut out = Vec::with_capacity(4);
+        for (w, alpha) in bands {
+            let w = w.min(sx);
+            // Active wall (vivid red)
+            let (x_active, _) = if active_is_west { (0.0, 0.0) } else { (sx - w, 0.0) };
+            out.push(ChallengeOverlay::Rectangle {
+                x: x_active,
+                y: 0.0,
+                w,
+                h,
+                color: [255, 40, 40, alpha],
+            });
+            // Inactive wall (dim hint that it will activate later)
+            let (x_inactive, _) = if active_is_west { (sx - w, 0.0) } else { (0.0, 0.0) };
+            out.push(ChallengeOverlay::Rectangle {
+                x: x_inactive,
+                y: 0.0,
+                w,
+                h,
+                color: [200, 80, 80, alpha / 3],
+            });
+        }
+        out
     }
 }

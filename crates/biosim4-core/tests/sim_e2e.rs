@@ -19,6 +19,9 @@ use biosim4_core::{
     types::Coord,
 };
 
+mod common;
+use common::new_state;
+
 fn small_config() -> SimConfig {
     SimConfig {
         size_x: 32,
@@ -34,7 +37,7 @@ fn small_config() -> SimConfig {
 
 #[test]
 fn new_simulation_state_has_full_population() {
-    let state = SimulationState::new(small_config());
+    let state = new_state(small_config());
     assert_eq!(state.generation, 0);
     assert_eq!(state.sim_step, 0);
     assert_eq!(state.population.alive_count(), 30, "generation 0 should be fully populated");
@@ -42,7 +45,7 @@ fn new_simulation_state_has_full_population() {
 
 #[test]
 fn step_generation_does_not_panic_or_lose_population() {
-    let mut state = SimulationState::new(small_config());
+    let mut state = new_state(small_config());
     let initial_alive = state.population.alive_count();
     step_generation(&mut state);
     // Without kill_enable, all agents should still be alive at the end of a generation
@@ -55,7 +58,7 @@ fn step_generation_does_not_panic_or_lose_population() {
 
 #[test]
 fn agents_age_advances_during_step_generation() {
-    let mut state = SimulationState::new(small_config());
+    let mut state = new_state(small_config());
     step_generation(&mut state);
     let any_aged = state.population.iter_alive().any(|a| a.age > 0);
     assert!(any_aged, "at least some agents should have age > 0 after step_generation");
@@ -63,7 +66,7 @@ fn agents_age_advances_during_step_generation() {
 
 #[test]
 fn spawn_new_generation_resets_population_and_increments_counter() {
-    let mut state = SimulationState::new(small_config());
+    let mut state = new_state(small_config());
     step_generation(&mut state);
     let gen0 = state.generation;
     let _ = spawn_new_generation(&mut state);
@@ -86,8 +89,8 @@ fn deterministic_seed_produces_identical_first_step() {
     // merges chunk-local queues in arbitrary order (see `sim_step` docs).
     let mut cfg = small_config();
     cfg.num_threads = 1;
-    let mut s1 = SimulationState::new(cfg.clone());
-    let mut s2 = SimulationState::new(cfg);
+    let mut s1 = new_state(cfg.clone());
+    let mut s2 = new_state(cfg);
     step_generation(&mut s1);
     step_generation(&mut s2);
 
@@ -102,8 +105,7 @@ fn challenge_filters_survivors() {
     let mut cfg = small_config();
     cfg.population = 50;
     cfg.steps_per_generation = 20;
-    let mut state = SimulationState::new(cfg);
-    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+    let mut state = new_state(cfg);
 
     let cc = ChallengeConfig {
         active: vec!["right_half".into()],
@@ -121,8 +123,7 @@ fn challenge_filters_survivors() {
 
 #[test]
 fn run_three_full_generations_without_panic() {
-    let mut state = SimulationState::new(small_config());
-    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+    let mut state = new_state(small_config());
     let cc = ChallengeConfig {
         active: vec!["circle".into()],
         composition: biosim4_core::registry::ChallengeComposition::Any,
@@ -139,8 +140,7 @@ fn run_three_full_generations_without_panic() {
 
 #[test]
 fn set_challenge_via_json_works_end_to_end() {
-    let mut state = SimulationState::new(small_config());
-    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+    let mut state = new_state(small_config());
     let json = r#"{
         "active": ["right_half"],
         "composition": "Any",

@@ -14,17 +14,17 @@ use biosim4_core::{
     population::Population,
     registry::{SensorContext, SensorRegistry},
     rng::Rng,
-    sensors::register_builtin_sensors,
     signals_layer::Signals,
     sim_config::SimConfig,
     types::Coord,
     world::World,
 };
+use biosim4_sensors::register_builtin_sensors;
 
 fn make_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> Agent {
     let genome = make_random_genome(cfg, rng);
     let wcfg =
-        WiringConfig { sensor_count: 36, action_count: 17, max_neurons: cfg.max_number_neurons };
+        WiringConfig { sensor_count: 40, action_count: 17, max_neurons: cfg.max_number_neurons };
     let nnet = create_wiring(&genome, wcfg);
     Agent::new(id, loc, genome, nnet)
 }

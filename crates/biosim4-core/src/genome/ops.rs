@@ -28,14 +28,22 @@ use crate::genome::gene::Gene;
 use crate::rng::Rng;
 use crate::sim_config::SimConfig;
 
+/// An ordered sequence of [`Gene`] values representing one agent's genome.
+///
+/// The ordering has no inherent biological meaning — `create_wiring` uses
+/// the genes as an unordered set of synaptic-connection specifications.
+/// Duplicate genes produce proportionally stronger connections.
 pub type Genome = Vec<Gene>;
 
 // ── Random genome generation ──────────────────────────────────────────────
 
+/// Generate a single random gene by drawing a random `u32`.
 pub fn make_random_gene(rng: &mut Rng) -> Gene {
     Gene::from_raw(rng.gen_u32())
 }
 
+/// Generate a random genome with a length sampled uniformly in
+/// [`genome_initial_length_min`, `genome_initial_length_max`].
 pub fn make_random_genome(cfg: &SimConfig, rng: &mut Rng) -> Genome {
     // gen_range_u32 is half-open; +1 makes the user-facing range inclusive.
     let lo = cfg.genome_initial_length_min as u32;
@@ -94,14 +102,20 @@ pub fn random_insert_deletion(
 
 // ── Reproduction ─────────────────────────────────────────────────────────
 
-/// Parameters for [`generate_child_genome`].
+/// Reproduction parameters passed to [`generate_child_genome`].
 #[derive(Clone, Debug)]
 pub struct ReproductionParams {
+    /// Use two-parent sexual crossover when `true`; clone a single parent otherwise.
     pub sexual: bool,
+    /// Bias parent selection toward higher-fitness parents when `true`.
     pub choose_by_fitness: bool,
+    /// Per-gene bit-flip probability applied to the child genome.
     pub mutation_rate: f32,
+    /// Probability of inserting or deleting one gene from the child genome.
     pub insertion_deletion_rate: f32,
+    /// Fraction of indel events that delete a gene (vs. inserting one).
     pub deletion_ratio: f32,
+    /// Maximum allowed genome length after mutations.
     pub max_len: u16,
 }
 

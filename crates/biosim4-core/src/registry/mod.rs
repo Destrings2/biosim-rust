@@ -8,9 +8,11 @@
 //! configuration interface.
 
 pub mod action;
+pub mod breed;
 pub mod challenge;
 pub mod sensor;
 
 pub use action::{Action, ActionContext, ActionRegistry};
+pub use breed::{Breed, BreedRegistry};
 pub use challenge::{Challenge, ChallengeComposition, ChallengeConfig, ChallengeRegistry};
 pub use sensor::{Sensor, SensorContext, SensorRegistry};

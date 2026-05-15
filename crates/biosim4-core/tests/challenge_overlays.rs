@@ -51,7 +51,7 @@ fn make_world(cfg: &SimConfig) -> (Grid, Signals, FoodLayer, Population) {
     let mut rng = Rng::seeded(0xBEEF);
     let g = make_random_genome(cfg, &mut rng);
     let w =
-        WiringConfig { sensor_count: 36, action_count: 17, max_neurons: cfg.max_number_neurons };
+        WiringConfig { sensor_count: 40, action_count: 17, max_neurons: cfg.max_number_neurons };
     let n = create_wiring(&g, w);
     pop.spawn(Agent::new(pop.next_id() as AgentId, Coord::new(0, 0), g, n));
     (grid, signals, food, pop)
@@ -79,6 +79,11 @@ fn region_challenges_emit_overlays_and_regionless_do_not() {
         "center_unweighted",
         "corner",
         "corner_weighted",
+        "radioactive_walls",
+        "altruism",
+        "altruism_sacrifice",
+        "location_sequence",
+        "quarantine",
     ];
     for id in with_overlay {
         let mut reg = ChallengeRegistry::new();
@@ -98,12 +103,11 @@ fn region_challenges_emit_overlays_and_regionless_do_not() {
         "center_sparse",
         "string",
         "touch_any_wall",
-        "location_sequence",
-        "altruism",
-        "altruism_sacrifice",
         "migrate_distance",
-        "radioactive_walls",
         "diaspora",
+        // `tag` overlays the location of every "it" agent — empty in the
+        // test setup since no agent has been flagged yet.
+        "tag",
     ];
     for id in expected_no_overlay {
         let mut reg = ChallengeRegistry::new();

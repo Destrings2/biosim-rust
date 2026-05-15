@@ -29,19 +29,37 @@ use crate::rng::Rng;
 use crate::world::World;
 use std::collections::HashSet;
 
-/// Context passed to every sensor during evaluation.
+/// Read-only context provided to each [`Sensor::evaluate`] call.
 pub struct SensorContext<'a> {
+    /// The agent being evaluated.
     pub agent: &'a Agent,
+    /// Read-only view of the simulation world at this step.
     pub world: &'a World<'a>,
+    /// Current step index within the generation (0-based).
     pub sim_step: u32,
+    /// Per-agent RNG for stochastic sensors. Seeded deterministically from
+    /// `(rng_seed, generation, step, agent_id)` regardless of thread count.
     pub rng: &'a mut Rng,
 }
 
-/// A pluggable sensor that reads environment/agent state and returns 0.0..1.0.
+/// A pluggable sensor that maps agent/world state to a neural input value.
+///
+/// Implement this trait to create a custom sensor. Register the sensor with
+/// `state.sensors.register(Box::new(my_sensor))` before the first generation.
+///
+/// # Implementing
+///
+/// - `id` must return a unique, stable ASCII string. The registry uses this
+///   string to enable or disable the sensor and to persist its state across
+///   JSON round-trips.
+/// - `evaluate` must return a value in [0.0, 1.0]. Values outside this range
+///   are clamped by [`SensorRegistry::evaluate`].
 pub trait Sensor: Send + Sync {
+    /// Stable machine identifier. Must be unique across all registered sensors.
     fn id(&self) -> &str;
+    /// Human-readable display name.
     fn name(&self) -> &str;
-    /// Must return a value in [0.0, 1.0].
+    /// Evaluate the sensor for the given agent and world state. Must return [0.0, 1.0].
     fn evaluate(&self, ctx: &mut SensorContext) -> f32;
 }
 
@@ -84,6 +102,10 @@ impl SensorRegistry {
         }
     }
 
+    /// Add a sensor to the registry and enable it immediately.
+    ///
+    /// Call this before `initialize_generation_0` or at a generation boundary
+    /// followed by `commit_enabled()` so the new sensor participates in wiring.
     pub fn register(&mut self, sensor: Box<dyn Sensor>) {
         self.sensors.push(sensor);
         self.rebuild_state();

@@ -43,31 +43,41 @@ pub fn draw_floating_toolbar(mut contexts: EguiContexts, mut controls: ResMut<Si
 
 fn tool_button(ui: &mut egui::Ui, tool: Tool, controls: &mut SimControls) {
     let active = controls.tool == tool;
-
     let (fill, stroke, fg) = if active {
         (theme::ACCENT_SOFT, theme::ACCENT, theme::ACCENT)
     } else {
         (egui::Color32::TRANSPARENT, theme::LINE, theme::TEXT_2)
     };
-
-    let glyph = match tool {
-        Tool::Inspect => "◎",
-        Tool::Barrier => "▣",
-        Tool::KillBarrier => "☠",
-        Tool::Kill => "✕",
-        Tool::Reproduce => "✦",
+    let icon = match tool {
+        Tool::Inspect => theme::Icon::Inspect,
+        Tool::Barrier => theme::Icon::Barrier,
+        Tool::KillBarrier => theme::Icon::KillBarrier,
+        Tool::Kill => theme::Icon::Kill,
+        Tool::Reproduce => theme::Icon::Reproduce,
     };
 
-    let btn = egui::Button::new(
-        egui::RichText::new(format!("{glyph}  {}", tool.label())).size(11.0).color(fg).strong(),
-    )
-    .fill(fill)
-    .stroke(egui::Stroke::new(1.0, stroke))
-    .corner_radius(egui::CornerRadius::same(5))
-    .min_size(egui::vec2(96.0, 26.0));
-
-    let r = ui.add(btn).on_hover_text(tool.description());
-    if r.clicked() {
+    // Painted icon + label inside one clickable frame so the icon glyphs
+    // don't depend on the default font having `☠ ▣ ◎ ✕ ✦` coverage. Sized
+    // to match the prior text-button row height (≈26px) — 2px margin top/
+    // bottom + 20px content + the 1px stroke on each side.
+    let resp = egui::Frame::default()
+        .fill(fill)
+        .stroke(egui::Stroke::new(1.0, stroke))
+        .corner_radius(egui::CornerRadius::same(5))
+        .inner_margin(egui::Margin::symmetric(8, 2))
+        .show(ui, |ui| {
+            ui.set_min_size(egui::vec2(80.0, 20.0));
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 5.0;
+                let (icon_rect, _) =
+                    ui.allocate_exact_size(egui::vec2(13.0, 13.0), egui::Sense::hover());
+                theme::paint_icon(ui.painter(), icon_rect, icon, fg);
+                ui.label(egui::RichText::new(tool.label()).size(11.0).color(fg).strong());
+            });
+        })
+        .response
+        .interact(egui::Sense::click());
+    if resp.clone().on_hover_text(tool.description()).clicked() {
         controls.tool = tool;
     }
     ui.add_space(2.0);

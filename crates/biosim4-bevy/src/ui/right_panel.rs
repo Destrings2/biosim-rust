@@ -17,6 +17,10 @@ use crate::ui::{RightPanelTab, UiState, RIGHT_PANEL_WIDTH};
 /// Horizontal padding between panel edge and body content. Same value left
 /// and right so right-aligned values land symmetrically with section labels.
 const BODY_INSET: i8 = 14;
+/// Width of the vertical icon strip on the left edge of the right panel.
+const TAB_STRIP_WIDTH: f32 = 38.0;
+/// Icon button height inside the vertical strip.
+const TAB_BUTTON_HEIGHT: f32 = 38.0;
 
 pub fn draw_right_panel(
     mut contexts: EguiContexts,
@@ -39,43 +43,58 @@ pub fn draw_right_panel(
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 }),
         )
         .show(ctx, |ui| {
-            // Tab strip docks at the very top of the panel, flush edge-to-edge.
-            tab_bar(ui, &mut ui_state.right_panel_tab);
+            // Horizontal split inside the right panel: narrow vertical icon
+            // strip on the left, body content on the right. Spacing is zeroed
+            // so the strip's right border butts against the body.
+            // Snapshot the full panel height BEFORE the horizontal split so
+            // the strip can claim 100% of it — `horizontal_top` otherwise
+            // sizes each child to its content.
+            let panel_height = ui.available_height();
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+            ui.horizontal_top(|ui| {
+                vertical_tab_strip(ui, panel_height, &mut ui_state.right_panel_tab);
 
-            // Body content sits inside a frame that gives it consistent left+
-            // right padding. The scrollbar lives OUTSIDE this frame (still
-            // inside the panel) so the right margin stays even as content
-            // grows past the viewport.
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                egui::Frame::default()
-                    .inner_margin(egui::Margin {
-                        left: BODY_INSET,
-                        right: BODY_INSET,
-                        top: 10,
-                        bottom: 20,
-                    })
-                    .show(ui, |ui| {
-                        ui.style_mut().spacing.item_spacing.y = 6.0;
-                        match ui_state.right_panel_tab {
-                            RightPanelTab::Stats => stats_tab(
-                                ui,
-                                &sim,
-                                &mut controls,
-                                &history,
-                                &mut queue,
-                                &mut local_state,
-                            ),
-                            RightPanelTab::Challenge => {
-                                challenge_tab(ui, &sim, &mut queue, &mut local_state)
-                            }
-                            RightPanelTab::Registry => {
-                                registry_tab(ui, &sim, &mut queue, &mut local_state)
-                            }
-                            RightPanelTab::Config => {
-                                config_tab(ui, &sim, &controls, &mut queue, &mut local_state)
-                            }
-                        }
+                ui.vertical(|ui| {
+                    body_header(ui, ui_state.right_panel_tab);
+                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                        egui::Frame::default()
+                            .inner_margin(egui::Margin {
+                                left: BODY_INSET,
+                                right: BODY_INSET,
+                                top: 10,
+                                bottom: 20,
+                            })
+                            .show(ui, |ui| {
+                                ui.style_mut().spacing.item_spacing.y = 6.0;
+                                match ui_state.right_panel_tab {
+                                    RightPanelTab::Stats => stats_tab(
+                                        ui,
+                                        &sim,
+                                        &mut controls,
+                                        &history,
+                                        &mut queue,
+                                        &mut local_state,
+                                    ),
+                                    RightPanelTab::Challenge => {
+                                        challenge_tab(ui, &sim, &mut queue, &mut local_state)
+                                    }
+                                    RightPanelTab::Breeds => {
+                                        breeds_tab(ui, &sim, &mut queue, &mut local_state)
+                                    }
+                                    RightPanelTab::Registry => {
+                                        registry_tab(ui, &sim, &mut queue, &mut local_state)
+                                    }
+                                    RightPanelTab::Config => config_tab(
+                                        ui,
+                                        &sim,
+                                        &controls,
+                                        &mut queue,
+                                        &mut local_state,
+                                    ),
+                                }
+                            });
                     });
+                });
             });
         });
 }
@@ -90,6 +109,8 @@ pub struct RightPanelLocal {
     edit_config: Option<SimConfig>,
     /// Pending fast-forward target — number of generations to simulate.
     ff_gens: u32,
+    /// Currently-highlighted breed id in the picker (not necessarily applied).
+    selected_breed: String,
 }
 
 impl Default for RightPanelLocal {
@@ -101,58 +122,84 @@ impl Default for RightPanelLocal {
             action_filter: String::new(),
             edit_config: None,
             ff_gens: 100,
+            selected_breed: String::new(),
         }
     }
 }
 
-fn tab_bar(ui: &mut egui::Ui, current: &mut RightPanelTab) {
+/// Vertical icon strip docked at the left edge of the right panel. Each tab
+/// is a painted icon with an accent-bar indicator on the left when active —
+/// keeps the panel header free to show the active tab's name without eating
+/// horizontal space, and makes adding more tabs (Breeds, …) a one-line change.
+fn vertical_tab_strip(ui: &mut egui::Ui, full_height: f32, current: &mut RightPanelTab) {
     egui::Frame::default()
-        .fill(theme::BG_2)
+        .fill(theme::BG)
         .stroke(egui::Stroke::new(1.0, theme::LINE))
-        .inner_margin(egui::Margin {
-            left: BODY_INSET - 4,
-            right: BODY_INSET - 4,
-            top: 6,
-            bottom: 0,
-        })
+        .inner_margin(egui::Margin { left: 0, right: 0, top: 6, bottom: 6 })
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                // Equal-width tabs that span the body inset boundary so the
-                // underline indicator aligns visually with the section
-                // labels below it.
-                let avail = ui.available_width();
-                let tab_w = (avail / 4.0).max(60.0);
-                for tab in [
-                    RightPanelTab::Stats,
-                    RightPanelTab::Challenge,
-                    RightPanelTab::Registry,
-                    RightPanelTab::Config,
-                ] {
-                    let active = *current == tab;
-                    let label = egui::RichText::new(tab.label())
-                        .size(10.5)
-                        .color(if active { theme::ACCENT } else { theme::TEXT_2 })
-                        .strong();
-                    let btn = egui::Button::new(label)
-                        .fill(egui::Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::NONE)
-                        .corner_radius(egui::CornerRadius::ZERO)
-                        .min_size(egui::vec2(tab_w, 30.0));
-                    let r = ui.add(btn);
-                    if r.clicked() {
-                        *current = tab;
-                    }
-                    if active {
-                        let underline = egui::Rect::from_min_max(
-                            egui::pos2(r.rect.left() + 8.0, r.rect.bottom() - 1.0),
-                            egui::pos2(r.rect.right() - 8.0, r.rect.bottom()),
-                        );
-                        ui.painter().rect_filled(underline, 0.0, theme::ACCENT);
-                    }
+            // Force the strip to the full panel height so the BG column
+            // extends from the topbar all the way to the canvas-bottom edge.
+            ui.set_min_size(egui::vec2(TAB_STRIP_WIDTH, full_height));
+            ui.set_width(TAB_STRIP_WIDTH);
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.vertical_centered(|ui| {
+                for &tab in RightPanelTab::ALL {
+                    tab_icon_button(ui, tab, current);
                 }
             });
         });
+}
+
+fn tab_icon_button(ui: &mut egui::Ui, tab: RightPanelTab, current: &mut RightPanelTab) {
+    let active = *current == tab;
+    let color = if active { theme::ACCENT } else { theme::TEXT_2 };
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(TAB_STRIP_WIDTH - 2.0, TAB_BUTTON_HEIGHT),
+        egui::Sense::click(),
+    );
+    // Hover/active backdrop.
+    if active {
+        ui.painter().rect_filled(
+            rect.shrink2(egui::vec2(4.0, 4.0)),
+            egui::CornerRadius::same(5),
+            theme::ACCENT_SOFT,
+        );
+        // Accent bar on the inner edge.
+        let bar = egui::Rect::from_min_max(
+            egui::pos2(rect.left(), rect.top() + 6.0),
+            egui::pos2(rect.left() + 2.0, rect.bottom() - 6.0),
+        );
+        ui.painter().rect_filled(bar, 0.0, theme::ACCENT);
+    } else if resp.hovered() {
+        ui.painter().rect_filled(
+            rect.shrink2(egui::vec2(4.0, 4.0)),
+            egui::CornerRadius::same(5),
+            theme::PANEL_2,
+        );
+    }
+    let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(20.0, 20.0));
+    theme::paint_icon(ui.painter(), icon_rect, tab.icon(), color);
+
+    let _ = resp.clone().on_hover_text(tab.tooltip());
+    if resp.clicked() {
+        *current = tab;
+    }
+}
+
+/// Title bar at the top of the body area — shows the active tab name and a
+/// hairline below it. This is what makes adding tabs cheap: the strip carries
+/// the iconography, the header carries the name.
+fn body_header(ui: &mut egui::Ui, tab: RightPanelTab) {
+    egui::Frame::default()
+        .fill(theme::BG_2)
+        .inner_margin(egui::Margin { left: BODY_INSET, right: BODY_INSET, top: 12, bottom: 8 })
+        .show(ui, |ui| {
+            ui.label(egui::RichText::new(tab.label()).size(11.0).strong().color(theme::TEXT));
+        });
+    // Hairline under the header.
+    let avail_w = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, 1.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, theme::LINE);
 }
 
 // ── Stats ───────────────────────────────────────────────────────────────────
@@ -216,13 +263,6 @@ fn stats_tab(
     }
 
     section(ui, "PARALLELISM");
-    ui.label(
-        egui::RichText::new(
-            "Multi-thread runs are non-deterministic by design — set num_threads=1 if you need reproducible runs."
-        )
-        .size(11.0)
-        .color(theme::TEXT_2),
-    );
     ui.add_space(2.0);
     kv_row(ui, "Threads", &format!("{}", controls.num_threads));
     kv_row(ui, "FPS", &format!("{:.0}", controls.fps));
@@ -270,7 +310,7 @@ fn stats_tab(
 
     ui.add_space(4.0);
     let n = local.ff_gens;
-    let r = full_width_primary(ui, &format!("▶  RUN {n} GENS"));
+    let r = full_width_primary_with_icon(ui, theme::Icon::Play, &format!("RUN {n} GENS"));
     if r.clicked() {
         queue.items.push(SimCommand::FastForward(n));
     }
@@ -383,7 +423,7 @@ fn challenge_tab(
     ui.add_space(10.0);
 
     ui.horizontal(|ui| {
-        let apply = primary_button(ui, "APPLY  ▸")
+        let apply = primary_button(ui, "APPLY")
             .on_hover_text(format!(
                 "Activate `{}` for upcoming generations",
                 local.selected_challenge
@@ -500,6 +540,128 @@ fn render_param_field(
             }
         });
     });
+}
+
+// ── Breeds ──────────────────────────────────────────────────────────────────
+
+fn breeds_tab(
+    ui: &mut egui::Ui,
+    sim: &Sim,
+    queue: &mut SimCommandQueue,
+    local: &mut RightPanelLocal,
+) {
+    ui.add_space(2.0);
+    ui.label(
+        egui::RichText::new(
+            "Breeds are curated sensor + action presets. Applying one rewrites the enabled sets; the new wiring kicks in at the next generation rollover.",
+        )
+        .size(11.0)
+        .color(theme::TEXT_2),
+    );
+    ui.add_space(10.0);
+
+    let breeds = sim.state.breeds.list();
+    if breeds.is_empty() {
+        ui.label(
+            egui::RichText::new("No breeds registered.").size(11.0).color(theme::MUTED).italics(),
+        );
+        return;
+    }
+
+    // Seed the highlight on first visit so the right pane has content.
+    if local.selected_breed.is_empty() {
+        local.selected_breed = breeds[0].id.clone();
+    }
+
+    // Dropdown picker — scales to any number of breeds without burning
+    // vertical space. The dropdown popup is height-capped so a hundred
+    // breeds would internally scroll.
+    let current_name = breeds
+        .iter()
+        .find(|b| b.id == local.selected_breed)
+        .map(|b| b.name.clone())
+        .unwrap_or_else(|| "—".to_string());
+    let body_w = ui.available_width();
+    egui::ComboBox::from_id_salt("breed_dd")
+        .selected_text(egui::RichText::new(current_name).size(12.0).color(theme::TEXT).strong())
+        .width(body_w - 4.0)
+        .height(360.0)
+        .show_ui(ui, |ui| {
+            ui.style_mut().spacing.item_spacing.y = 0.0;
+            for breed in breeds {
+                let selected = breed.id == local.selected_breed;
+                if ui
+                    .selectable_label(
+                        selected,
+                        egui::RichText::new(&breed.name).size(11.5).color(if selected {
+                            theme::ACCENT
+                        } else {
+                            theme::TEXT
+                        }),
+                    )
+                    .clicked()
+                {
+                    local.selected_breed = breed.id.clone();
+                }
+            }
+        });
+
+    // Detail card for the highlighted breed.
+    if let Some(breed) = sim.state.breeds.get(&local.selected_breed) {
+        ui.add_space(10.0);
+        section(ui, "DETAILS");
+        ui.label(egui::RichText::new(&breed.description).size(11.0).color(theme::TEXT_2));
+        ui.add_space(6.0);
+
+        egui::Frame::default()
+            .fill(theme::BG)
+            .stroke(egui::Stroke::new(1.0, theme::LINE))
+            .corner_radius(egui::CornerRadius::same(4))
+            .inner_margin(egui::Margin::symmetric(8, 6))
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 4.0;
+                kv_row(ui, "Sensors", &format!("{}", breed.sensors.len()));
+                kv_row(ui, "Actions", &format!("{}", breed.actions.len()));
+                kv_row(
+                    ui,
+                    "Challenge",
+                    if breed.challenge.is_some() { "embedded" } else { "(unchanged)" },
+                );
+            });
+
+        ui.add_space(8.0);
+        ui.collapsing(
+            egui::RichText::new("INCLUDED SENSORS").size(10.0).color(theme::MUTED).strong(),
+            |ui| {
+                ui.label(
+                    egui::RichText::new(breed.sensors.join(", "))
+                        .monospace()
+                        .size(10.5)
+                        .color(theme::TEXT_2),
+                );
+            },
+        );
+        ui.collapsing(
+            egui::RichText::new("INCLUDED ACTIONS").size(10.0).color(theme::MUTED).strong(),
+            |ui| {
+                ui.label(
+                    egui::RichText::new(breed.actions.join(", "))
+                        .monospace()
+                        .size(10.5)
+                        .color(theme::TEXT_2),
+                );
+            },
+        );
+
+        ui.add_space(10.0);
+        let id = breed.id.clone();
+        if primary_button(ui, "APPLY")
+            .on_hover_text(format!("Apply breed `{id}` and commit on next generation"))
+            .clicked()
+        {
+            queue.items.push(SimCommand::ApplyBreed(id));
+        }
+    }
 }
 
 // ── Registry ────────────────────────────────────────────────────────────────
@@ -719,10 +881,21 @@ fn config_tab(
     // Capture intent before the closure so we don't hold `&mut local.edit_config`
     // (via `cfg`) and `&mut local` simultaneously.
     let cfg_snapshot = cfg.clone();
+    let cur = &sim.state.config;
+    let needs_reset = cfg_snapshot.size_x != cur.size_x
+        || cfg_snapshot.size_y != cur.size_y
+        || cfg_snapshot.signal_layers != cur.signal_layers
+        || cfg_snapshot.rng_seed != cur.rng_seed;
+    let apply_label = if needs_reset { "APPLY  ·  RESET" } else { "APPLY" };
+    let apply_hint = if needs_reset {
+        "size_x / size_y / signal_layers / rng_seed change requires reinitializing the grid — current run will be discarded."
+    } else {
+        "Patch the running simulation in place. Per-step values take effect immediately; mutation, selection, and barrier settings take effect at the next generation rollover."
+    };
     let mut apply = false;
     let mut discard = false;
     ui.horizontal(|ui| {
-        if primary_button(ui, "APPLY  ·  RESET").clicked() {
+        if primary_button(ui, apply_label).on_hover_text(apply_hint).clicked() {
             apply = true;
         }
         if ghost_button(ui, "DISCARD").clicked() {
@@ -794,14 +967,42 @@ fn primary_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     ui.add(btn)
 }
 
-/// Like `primary_button` but stretched to the body's full width — used for
-/// "hero" actions like Run Fast-Forward.
-fn full_width_primary(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    let btn = egui::Button::new(egui::RichText::new(text).size(11.5).strong().color(theme::BG))
-        .fill(theme::ACCENT)
-        .corner_radius(egui::CornerRadius::same(5))
-        .min_size(egui::vec2(ui.available_width(), 30.0));
-    ui.add(btn)
+/// Full-width hero button with a painted leading icon. Used for actions like
+/// "▶ RUN 100 GENS" where we want the playback semantics but can't rely on
+/// the default font having the play glyph.
+///
+/// Allocates an EXACT 32px-tall row up front rather than using a Frame's
+/// `set_min_size`. When the parent has lots of leftover vertical space
+/// (e.g. the Stats tab before any generation has run), a min-sized Frame
+/// would stretch to fill it.
+fn full_width_primary_with_icon(
+    ui: &mut egui::Ui,
+    icon: theme::Icon,
+    text: &str,
+) -> egui::Response {
+    const H: f32 = 32.0;
+    let width = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, H), egui::Sense::click());
+    let painter = ui.painter();
+    painter.rect_filled(rect, egui::CornerRadius::same(5), theme::ACCENT);
+    // Layout: icon + 8px gap + label, group centered horizontally.
+    let icon_size = 14.0_f32;
+    let label_galley =
+        painter.layout_no_wrap(text.to_string(), egui::FontId::proportional(11.5), theme::BG);
+    let gap = 8.0;
+    let total_w = icon_size + gap + label_galley.size().x;
+    let group_left = rect.center().x - total_w * 0.5;
+    let icon_center = egui::pos2(group_left + icon_size * 0.5, rect.center().y);
+    theme::paint_icon(
+        painter,
+        egui::Rect::from_center_size(icon_center, egui::vec2(icon_size, icon_size)),
+        icon,
+        theme::BG,
+    );
+    let text_pos =
+        egui::pos2(group_left + icon_size + gap, rect.center().y - label_galley.size().y * 0.5);
+    painter.galley(text_pos, label_galley, theme::BG);
+    resp
 }
 
 fn ghost_button(ui: &mut egui::Ui, text: &str) -> egui::Response {

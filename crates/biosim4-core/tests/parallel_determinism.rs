@@ -16,6 +16,8 @@ fn run_sim(threads: u32, challenge: &str) -> u64 {
     cfg.num_threads = threads;
 
     let mut state = SimulationState::new(cfg);
+    biosim4_sensors::register_builtin_sensors(&mut state.sensors);
+    biosim4_actions::register_builtin_actions(&mut state.actions);
     biosim4_challenges::register_builtin_challenges(&mut state.challenges);
 
     if challenge != "none" {

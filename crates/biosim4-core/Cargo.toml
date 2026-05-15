@@ -15,8 +15,10 @@ rayon = { version = "1.8", optional = true }
 
 [dev-dependencies]
 # Tests and examples that exercise the simulation pipeline need built-in
-# challenges. Core itself does not depend on this crate (so adding a challenge
-# does not trigger a core rebuild) — only dev builds pull it in.
+# sensors, actions, and challenges. Core itself does not depend on these
+# (so adding one does not trigger a core rebuild) — only dev builds pull them in.
+biosim4-sensors = { path = "../biosim4-sensors" }
+biosim4-actions = { path = "../biosim4-actions" }
 biosim4-challenges = { path = "../biosim4-challenges" }
 
 [lints]

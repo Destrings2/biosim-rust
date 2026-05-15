@@ -13,7 +13,12 @@
 use rand::rngs::SmallRng;
 use rand::{Rng as RandRng, SeedableRng};
 
-/// Lightweight, seedable RNG wrapper used throughout the simulation.
+/// Seedable random number generator wrapper around [`rand::rngs::SmallRng`].
+///
+/// All random draws in the simulation flow through this type. Use
+/// [`Rng::seeded`] for reproducible runs, [`Rng::from_entropy`] for
+/// non-deterministic runs, or [`Rng::fork`] to derive independent
+/// per-agent streams from the simulation's root RNG.
 pub struct Rng {
     inner: SmallRng,
 }
@@ -45,14 +50,17 @@ impl Rng {
         self.inner.gen_range(lo..hi)
     }
 
+    /// Uniform `usize` in `[lo, hi)`.
     pub fn gen_range_usize(&mut self, lo: usize, hi: usize) -> usize {
         self.inner.gen_range(lo..hi)
     }
 
+    /// Uniform `f32` in [0.0, 1.0).
     pub fn gen_f32(&mut self) -> f32 {
         self.inner.gen()
     }
 
+    /// Return `true` with the given probability in [0.0, 1.0].
     pub fn gen_bool(&mut self, probability: f32) -> bool {
         self.inner.gen::<f32>() < probability
     }

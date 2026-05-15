@@ -21,8 +21,17 @@ use crate::agent::{Agent, AgentId};
 use crate::grid::Grid;
 use crate::types::Coord;
 
-/// Manages all agents and deferred action queues.
-/// Slot 0 is reserved (INVALID_AGENT = 0). Agents occupy indices 1..capacity.
+/// Index-stable agent store with deferred move and death queues.
+///
+/// Agents are stored in `Vec<Option<Agent>>`. Slot 0 is permanently reserved
+/// so that grid cell value 0 unambiguously means "empty" — no agent will ever
+/// have `id == 0`. Slots are append-only: a spawn ID is stable for the
+/// lifetime of the population.
+///
+/// Actions do not mutate the grid or kill agents directly. They push entries
+/// into `move_queue` and `death_queue`, which are drained at end-of-step by
+/// [`drain_death_queue`](Self::drain_death_queue) (deaths first) and
+/// [`drain_move_queue`](Self::drain_move_queue) (moves second).
 pub struct Population {
     /// Index-stable storage. `None` = dead / unoccupied slot.
     agents: Vec<Option<Agent>>,

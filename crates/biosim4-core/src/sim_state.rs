@@ -50,6 +50,24 @@ pub struct StepScratch {
     pub alive_ids: Vec<AgentId>,
 }
 
+/// Root container for all mutable simulation state.
+///
+/// All fields are `pub` so the step engine can perform split borrows — for
+/// example, holding `&mut population` alongside `&grid` — without intermediate
+/// accessor methods for every combination.
+///
+/// # Initialization
+///
+/// Use [`SimulationState::new`] to construct a state with built-in sensors
+/// and actions registered. Register built-in challenges separately via
+/// `biosim4_challenges::register_builtin_challenges(&mut state.challenges)`.
+///
+/// # Stepping
+///
+/// Call [`step_generation`](crate::step_generation) (one full generation) or
+/// [`step_one`](crate::step_one) (one step, for incremental frontends).
+/// After each generation call [`spawn_new_generation`](crate::spawn_new_generation)
+/// to select survivors and populate the next generation.
 pub struct SimulationState {
     pub config: SimConfig,
     pub grid: Grid,
@@ -61,6 +79,9 @@ pub struct SimulationState {
     pub sensors: SensorRegistry,
     pub actions: ActionRegistry,
     pub challenges: ChallengeRegistry,
+    /// Curated presets that bundle sensor/action subsets with an optional
+    /// challenge configuration. See [`crate::registry::Breed`].
+    pub breeds: crate::registry::BreedRegistry,
     pub rng: Rng,
     /// Scratch buffers reused each step. Not part of the simulation state proper
     /// — they hold no semantic information between steps. Public so `sim_step`
@@ -118,21 +139,25 @@ impl SimulationState {
 }
 
 impl SimulationState {
+    /// Create a `SimulationState` from a config, register all built-in sensors
+    /// and actions.
+    ///
+    /// Built-in sensors, actions, and challenges live in sibling crates and
+    /// are **not** registered here — callers register them after construction
+    /// and then call `initialize_generation_0` to spawn the starting cohort:
+    ///
+    /// ```ignore
+    /// let mut state = SimulationState::new(cfg);
+    /// biosim4_sensors::register_builtin_sensors(&mut state.sensors);
+    /// biosim4_actions::register_builtin_actions(&mut state.actions);
+    /// biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+    /// biosim4_core::initialize_generation_0(&mut state);
+    /// ```
     pub fn new(config: SimConfig) -> Self {
-        use crate::actions::register_builtin_actions;
-        use crate::sensors::register_builtin_sensors;
-
-        let mut sensors = SensorRegistry::new();
-        register_builtin_sensors(&mut sensors);
-
-        let mut actions = ActionRegistry::new();
-        register_builtin_actions(&mut actions);
-
-        // Built-in challenges live in the sibling `biosim4-challenges` crate
-        // so adding a new challenge doesn't trigger a core rebuild. Callers
-        // register them explicitly with
-        // `biosim4_challenges::register_builtin_challenges(&mut state.challenges)`.
+        let sensors = SensorRegistry::new();
+        let actions = ActionRegistry::new();
         let challenges = ChallengeRegistry::new();
+        let breeds = crate::registry::BreedRegistry::new();
 
         let mut grid = Grid::new(config.size_x, config.size_y);
         create_barrier(&mut grid, config.barrier_type);
@@ -143,7 +168,7 @@ impl SimulationState {
         let rng =
             if config.rng_seed == 0 { Rng::from_entropy() } else { Rng::seeded(config.rng_seed) };
 
-        let mut state = Self {
+        Self {
             config,
             grid,
             signals,
@@ -154,25 +179,41 @@ impl SimulationState {
             sensors,
             actions,
             challenges,
+            breeds,
             rng,
             scratch: StepScratch::default(),
             user_barriers: HashMap::new(),
-        };
-
-        crate::spawn::initialize_generation_0(&mut state);
-        state
+        }
     }
 
+    /// Deserialize a [`SimConfig`] from JSON and call [`Self::new`].
     pub fn new_from_json(json: &str) -> Result<Self, String> {
         let config = SimConfig::from_json(json).map_err(|e| e.to_string())?;
         Ok(Self::new(config))
     }
 
+    /// Apply a JSON-encoded [`ChallengeConfig`] to the challenge registry.
+    ///
+    /// Activates the named challenges, sets their composition rule, and
+    /// forwards any per-challenge params to each challenge's `configure` method.
     pub fn set_challenge(&mut self, json: &str) -> Result<(), String> {
         let cfg: ChallengeConfig = serde_json::from_str(json).map_err(|e| e.to_string())?;
         self.challenges.apply_config(cfg)
     }
 
+    /// Apply a breed by id. Performs the split-borrow against the three
+    /// registries internally so callers don't have to.
+    pub fn apply_breed(&mut self, id: &str) -> Result<(), String> {
+        // Look up first; copy out the breed (cheap — small struct of strings)
+        // so we can drop the immutable borrow before mutating siblings.
+        let breed = self.breeds.get(id).ok_or_else(|| format!("Unknown breed `{id}`"))?.clone();
+        breed.apply(&mut self.sensors, &mut self.actions, &mut self.challenges)
+    }
+
+    /// Construct a read-only [`World`] view of the current simulation state.
+    ///
+    /// The `World` borrows from `self` and is cheap to create — it copies
+    /// only references and a few scalar fields.
     pub fn world(&self) -> World<'_> {
         World {
             grid: &self.grid,
@@ -187,6 +228,10 @@ impl SimulationState {
         }
     }
 
+    /// Build a [`WiringConfig`] from the current committed sensor/action counts.
+    ///
+    /// Call this after `sensors.commit_enabled()` and `actions.commit_enabled()`
+    /// so that new neural networks are compiled against the active set.
     pub fn wiring_config(&self) -> WiringConfig {
         WiringConfig {
             sensor_count: self.sensors.enabled_count(),

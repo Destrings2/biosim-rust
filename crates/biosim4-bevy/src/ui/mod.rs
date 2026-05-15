@@ -19,7 +19,7 @@ pub mod topbar;
 
 /// Width of the docked right panel in screen pixels. Camera fit logic uses
 /// this to leave room on the right side of the world.
-pub const RIGHT_PANEL_WIDTH: f32 = 320.0;
+pub const RIGHT_PANEL_WIDTH: f32 = 360.0;
 /// Top bar height (matches the value set in `topbar::draw_topbar`).
 pub const TOPBAR_HEIGHT: f32 = 44.0;
 
@@ -36,17 +36,48 @@ pub enum RightPanelTab {
     #[default]
     Stats,
     Challenge,
+    Breeds,
     Registry,
     Config,
 }
 
 impl RightPanelTab {
+    /// All tabs in the order they appear on the vertical strip.
+    pub const ALL: &'static [RightPanelTab] = &[
+        RightPanelTab::Stats,
+        RightPanelTab::Challenge,
+        RightPanelTab::Breeds,
+        RightPanelTab::Registry,
+        RightPanelTab::Config,
+    ];
+
     pub fn label(self) -> &'static str {
         match self {
-            RightPanelTab::Stats => "STATS",
+            RightPanelTab::Stats => "STATISTICS",
             RightPanelTab::Challenge => "CHALLENGE",
+            RightPanelTab::Breeds => "BREEDS",
             RightPanelTab::Registry => "REGISTRY",
             RightPanelTab::Config => "CONFIG",
+        }
+    }
+
+    pub fn tooltip(self) -> &'static str {
+        match self {
+            RightPanelTab::Stats => "Statistics — population, survival, diversity",
+            RightPanelTab::Challenge => "Survival challenge picker + parameters",
+            RightPanelTab::Breeds => "Breeds — curated sensor/action presets",
+            RightPanelTab::Registry => "Enabled sensors and actions",
+            RightPanelTab::Config => "Simulation config (population, mutation, world)",
+        }
+    }
+
+    pub fn icon(self) -> crate::theme::Icon {
+        match self {
+            RightPanelTab::Stats => crate::theme::Icon::TabStats,
+            RightPanelTab::Challenge => crate::theme::Icon::TabChallenge,
+            RightPanelTab::Breeds => crate::theme::Icon::TabBreeds,
+            RightPanelTab::Registry => crate::theme::Icon::TabRegistry,
+            RightPanelTab::Config => crate::theme::Icon::TabConfig,
         }
     }
 }

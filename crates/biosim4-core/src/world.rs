@@ -29,6 +29,11 @@ pub struct World<'a> {
 }
 
 impl<'a> World<'a> {
+    /// Construct a `World` from borrowed references and scalar metadata.
+    ///
+    /// Prefer [`SimulationState::world`](crate::sim_state::SimulationState::world)
+    /// for the common case — call `new` only when assembling a `World` from
+    /// individually borrowed fields.
     pub fn new(
         grid: &'a Grid,
         signals: &'a Signals,

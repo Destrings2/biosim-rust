@@ -126,14 +126,19 @@ fn inline_metric(
                 })
                 .collect();
 
-            let mut fill_pts = xs.clone();
-            fill_pts.push(egui::pos2(rect.right(), rect.bottom()));
-            fill_pts.push(egui::pos2(rect.left(), rect.bottom()));
-            painter.add(egui::Shape::convex_polygon(
-                fill_pts,
-                color.gamma_multiply(0.18),
-                egui::Stroke::NONE,
-            ));
+            // Fill as a strip of trapezoids — each quad is convex, so the
+            // shape renders cleanly even when the line dips and rises
+            // (a single closed polygon would fail egui's fan triangulation).
+            let fill = color.gamma_multiply(0.18);
+            let bottom = rect.bottom();
+            for w in xs.windows(2) {
+                let (a, b) = (w[0], w[1]);
+                painter.add(egui::Shape::convex_polygon(
+                    vec![egui::pos2(a.x, bottom), a, b, egui::pos2(b.x, bottom)],
+                    fill,
+                    egui::Stroke::NONE,
+                ));
+            }
             painter.add(egui::Shape::line(xs.clone(), egui::Stroke::new(1.2, color)));
             if let Some(&last) = xs.last() {
                 painter.circle_filled(last, 2.0, color);

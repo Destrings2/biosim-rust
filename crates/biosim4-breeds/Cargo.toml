@@ -1,17 +1,17 @@
 [package]
-name = "biosim4-native"
+name = "biosim4-breeds"
 version = "0.1.0"
 edition = "2021"
+description = "Built-in breed presets (curated sensor/action/challenge bundles) for biosim4-core"
 
 [dependencies]
-biosim4-core = { path = "../biosim4-core", features = ["parallel"] }
+biosim4-core = { path = "../biosim4-core" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
 biosim4-sensors = { path = "../biosim4-sensors" }
 biosim4-actions = { path = "../biosim4-actions" }
 biosim4-challenges = { path = "../biosim4-challenges" }
-serde_json = { workspace = true }
-clap = { version = "4", features = ["derive"] }
-indicatif = "0.17"
-rayon = "1.8"
 
 [lints]
 workspace = true

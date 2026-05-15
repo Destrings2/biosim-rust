@@ -31,7 +31,9 @@
 
 use crate::types::Coord;
 
+/// Grid cell value indicating an unoccupied cell.
 pub const EMPTY: u32 = 0;
+/// Grid cell value indicating a static impassable wall.
 pub const BARRIER: u32 = 0xFFFF_FFFF;
 /// User-painted hazard cell. Agents attempting to move into it die rather
 /// than being blocked.

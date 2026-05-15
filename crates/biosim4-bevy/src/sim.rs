@@ -18,7 +18,22 @@ use biosim4_core::analysis::collect_epoch_stats;
 use biosim4_core::sim_config::SimConfig;
 use biosim4_core::sim_state::SimulationState;
 use biosim4_core::sim_step::step_one;
-use biosim4_core::spawn::spawn_new_generation;
+use biosim4_core::spawn::{initialize_generation_0, spawn_new_generation};
+
+/// Build a fully-initialized [`SimulationState`] with every built-in sensor,
+/// action, and challenge registered and generation 0 populated. The four
+/// frontend construction sites (`Sim::new`, plus the Reset and Recreate
+/// command handlers) all go through this so the registration order stays
+/// in lockstep.
+fn fresh_state(config: SimConfig) -> SimulationState {
+    let mut state = SimulationState::new(config);
+    biosim4_sensors::register_builtin_sensors(&mut state.sensors);
+    biosim4_actions::register_builtin_actions(&mut state.actions);
+    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+    biosim4_breeds::register_builtin_breeds(&mut state.breeds);
+    initialize_generation_0(&mut state);
+    state
+}
 
 /// Maximum simulation steps we'll execute in a single frame in normal
 /// (rendered) playback. Above this we'd starve the renderer of frame time.
@@ -63,8 +78,7 @@ impl Sim {
     pub fn new(config: SimConfig) -> Self {
         let pool = build_pool(config.num_threads);
         let json = serde_json::to_string_pretty(&config).unwrap_or_default();
-        let mut state = SimulationState::new(config);
-        biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+        let state = fresh_state(config);
         Self { state, config_json: json, pool }
     }
 
@@ -296,7 +310,10 @@ pub enum SimCommand {
     SetSensorEnabled(String, bool),
     SetActionEnabled(String, bool),
     SetChallenge(String), // JSON
-    PatchConfig(String),  // JSON
+    /// Apply a breed by id: rewrites the sensor + action enable masks and
+    /// (optionally) installs an embedded challenge config.
+    ApplyBreed(String),
+    PatchConfig(String), // JSON
     /// Start a fast-forward run targeting `current_gen + n`. While active,
     /// rendering is paused; on completion playback returns to the user's
     /// previous running state.
@@ -344,8 +361,7 @@ fn process_commands(
         match cmd {
             SimCommand::Reset => {
                 let cfg = sim.state.config.clone();
-                sim.state = SimulationState::new(cfg);
-                biosim4_challenges::register_builtin_challenges(&mut sim.state.challenges);
+                sim.state = fresh_state(cfg);
                 history.clear();
                 controls.selected_agent = None;
                 controls.running = false;
@@ -354,19 +370,37 @@ fn process_commands(
                 controls.painted_count = 0;
             }
             SimCommand::Recreate(cfg) => {
+                // Only fields baked into allocation at `SimulationState::new`
+                // require tearing down state: Grid/Signals/FoodLayer dimensions
+                // and the seeded RNG. Everything else is read per-step or at
+                // end-of-generation rollover, so we can patch it in place and
+                // keep the current run going.
+                let cur = &sim.state.config;
+                let structural_changed = cfg.size_x != cur.size_x
+                    || cfg.size_y != cur.size_y
+                    || cfg.signal_layers != cur.signal_layers
+                    || cfg.rng_seed != cur.rng_seed;
+                let threads_changed = cfg.num_threads != cur.num_threads;
+
                 if let Ok(json) = serde_json::to_string_pretty(&cfg) {
                     sim.config_json = json;
                 }
-                sim.rebuild_pool(cfg.num_threads);
-                controls.num_threads = cfg.num_threads;
-                sim.state = SimulationState::new(cfg);
-                biosim4_challenges::register_builtin_challenges(&mut sim.state.challenges);
-                history.clear();
-                controls.selected_agent = None;
-                controls.running = false;
-                controls.grid_dirty = true;
-                controls.refit_camera = true;
-                controls.painted_count = 0;
+                if threads_changed {
+                    sim.rebuild_pool(cfg.num_threads);
+                    controls.num_threads = cfg.num_threads;
+                }
+                if structural_changed {
+                    sim.state = fresh_state(cfg);
+                    history.clear();
+                    controls.selected_agent = None;
+                    controls.running = false;
+                    controls.grid_dirty = true;
+                    controls.refit_camera = true;
+                    controls.painted_count = 0;
+                } else {
+                    sim.state.config = cfg;
+                    controls.grid_dirty = true;
+                }
             }
             SimCommand::SetSpeed(s) => controls.speed = s.clamp(1, MAX_STEPS_PER_FRAME),
             SimCommand::StepOnce => {
@@ -417,6 +451,11 @@ fn process_commands(
             SimCommand::SetChallenge(json) => {
                 if let Err(e) = sim.state.set_challenge(&json) {
                     warn!("set_challenge failed: {e}");
+                }
+            }
+            SimCommand::ApplyBreed(id) => {
+                if let Err(e) = sim.state.apply_breed(&id) {
+                    warn!("apply_breed failed: {e}");
                 }
             }
             SimCommand::PatchConfig(json) => {

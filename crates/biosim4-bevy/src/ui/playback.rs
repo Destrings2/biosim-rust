@@ -117,17 +117,31 @@ pub fn draw_playback_bar(
 
 fn play_button(ui: &mut egui::Ui, controls: &mut SimControls) {
     let running = controls.running;
-    let label = if running { "⏸  PAUSE" } else { "▶  PLAY" };
-    let color = if running { theme::WARN } else { theme::ACCENT };
-    let stroke = if running { theme::WARN } else { theme::ACCENT };
-    let btn =
-        egui::Button::new(egui::RichText::new(label).monospace().size(11.0).strong().color(color))
-            .fill(egui::Color32::from_rgba_premultiplied(0, 0, 0, 0))
-            .stroke(egui::Stroke::new(1.0, stroke))
-            .corner_radius(egui::CornerRadius::same(5))
-            .min_size(egui::vec2(88.0, 26.0));
-    let r = ui.add(btn);
-    if r.clicked() {
+    let (label, color, icon) = if running {
+        ("PAUSE", theme::WARN, theme::Icon::Pause)
+    } else {
+        ("PLAY", theme::ACCENT, theme::Icon::Play)
+    };
+    // Painter-drawn play/pause glyph + label, since the default font lacks
+    // ⏸ and renders ▶ inconsistently across builds.
+    let resp = egui::Frame::default()
+        .fill(egui::Color32::TRANSPARENT)
+        .stroke(egui::Stroke::new(1.0, color))
+        .corner_radius(egui::CornerRadius::same(5))
+        .inner_margin(egui::Margin::symmetric(10, 2))
+        .show(ui, |ui| {
+            ui.set_min_size(egui::vec2(80.0, 20.0));
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 5.0;
+                let (icon_rect, _) =
+                    ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                theme::paint_icon(ui.painter(), icon_rect, icon, color);
+                ui.label(egui::RichText::new(label).monospace().size(11.0).strong().color(color));
+            });
+        })
+        .response
+        .interact(egui::Sense::click());
+    if resp.clicked() {
         controls.running = !controls.running;
     }
     ui.add_space(2.0);

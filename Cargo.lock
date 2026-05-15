@@ -1367,15 +1367,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "biosim4-actions"
+version = "0.1.0"
+dependencies = [
+ "biosim4-core",
+]
+
+[[package]]
 name = "biosim4-bevy"
 version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_egui",
+ "biosim4-actions",
+ "biosim4-breeds",
  "biosim4-challenges",
  "biosim4-core",
+ "biosim4-sensors",
  "rayon",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "biosim4-breeds"
+version = "0.1.0"
+dependencies = [
+ "biosim4-actions",
+ "biosim4-challenges",
+ "biosim4-core",
+ "biosim4-sensors",
  "serde_json",
 ]
 
@@ -1391,7 +1412,9 @@ dependencies = [
 name = "biosim4-core"
 version = "0.1.0"
 dependencies = [
+ "biosim4-actions",
  "biosim4-challenges",
+ "biosim4-sensors",
  "rand 0.8.6",
  "rayon",
  "serde",
@@ -1402,12 +1425,21 @@ dependencies = [
 name = "biosim4-native"
 version = "0.1.0"
 dependencies = [
+ "biosim4-actions",
  "biosim4-challenges",
  "biosim4-core",
+ "biosim4-sensors",
  "clap",
  "indicatif",
  "rayon",
  "serde_json",
+]
+
+[[package]]
+name = "biosim4-sensors"
+version = "0.1.0"
+dependencies = [
+ "biosim4-core",
 ]
 
 [[package]]

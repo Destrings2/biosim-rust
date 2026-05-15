@@ -8,7 +8,7 @@
 //! the generation. Zone progress is tracked in `challenge_bits`.
 
 use biosim4_core::agent::Agent;
-use biosim4_core::registry::challenge::{Challenge, WorldMut};
+use biosim4_core::registry::challenge::{Challenge, ChallengeOverlay, WorldMut};
 use biosim4_core::world::World;
 use serde_json::{json, Value};
 
@@ -134,5 +134,27 @@ impl Challenge for LocationSequenceChallenge {
                 }
             }
         }
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        let r = self.radius * sx.max(sy);
+        // Earlier waypoints render brighter so the visit order reads from the
+        // overlay alone (no labels available in gizmo land).
+        let n = self.waypoints.len().max(1);
+        self.waypoints
+            .iter()
+            .enumerate()
+            .map(|(i, (nx, ny))| {
+                let t = 1.0 - (i as f32 / n as f32);
+                let alpha = (40.0 + 60.0 * t) as u8;
+                ChallengeOverlay::Circle {
+                    cx: nx * (sx - 1.0),
+                    cy: ny * (sy - 1.0),
+                    radius: r,
+                    color: [255, 220, 60, alpha],
+                }
+            })
+            .collect()
     }
 }

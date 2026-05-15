@@ -14,7 +14,7 @@ use std::time::Instant;
 use biosim4_core::{
     analysis::{collect_epoch_stats, display_sample_genomes},
     sim_step::step_generation,
-    spawn::spawn_new_generation,
+    spawn::{initialize_generation_0, spawn_new_generation},
     SimConfig, SimulationState,
 };
 use clap::Parser;
@@ -99,7 +99,10 @@ fn main() {
     let quiet = args.quiet;
 
     let mut state = SimulationState::new(config);
+    biosim4_sensors::register_builtin_sensors(&mut state.sensors);
+    biosim4_actions::register_builtin_actions(&mut state.actions);
     biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+    initialize_generation_0(&mut state);
 
     // ── Progress bar ─────────────────────────────────────────────────────
     let bar = ProgressBar::new(max_generations as u64);

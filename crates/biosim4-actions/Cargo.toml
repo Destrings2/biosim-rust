@@ -1,0 +1,11 @@
+[package]
+name = "biosim4-actions"
+version = "0.1.0"
+edition = "2021"
+description = "Built-in action implementations for biosim4-core"
+
+[dependencies]
+biosim4-core = { path = "../biosim4-core" }
+
+[lints]
+workspace = true

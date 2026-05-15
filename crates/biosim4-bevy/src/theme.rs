@@ -71,13 +71,17 @@ pub fn install(ctx: &egui::Context) {
 
     ctx.set_visuals(visuals);
 
-    // Tighten the default spacing to feel like a dense pro tool.
+    // Tighten the default spacing to feel like a dense pro tool. Slightly
+    // more vertical breathing room than horizontal so list rows / sections
+    // read cleanly inside the right panel.
     let mut style: egui::Style = (*ctx.style()).clone();
-    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.item_spacing = egui::vec2(8.0, 7.0);
     style.spacing.button_padding = egui::vec2(8.0, 4.0);
     style.spacing.window_margin = egui::Margin::symmetric(12, 10);
     style.spacing.indent = 14.0;
     style.spacing.slider_width = 140.0;
+    // Slightly tighter scrollbar so it doesn't visually crowd the right edge.
+    style.spacing.scroll.bar_width = 8.0;
     ctx.set_style(style);
 }
 
@@ -126,6 +130,186 @@ pub fn kbd_hint(ui: &mut egui::Ui, text: &str) {
         .show(ui, |ui| {
             ui.label(egui::RichText::new(text).monospace().size(9.5).color(MUTED));
         });
+}
+
+/// Painted icon kinds — drawn from primitives rather than font glyphs so we
+/// don't rely on the egui default font covering Unicode "Geometric Shapes"
+/// (it doesn't — `☠ ▣ ◎ ✕ ✦ ▾ ●` all render as tofu boxes).
+#[derive(Copy, Clone)]
+#[allow(dead_code)] // `TabBreeds` is forward-looking — wired up in the Breeds tab work.
+pub enum Icon {
+    // Transport
+    Play,
+    Pause,
+    // Chevrons
+    ChevDown,
+    ChevRight,
+    // Status / chips
+    Dot,
+    // Tools
+    Inspect,     // crosshair / target
+    Barrier,     // filled square
+    KillBarrier, // square with diagonal slash
+    Kill,        // X
+    Reproduce,   // 4-point spark
+    // Right-panel vertical tabs
+    TabStats,     // bar chart
+    TabChallenge, // target rings
+    TabRegistry,  // stacked lines
+    TabConfig,    // sliders
+    TabBreeds,    // 3-dot cluster (forward-looking)
+}
+
+/// Paint a vector icon centered in `rect` at the given stroke color.
+pub fn paint_icon(painter: &egui::Painter, rect: egui::Rect, kind: Icon, color: egui::Color32) {
+    let c = rect.center();
+    let s = rect.width().min(rect.height());
+    let stroke = egui::Stroke::new((s / 14.0).max(1.2), color);
+    use egui::pos2;
+    match kind {
+        Icon::Play => {
+            // Filled right-pointing triangle.
+            let r = s * 0.30;
+            let pts = vec![
+                pos2(c.x - r * 0.85, c.y - r),
+                pos2(c.x - r * 0.85, c.y + r),
+                pos2(c.x + r * 0.95, c.y),
+            ];
+            painter.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
+        }
+        Icon::Pause => {
+            let bar_w = s * 0.16;
+            let bar_h = s * 0.55;
+            let gap = s * 0.10;
+            for sign in [-1.0_f32, 1.0] {
+                let cx = c.x + sign * (bar_w * 0.5 + gap * 0.5);
+                let r = egui::Rect::from_center_size(pos2(cx, c.y), egui::vec2(bar_w, bar_h));
+                painter.rect_filled(r, 1.0, color);
+            }
+        }
+        Icon::ChevDown => {
+            let r = s * 0.22;
+            painter.line_segment([pos2(c.x - r, c.y - r * 0.4), pos2(c.x, c.y + r * 0.5)], stroke);
+            painter.line_segment([pos2(c.x, c.y + r * 0.5), pos2(c.x + r, c.y - r * 0.4)], stroke);
+        }
+        Icon::ChevRight => {
+            let r = s * 0.22;
+            painter.line_segment([pos2(c.x - r * 0.4, c.y - r), pos2(c.x + r * 0.5, c.y)], stroke);
+            painter.line_segment([pos2(c.x + r * 0.5, c.y), pos2(c.x - r * 0.4, c.y + r)], stroke);
+        }
+        Icon::Dot => {
+            painter.circle_filled(c, s * 0.16, color);
+        }
+        Icon::Inspect => {
+            // Crosshair: circle + 4 ticks.
+            let r = s * 0.28;
+            painter.circle_stroke(c, r, stroke);
+            let t = s * 0.10;
+            painter.line_segment([pos2(c.x, c.y - r - t), pos2(c.x, c.y - r)], stroke);
+            painter.line_segment([pos2(c.x, c.y + r), pos2(c.x, c.y + r + t)], stroke);
+            painter.line_segment([pos2(c.x - r - t, c.y), pos2(c.x - r, c.y)], stroke);
+            painter.line_segment([pos2(c.x + r, c.y), pos2(c.x + r + t, c.y)], stroke);
+            painter.circle_filled(c, s * 0.06, color);
+        }
+        Icon::Barrier => {
+            let r = s * 0.30;
+            let rect = egui::Rect::from_center_size(c, egui::vec2(r * 2.0, r * 2.0));
+            painter.rect(
+                rect,
+                egui::CornerRadius::same(1),
+                color.linear_multiply(0.55),
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+        }
+        Icon::KillBarrier => {
+            let r = s * 0.30;
+            let rect = egui::Rect::from_center_size(c, egui::vec2(r * 2.0, r * 2.0));
+            painter.rect_stroke(
+                rect,
+                egui::CornerRadius::same(1),
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+            painter.line_segment(
+                [pos2(c.x - r * 0.7, c.y - r * 0.7), pos2(c.x + r * 0.7, c.y + r * 0.7)],
+                stroke,
+            );
+            painter.line_segment(
+                [pos2(c.x - r * 0.7, c.y + r * 0.7), pos2(c.x + r * 0.7, c.y - r * 0.7)],
+                stroke,
+            );
+        }
+        Icon::Kill => {
+            let r = s * 0.26;
+            painter.line_segment([pos2(c.x - r, c.y - r), pos2(c.x + r, c.y + r)], stroke);
+            painter.line_segment([pos2(c.x - r, c.y + r), pos2(c.x + r, c.y - r)], stroke);
+        }
+        Icon::Reproduce => {
+            // 4-point spark / star.
+            let r = s * 0.30;
+            painter.line_segment([pos2(c.x, c.y - r), pos2(c.x, c.y + r)], stroke);
+            painter.line_segment([pos2(c.x - r, c.y), pos2(c.x + r, c.y)], stroke);
+            let d = r * 0.55;
+            painter.line_segment([pos2(c.x - d, c.y - d), pos2(c.x + d, c.y + d)], stroke);
+            painter.line_segment([pos2(c.x - d, c.y + d), pos2(c.x + d, c.y - d)], stroke);
+        }
+        Icon::TabStats => {
+            // Three rising bars.
+            let bar_w = s * 0.14;
+            let gap = s * 0.07;
+            let base_y = c.y + s * 0.28;
+            let heights = [s * 0.20, s * 0.36, s * 0.50];
+            for (i, h) in heights.iter().enumerate() {
+                let cx = c.x + (i as f32 - 1.0) * (bar_w + gap);
+                let r = egui::Rect::from_min_max(
+                    pos2(cx - bar_w * 0.5, base_y - *h),
+                    pos2(cx + bar_w * 0.5, base_y),
+                );
+                painter.rect_filled(r, 1.0, color);
+            }
+        }
+        Icon::TabChallenge => {
+            // Concentric rings + center dot (target).
+            painter.circle_stroke(c, s * 0.34, stroke);
+            painter.circle_stroke(c, s * 0.20, stroke);
+            painter.circle_filled(c, s * 0.07, color);
+        }
+        Icon::TabRegistry => {
+            // Three rows with leading bullet.
+            let row_h = s * 0.18;
+            let line_w = s * 0.46;
+            let bullet_r = s * 0.05;
+            for i in -1..=1 {
+                let y = c.y + i as f32 * row_h;
+                painter.circle_filled(pos2(c.x - line_w * 0.55, y), bullet_r, color);
+                painter.line_segment(
+                    [pos2(c.x - line_w * 0.40, y), pos2(c.x + line_w * 0.45, y)],
+                    stroke,
+                );
+            }
+        }
+        Icon::TabConfig => {
+            // Two horizontal "slider" tracks with thumbs at different positions.
+            let row_h = s * 0.24;
+            for (row, thumb_t) in [(-1, 0.30_f32), (1, 0.65)] {
+                let y = c.y + row as f32 * row_h * 0.5;
+                let x0 = c.x - s * 0.32;
+                let x1 = c.x + s * 0.32;
+                painter.line_segment([pos2(x0, y), pos2(x1, y)], stroke);
+                let tx = x0 + (x1 - x0) * thumb_t;
+                painter.circle_filled(pos2(tx, y), s * 0.07, color);
+            }
+        }
+        Icon::TabBreeds => {
+            // Triangle-of-three dots (forward-looking icon for the Breeds tab).
+            let r = s * 0.08;
+            let d = s * 0.22;
+            painter.circle_filled(pos2(c.x, c.y - d), r, color);
+            painter.circle_filled(pos2(c.x - d * 0.9, c.y + d * 0.6), r, color);
+            painter.circle_filled(pos2(c.x + d * 0.9, c.y + d * 0.6), r, color);
+        }
+    }
 }
 
 /// Soft accent glow used for primary marks (e.g. brand square, active dot).

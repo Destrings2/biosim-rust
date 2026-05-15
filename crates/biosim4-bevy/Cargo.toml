@@ -10,7 +10,10 @@ path = "src/main.rs"
 
 [dependencies]
 biosim4-core = { path = "../biosim4-core", features = ["parallel"] }
+biosim4-sensors = { path = "../biosim4-sensors" }
+biosim4-actions = { path = "../biosim4-actions" }
 biosim4-challenges = { path = "../biosim4-challenges" }
+biosim4-breeds = { path = "../biosim4-breeds" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rayon = "1.8"

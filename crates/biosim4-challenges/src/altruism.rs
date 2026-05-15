@@ -8,7 +8,7 @@
 //! fail their own evaluation while boosting neighbors' fitness.
 
 use biosim4_core::agent::Agent;
-use biosim4_core::registry::challenge::Challenge;
+use biosim4_core::registry::challenge::{Challenge, ChallengeOverlay};
 use biosim4_core::world::World;
 use serde_json::{json, Value};
 
@@ -59,6 +59,16 @@ impl Challenge for AltruismChallenge {
             return (false, 0.0);
         }
         (true, (self.radius - dist) / self.radius)
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        vec![ChallengeOverlay::Circle {
+            cx: self.cx * sx,
+            cy: self.cy * sy,
+            radius: self.radius * sx.max(sy),
+            color: [0, 255, 0, 40],
+        }]
     }
 }
 
@@ -114,5 +124,15 @@ impl Challenge for AltruismSacrificeChallenge {
         }
         // Otherwise pass (spawn.rs handles kin-selection bonus)
         (true, 1.0)
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        vec![ChallengeOverlay::Circle {
+            cx: self.sacrifice_cx * sx,
+            cy: self.sacrifice_cy * sy,
+            radius: self.radius * sx.max(sy),
+            color: [255, 40, 40, 50],
+        }]
     }
 }

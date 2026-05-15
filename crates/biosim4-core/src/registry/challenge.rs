@@ -43,13 +43,21 @@ use crate::world::World;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Visual annotation returned by [`Challenge::overlays`].
+///
+/// Frontends use these to render challenge-defined regions on top of the
+/// simulation grid. All coordinate values are in normalized grid space
+/// (0.0 = left/bottom, 1.0 = right/top). Colors are RGBA with values in 0–255.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ChallengeOverlay {
+    /// A filled circle centered at `(cx, cy)` with the given `radius`.
     #[serde(rename = "circle")]
     Circle { cx: f32, cy: f32, radius: f32, color: [u8; 4] },
+    /// An axis-aligned rectangle at `(x, y)` with dimensions `w × h`.
     #[serde(rename = "rectangle")]
     Rectangle { x: f32, y: f32, w: f32, h: f32, color: [u8; 4] },
+    /// A set of discrete marker points, each rendered as a square of `size`.
     #[serde(rename = "points")]
     Points { points: Vec<(f32, f32)>, color: [u8; 4], size: f32 },
 }
@@ -67,42 +75,71 @@ pub struct WorldMut<'a> {
     pub config: &'a crate::sim_config::SimConfig,
 }
 
-/// A survival challenge. Evaluated once per agent per generation.
+/// A survival challenge: determines which agents reproduce each generation.
+///
+/// Implement this trait to define custom selection criteria. Register the
+/// challenge with `state.challenges.register(Box::new(my_challenge))`.
+///
+/// # Implementing
+///
+/// - `id` must be a unique stable ASCII string used for registry lookup and
+///   JSON persistence.
+/// - `evaluate` runs once per alive agent at the end of each generation. It
+///   returns `(pass, fitness)`: `pass` determines pool membership, `fitness`
+///   (0.0–1.0) biases parent selection.
+/// - Override `on_sim_step` to track per-step agent behavior (e.g., setting
+///   bits in `agent.challenge_bits`). Receives a mutable world.
+/// - Override `on_generation_start` for time-varying challenges that reset
+///   state at the start of each generation.
+/// - Override `overlays` to return regions the frontend should draw.
+/// - Override `params_schema` and `configure` to expose configurable
+///   parameters to the frontend via JSON.
 pub trait Challenge: Send + Sync {
+    /// Stable machine identifier. Must be unique across all registered challenges.
     fn id(&self) -> &str;
+    /// Human-readable display name.
     fn name(&self) -> &str;
+    /// Human-readable description. Defaults to [`name`](Self::name).
     fn description(&self) -> &str {
         self.name()
     }
 
-    /// JSON Schema (draft-07 object) describing configurable params.
+    /// JSON Schema (draft-07) object describing the configurable parameters.
     fn params_schema(&self) -> Value;
 
-    /// Apply a JSON params object. Return Err with a message if invalid.
+    /// Apply a JSON parameter object. Return `Err` with a message if the params are invalid.
     fn configure(&mut self, params: Value) -> Result<(), String>;
 
-    /// Evaluate whether this agent passes and return a fitness score 0.0..1.0.
+    /// Evaluate whether this agent passes and return a fitness score in [0.0, 1.0].
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32);
 
-    /// Called once per simulation step (single-threaded). Default: no-op.
+    /// Called once per simulation step before agent stepping. Default: no-op.
     fn on_sim_step(&mut self, _ctx: &mut WorldMut) {}
 
-    /// Called once at the start of each generation. Default: no-op.
+    /// Called once at the start of each generation, after world reset. Default: no-op.
     fn on_generation_start(&mut self, _ctx: &mut WorldMut) {}
 
-    /// Return any visual overlays for this challenge. Default: empty.
+    /// Return visual annotations for this challenge. Default: empty.
     fn overlays(&self, _world: &World) -> Vec<ChallengeOverlay> {
         Vec::new()
     }
 }
 
+/// Rule for combining the results of multiple active challenges.
+///
+/// The default is `Any`.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub enum ChallengeComposition {
+    /// Pass if at least one challenge passes. Fitness = maximum score across challenges.
     #[default]
     Any,
+    /// Pass only if every challenge passes. Fitness = minimum score across challenges.
     All,
+    /// Fitness = weighted average of all scores. Pass if fitness ≥ `threshold`.
     WeightedSum {
+        /// Per-challenge weights. Must have the same length as the active challenge list.
         weights: Vec<f32>,
+        /// Minimum weighted average fitness required to pass.
         threshold: f32,
     },
 }
@@ -127,6 +164,11 @@ impl ChallengeRegistry {
         Self { challenges: Vec::new(), active: Vec::new(), composition: ChallengeComposition::Any }
     }
 
+    /// Add a challenge to the registry.
+    ///
+    /// Registration does not activate the challenge. Call
+    /// [`set_single`](Self::set_single) or [`apply_config`](Self::apply_config)
+    /// to make the challenge active for the next generation.
     pub fn register(&mut self, challenge: Box<dyn Challenge>) {
         self.challenges.push(challenge);
     }

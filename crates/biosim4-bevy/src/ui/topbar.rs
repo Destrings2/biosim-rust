@@ -119,18 +119,26 @@ fn divider(ui: &mut egui::Ui) {
 
 fn telemetry_toggle(ui: &mut egui::Ui, state: &mut UiState) {
     let on = state.show_telemetry;
-    let label = if on { "▾ TELEMETRY" } else { "▸ TELEMETRY" };
-    let btn = egui::Button::new(
-        egui::RichText::new(label)
-            .size(10.5)
-            .color(if on { theme::ACCENT } else { theme::TEXT_2 })
-            .strong(),
-    )
-    .fill(egui::Color32::TRANSPARENT)
-    .stroke(egui::Stroke::NONE);
-    if ui.add(btn).on_hover_text("Toggle the telemetry overlay (last 64 generations)").clicked() {
-        state.show_telemetry = !state.show_telemetry;
-    }
+    let color = if on { theme::ACCENT } else { theme::TEXT_2 };
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        // Painted chevron — default font lacks the ▾/▸ glyphs (tofu boxes).
+        let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+        theme::paint_icon(
+            ui.painter(),
+            icon_rect,
+            if on { theme::Icon::ChevDown } else { theme::Icon::ChevRight },
+            color,
+        );
+        let btn =
+            egui::Button::new(egui::RichText::new("TELEMETRY").size(10.5).color(color).strong())
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE);
+        if ui.add(btn).on_hover_text("Toggle the telemetry overlay (last 64 generations)").clicked()
+        {
+            state.show_telemetry = !state.show_telemetry;
+        }
+    });
 }
 
 /// Screen pixels covered by one world cell at the camera's current zoom.
@@ -149,16 +157,31 @@ fn compute_zoom_px_per_cell(pixel_scale: f32, cam_q: &Query<&Projection, With<Si
 fn challenge_chip(ui: &mut egui::Ui, sim: &Sim, state: &mut UiState) {
     let total = sim.state.challenges.schema_list().as_array().map(|a| a.len()).unwrap_or(0);
     let active = total > 0;
-    let chip = egui::Button::new(
-        egui::RichText::new(format!("●  {total} CHALLENGES"))
-            .size(10.5)
-            .color(if active { theme::ACCENT } else { theme::MUTED })
-            .strong(),
-    )
-    .fill(theme::PANEL_2)
-    .stroke(egui::Stroke::new(1.0, theme::LINE))
-    .corner_radius(egui::CornerRadius::same(4));
-    if ui.add(chip).on_hover_text("Open the challenge picker").clicked() {
+    let fg = if active { theme::ACCENT } else { theme::MUTED };
+    // Custom-drawn chip: painted dot + label inside one styled frame, since
+    // the egui default font renders `●` as a tofu box.
+    let resp = egui::Frame::default()
+        .fill(theme::PANEL_2)
+        .stroke(egui::Stroke::new(1.0, theme::LINE))
+        .corner_radius(egui::CornerRadius::same(4))
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                let (icon_rect, _) =
+                    ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                theme::paint_icon(ui.painter(), icon_rect, theme::Icon::Dot, fg);
+                ui.label(
+                    egui::RichText::new(format!("{total} CHALLENGES"))
+                        .size(10.5)
+                        .color(fg)
+                        .strong(),
+                );
+            });
+        })
+        .response
+        .interact(egui::Sense::click());
+    if resp.on_hover_text("Open the challenge picker").clicked() {
         state.show_picker = true;
         state.right_panel_tab = crate::ui::RightPanelTab::Challenge;
     }

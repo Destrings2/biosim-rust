@@ -24,53 +24,99 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Full simulation configuration. Serializable so the WASM frontend can set/get it as JSON.
+/// Full simulation configuration. JSON-serializable so frontends can read and write it.
+///
+/// World dimensions (`size_x`, `size_y`, `population`) are effectively
+/// immutable after `SimulationState::new` — changing them mid-run without
+/// reinitializing produces undefined grid state.
+///
+/// Use [`SimConfig::from_json`] to deserialize a full config, or
+/// [`SimConfig::patch_json`] to apply partial overrides on top of an existing
+/// instance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SimConfig {
-    // World dimensions — immutable after sim start
+    // ── World ──────────────────────────────────────────────────────────────
+    /// Width of the simulation grid in cells.
     pub size_x: u16,
+    /// Height of the simulation grid in cells.
     pub size_y: u16,
+    /// Number of agents in each generation.
     pub population: u32,
+    /// Number of worker threads for the parallel step pipeline.
+    /// Set to 1 (or disable the `parallel` feature) for deterministic output.
     pub num_threads: u32,
+    /// RNG seed. Use 0 to draw from system entropy (non-deterministic).
     pub rng_seed: u64,
+    /// Number of independent pheromone signal layers (1–3).
     pub signal_layers: u8,
 
-    // Evolution
+    // ── Evolution ──────────────────────────────────────────────────────────
+    /// Number of simulation steps per generation.
     pub steps_per_generation: u32,
+    /// Total number of generations to run. The native runner stops at this value.
     pub max_generations: u32,
+    /// Minimum genome length (in genes) for generation 0 agents.
     pub genome_initial_length_min: u16,
+    /// Maximum genome length (in genes) for generation 0 agents.
     pub genome_initial_length_max: u16,
+    /// Hard upper limit on genome length after mutations.
     pub genome_max_length: u16,
+    /// Maximum number of internal neurons per neural network.
     pub max_number_neurons: u16,
+    /// Per-gene probability of a random bit flip each generation.
     pub point_mutation_rate: f32,
+    /// Per-genome probability of a gene insertion or deletion each generation.
     pub gene_insertion_deletion_rate: f32,
+    /// Fraction of insertion/deletion events that delete a gene (vs. inserting one).
     pub deletion_ratio: f32,
+    /// When `true`, child genomes use two-parent sexual crossover.
     pub sexual_reproduction: bool,
+    /// When `true`, fitness-biased parent selection concentrates draws toward
+    /// fitter parents using a quadratic transform.
     pub choose_parents_by_fitness: bool,
+    /// When `true`, the `kill_forward` action can kill nearby agents.
     pub kill_enable: bool,
 
-    // Energy system
+    // ── Energy system ──────────────────────────────────────────────────────
+    /// Enable the energy and food subsystems.
     pub enable_energy: bool,
+    /// Energy deducted from each agent per step.
     pub energy_per_step_cost: f32,
+    /// Food added per non-barrier cell per step when the energy system is on.
     pub food_regen_rate: f32,
+    /// Fraction of non-barrier cells initialized with food at generation start.
     pub food_initial_density: f32,
 
-    // Agent defaults
+    // ── Agent defaults ─────────────────────────────────────────────────────
+    /// Initial `responsiveness` value for new agents.
     pub responsiveness: f32,
+    /// Steepness of the sigmoid applied to raw neural output. Higher values
+    /// produce a sharper threshold response.
     pub responsiveness_curve_k_factor: f32,
+    /// Radius (in cells) for the population-density sensors.
     pub population_sensor_radius: f32,
+    /// Radius (in cells) for the pheromone signal sensors.
     pub signal_sensor_radius: f32,
+    /// Initial `long_probe_dist` for new agents (cells).
     pub long_probe_distance: u32,
+    /// Distance for short-range barrier probes (cells).
     pub short_probe_barrier_distance: u32,
 
-    // Environment
+    // ── Environment ────────────────────────────────────────────────────────
+    /// Procedural barrier layout: 0 = none, 1–7 = preset patterns.
+    /// User-painted overrides in `SimulationState::user_barriers` layer on top.
     pub barrier_type: u8,
 
-    // Analysis / output
+    // ── Analysis / output ──────────────────────────────────────────────────
+    /// Collect genome analysis statistics every N generations.
     pub genome_analysis_stride: u32,
+    /// Number of sample genomes to print each analysis stride.
     pub display_sample_genomes: u32,
-    pub genome_comparison_method: u8, // 0=jaro-winkler, 1=hamming-bits, 2=hamming-bytes
+    /// Genome similarity algorithm: 0 = Jaro-Winkler, 1 = Hamming bits, 2 = Hamming bytes.
+    pub genome_comparison_method: u8,
+    /// Save a rendered video of each generation (native runner only).
     pub save_video: bool,
+    /// Write one video frame every N simulation steps.
     pub video_stride: u32,
 }
 
@@ -116,6 +162,7 @@ impl Default for SimConfig {
 }
 
 impl SimConfig {
+    /// Deserialize a complete `SimConfig` from a JSON string.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }

@@ -11,14 +11,21 @@
 use crate::genome::ops::{genetic_diversity, Genome};
 use crate::sim_state::SimulationState;
 
+/// Per-generation statistics collected by [`collect_epoch_stats`].
 pub struct EpochStats {
+    /// Generation index (0-based).
     pub generation: u32,
+    /// Number of agents that passed the active challenge(s).
     pub survivors: u32,
+    /// Total population size (from `config.population`).
     pub population: u32,
+    /// Genetic diversity in [0.0, 1.0], where 1.0 means all genomes are
+    /// maximally different. Computed from up to 1000 random pairwise comparisons.
     pub diversity: f32,
 }
 
 impl EpochStats {
+    /// Fraction of the population that survived: `survivors / population`.
     pub fn survival_rate(&self) -> f32 {
         if self.population == 0 {
             0.0
@@ -28,6 +35,10 @@ impl EpochStats {
     }
 }
 
+/// Collect statistics for the just-completed generation.
+///
+/// `survivors` is the count returned by [`spawn_new_generation`](crate::spawn_new_generation).
+/// Diversity sampling uses the comparison method in `state.config.genome_comparison_method`.
 pub fn collect_epoch_stats(state: &mut SimulationState, survivors: u32) -> EpochStats {
     let genomes: Vec<&Genome> = state.population.iter_alive().map(|a| &a.genome).collect();
 
@@ -46,6 +57,7 @@ pub fn collect_epoch_stats(state: &mut SimulationState, survivors: u32) -> Epoch
     }
 }
 
+/// Print a one-line summary of `stats` to stdout.
 pub fn print_epoch_stats(stats: &EpochStats) {
     println!(
         "Gen {:>4}  survivors: {:>5}/{:<5}  ({:.1}%)  diversity: {:.4}",
@@ -57,6 +69,7 @@ pub fn print_epoch_stats(stats: &EpochStats) {
     );
 }
 
+/// Print the hexadecimal genome of the first `count` alive agents to stdout.
 pub fn display_sample_genomes(state: &SimulationState, count: usize) {
     for agent in state.population.iter_alive().take(count) {
         let hex: String =
