@@ -92,8 +92,11 @@ pub fn draw_canvas_chrome(
             );
 
             // ── Bottom-right: RUNNING / PAUSED · speed
-            let br_text =
-                format!("{}  ·  {}× SPF", if running { "RUNNING" } else { "PAUSED" }, speed,);
+            let br_text = format!(
+                "{}  ·  {}× SPF",
+                if running { "RUNNING" } else { "PAUSED" },
+                crate::sim::format_spf(speed),
+            );
             painter.text(
                 frame.right_bottom() + egui::vec2(-CHROME_INSET, CHROME_INSET + 6.0),
                 egui::Align2::RIGHT_TOP,

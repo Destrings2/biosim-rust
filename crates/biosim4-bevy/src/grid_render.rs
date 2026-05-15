@@ -35,8 +35,14 @@ pub struct GridRenderPlugin;
 
 impl Plugin for GridRenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_grid_sprite)
-            .add_systems(Update, (resize_or_update_texture, draw_challenge_overlays));
+        app.add_systems(Startup, spawn_grid_sprite).add_systems(
+            Update,
+            // Texture re-encoding and challenge overlays are pure
+            // visualisation — skip during fast-forward so the sim isn't
+            // paying for the renderer it can't see anyway.
+            (resize_or_update_texture, draw_challenge_overlays)
+                .run_if(crate::sim::fast_forward_inactive),
+        );
     }
 }
 

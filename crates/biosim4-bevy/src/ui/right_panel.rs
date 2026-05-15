@@ -22,6 +22,24 @@ const TAB_STRIP_WIDTH: f32 = 38.0;
 /// Icon button height inside the vertical strip.
 const TAB_BUTTON_HEIGHT: f32 = 38.0;
 
+/// Names for `SimConfig.barrier_type` — mirrors the match arms in
+/// `biosim4_core::barriers::create_barrier`.
+const BARRIER_TYPE_OPTIONS: &[(u8, &str)] = &[
+    (0, "None"),
+    (1, "Three floaters"),
+    (2, "Vertical bar"),
+    (3, "Horizontal bar"),
+    (4, "Staggered blocks"),
+    (5, "Left/right walls"),
+    (6, "Five blocks"),
+    (7, "Horizontal strips"),
+];
+
+/// Names for `SimConfig.genome_comparison_method` — mirrors the dispatch in
+/// `biosim4_core::analysis::genetic_diversity`.
+const GENOME_COMPARISON_OPTIONS: &[(u8, &str)] =
+    &[(0, "Jaro-Winkler"), (1, "Hamming bits"), (2, "Hamming bytes")];
+
 pub fn draw_right_panel(
     mut contexts: EguiContexts,
     sim: Res<Sim>,
@@ -233,7 +251,11 @@ fn stats_tab(
     kv_row(ui, "Grid", &format!("{}×{}", sim.state.config.size_x, sim.state.config.size_y));
     kv_row(ui, "Painted", &format!("{} cells", controls.painted_count));
     kv_row(ui, "Signal layers", &format!("{}", sim.state.config.signal_layers));
-    kv_row(ui, "Barrier type", &format!("{}", sim.state.config.barrier_type));
+    kv_row(
+        ui,
+        "Barrier type",
+        crate::ui::widgets::enum_label(BARRIER_TYPE_OPTIONS, sim.state.config.barrier_type),
+    );
 
     section(ui, "REGISTRY");
     kv_row(
@@ -266,7 +288,7 @@ fn stats_tab(
     ui.add_space(2.0);
     kv_row(ui, "Threads", &format!("{}", controls.num_threads));
     kv_row(ui, "FPS", &format!("{:.0}", controls.fps));
-    kv_row(ui, "Steps/frame", &format!("{}", controls.speed));
+    kv_row(ui, "Steps/frame", &crate::sim::format_spf(controls.speed));
 
     section(ui, "FAST FORWARD");
     ui.label(
@@ -793,87 +815,253 @@ fn config_tab(
     queue: &mut SimCommandQueue,
     local: &mut RightPanelLocal,
 ) {
+    use crate::ui::widgets;
+
     if local.edit_config.is_none() {
         local.edit_config = Some(sim.state.config.clone());
     }
     let Some(cfg) = local.edit_config.as_mut() else { return };
 
-    // The full SimConfig has 35-ish fields. We surface every one, organized
-    // into collapsible groups that mirror the order/comments in
-    // `crates/biosim4-core/src/sim_config.rs`.
+    // SimConfig fields that don't affect a Bevy run are intentionally
+    // omitted: `max_generations` (CLI only), `save_video` / `video_stride`
+    // (no video pipeline), `genome_analysis_stride` / `display_sample_genomes`
+    // (stdout-only). Surfacing them would just lie about having an effect.
 
-    egui::CollapsingHeader::new(strong_label("WORLD")).default_open(true).show(ui, |ui| {
-        drag_u16(ui, "size_x", &mut cfg.size_x, 32..=512);
-        drag_u16(ui, "size_y", &mut cfg.size_y, 32..=512);
-        drag_u32(ui, "population", &mut cfg.population, 50..=20_000);
-        drag_u32(ui, "num_threads", &mut cfg.num_threads, 1..=64);
-        drag_u8(ui, "signal_layers", &mut cfg.signal_layers, 1..=4);
-        drag_u64(ui, "rng_seed", &mut cfg.rng_seed, 0..=u64::MAX);
-    });
-
-    egui::CollapsingHeader::new(strong_label("EVOLUTION")).default_open(true).show(ui, |ui| {
-        drag_u32(ui, "steps_per_generation", &mut cfg.steps_per_generation, 30..=5_000);
-        drag_u32(ui, "max_generations", &mut cfg.max_generations, 1..=100_000);
-        drag_u16(ui, "genome_initial_length_min", &mut cfg.genome_initial_length_min, 1..=512);
-        drag_u16(ui, "genome_initial_length_max", &mut cfg.genome_initial_length_max, 1..=512);
-        drag_u16(ui, "genome_max_length", &mut cfg.genome_max_length, 8..=2_048);
-        drag_u16(ui, "max_number_neurons", &mut cfg.max_number_neurons, 1..=64);
-        drag_f32(ui, "point_mutation_rate", &mut cfg.point_mutation_rate, 0.0..=0.5);
-        drag_f32(
-            ui,
-            "gene_insertion_deletion_rate",
-            &mut cfg.gene_insertion_deletion_rate,
-            0.0..=0.5,
-        );
-        drag_f32(ui, "deletion_ratio", &mut cfg.deletion_ratio, 0.0..=1.0);
-        ui.checkbox(&mut cfg.sexual_reproduction, "sexual_reproduction");
-        ui.checkbox(&mut cfg.choose_parents_by_fitness, "choose_parents_by_fitness");
-        ui.checkbox(&mut cfg.kill_enable, "kill_enable");
-    });
-
-    egui::CollapsingHeader::new(strong_label("AGENT DEFAULTS")).default_open(false).show(
+    // ─── WORLD ─────────────────────────────────────────────────────────────
+    widgets::section_header(ui, "WORLD", Some(&format!("{}×{} grid", cfg.size_x, cfg.size_y)));
+    widgets::slider_field_u16(
         ui,
-        |ui| {
-            drag_f32(ui, "responsiveness", &mut cfg.responsiveness, 0.0..=2.0);
-            drag_f32(
-                ui,
-                "responsiveness_curve_k_factor",
-                &mut cfg.responsiveness_curve_k_factor,
-                0.0..=10.0,
-            );
-            drag_f32(ui, "population_sensor_radius", &mut cfg.population_sensor_radius, 0.5..=16.0);
-            drag_f32(ui, "signal_sensor_radius", &mut cfg.signal_sensor_radius, 0.5..=16.0);
-            drag_u32(ui, "long_probe_distance", &mut cfg.long_probe_distance, 1..=64);
-            drag_u32(
-                ui,
-                "short_probe_barrier_distance",
-                &mut cfg.short_probe_barrier_distance,
-                1..=32,
-            );
-        },
+        "Grid width",
+        Some("Cells horizontally"),
+        &mut cfg.size_x,
+        32..=512,
+        &[64, 128, 256],
+    );
+    widgets::slider_field_u16(
+        ui,
+        "Grid height",
+        Some("Cells vertically"),
+        &mut cfg.size_y,
+        32..=512,
+        &[64, 128, 256],
+    );
+    let grid_cells = cfg.size_x as u32 * cfg.size_y as u32;
+    let pop_pct =
+        if grid_cells == 0 { 0.0 } else { cfg.population as f32 / grid_cells as f32 * 100.0 };
+    widgets::slider_field_u32(
+        ui,
+        "Population",
+        Some(&format!("{pop_pct:.1}% of grid")),
+        &mut cfg.population,
+        50..=20_000,
+        &[500, 1_000, 2_500, 5_000],
+    );
+    widgets::stepper_field(ui, "Threads", Some("Rayon worker count"), &mut cfg.num_threads, 1..=64);
+    widgets::stepper_field(
+        ui,
+        "Signal layers",
+        Some("Pheromone channels"),
+        &mut cfg.signal_layers,
+        1..=4,
+    );
+    if widgets::seed_field(ui, "RNG seed", None, &mut cfg.rng_seed) {
+        cfg.rng_seed = generate_seed();
+    }
+
+    // ─── GENETICS ──────────────────────────────────────────────────────────
+    widgets::section_header(
+        ui,
+        "GENETICS",
+        Some(&format!(
+            "{} genes · {} neurons",
+            cfg.genome_initial_length_max, cfg.max_number_neurons,
+        )),
+    );
+    // Drive both initial-length bounds from a single slider — most setups
+    // use a fixed initial length, and the MIN/MAX strip below makes the
+    // resolved range readable at a glance.
+    let mut initial_len = cfg.genome_initial_length_min.max(cfg.genome_initial_length_max);
+    widgets::slider_with_bounds_u16(
+        ui,
+        "Genome length",
+        Some("Initial gene count per agent"),
+        &mut initial_len,
+        1..=512,
+        cfg.genome_initial_length_min,
+        cfg.genome_initial_length_max,
+    );
+    if initial_len != cfg.genome_initial_length_min || initial_len != cfg.genome_initial_length_max
+    {
+        cfg.genome_initial_length_min = initial_len;
+        cfg.genome_initial_length_max = initial_len;
+    }
+    widgets::slider_field_u16(
+        ui,
+        "Max genome length",
+        Some("Upper bound after mutations"),
+        &mut cfg.genome_max_length,
+        8..=2_048,
+        &[128, 256, 512],
+    );
+    widgets::stepper_field(
+        ui,
+        "Neurons",
+        Some("Hidden layer width"),
+        &mut cfg.max_number_neurons,
+        1..=64,
     );
 
-    egui::CollapsingHeader::new(strong_label("ENERGY")).default_open(false).show(ui, |ui| {
-        ui.checkbox(&mut cfg.enable_energy, "enable_energy");
-        drag_f32(ui, "energy_per_step_cost", &mut cfg.energy_per_step_cost, 0.0..=0.05);
-        drag_f32(ui, "food_regen_rate", &mut cfg.food_regen_rate, 0.0..=0.05);
-        drag_f32(ui, "food_initial_density", &mut cfg.food_initial_density, 0.0..=1.0);
-    });
-
-    egui::CollapsingHeader::new(strong_label("ENVIRONMENT")).default_open(false).show(ui, |ui| {
-        drag_u8(ui, "barrier_type", &mut cfg.barrier_type, 0..=7);
-    });
-
-    egui::CollapsingHeader::new(strong_label("ANALYSIS / OUTPUT")).default_open(false).show(
+    // ─── EVOLUTION ─────────────────────────────────────────────────────────
+    widgets::section_header(ui, "EVOLUTION", None);
+    widgets::slider_field_u32(
         ui,
-        |ui| {
-            drag_u32(ui, "genome_analysis_stride", &mut cfg.genome_analysis_stride, 1..=10_000);
-            drag_u32(ui, "display_sample_genomes", &mut cfg.display_sample_genomes, 0..=64);
-            // 0 = Jaro-Winkler · 1 = Hamming bits · 2 = Hamming bytes
-            drag_u8(ui, "genome_comparison_method", &mut cfg.genome_comparison_method, 0..=2);
-            ui.checkbox(&mut cfg.save_video, "save_video");
-            drag_u32(ui, "video_stride", &mut cfg.video_stride, 1..=1_000);
-        },
+        "Steps / generation",
+        Some("Sim ticks per epoch"),
+        &mut cfg.steps_per_generation,
+        30..=5_000,
+        &[100, 300, 500, 1_000],
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Point mutation",
+        Some("Per-bit flip rate"),
+        &mut cfg.point_mutation_rate,
+        0.0..=0.5,
+        |v| format!("{v:.4}"),
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Gene insert/delete",
+        Some("Per-genome length-change rate"),
+        &mut cfg.gene_insertion_deletion_rate,
+        0.0..=0.5,
+        |v| format!("{v:.4}"),
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Deletion ratio",
+        Some("0 = insert only, 1 = delete only"),
+        &mut cfg.deletion_ratio,
+        0.0..=1.0,
+        |v| format!("{v:.2}"),
+    );
+
+    // ─── REPRODUCTION ──────────────────────────────────────────────────────
+    widgets::section_header(ui, "REPRODUCTION", None);
+    widgets::toggle_field(
+        ui,
+        "Sexual reproduction",
+        Some("Crossover between two parents"),
+        &mut cfg.sexual_reproduction,
+    );
+    widgets::toggle_field(
+        ui,
+        "Fitness parents",
+        Some("Pick parents by survival fitness"),
+        &mut cfg.choose_parents_by_fitness,
+    );
+    widgets::toggle_field(ui, "Kill enabled", Some("Peeps can kill"), &mut cfg.kill_enable);
+
+    // ─── AGENT DEFAULTS ────────────────────────────────────────────────────
+    widgets::section_header(ui, "AGENT DEFAULTS", None);
+    widgets::slider_field_f32(
+        ui,
+        "Responsiveness",
+        Some("Action-level scalar"),
+        &mut cfg.responsiveness,
+        0.0..=2.0,
+        |v| format!("{v:.2}"),
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Response k-factor",
+        Some("Curve sharpness around r=1"),
+        &mut cfg.responsiveness_curve_k_factor,
+        0.0..=10.0,
+        |v| format!("{v:.2}"),
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Pop. sensor radius",
+        Some("Density-sensor cell reach"),
+        &mut cfg.population_sensor_radius,
+        0.5..=16.0,
+        |v| format!("{v:.2}"),
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Signal sensor radius",
+        Some("Pheromone-sensor cell reach"),
+        &mut cfg.signal_sensor_radius,
+        0.5..=16.0,
+        |v| format!("{v:.2}"),
+    );
+    widgets::stepper_field(
+        ui,
+        "Long probe distance",
+        Some("Cells ahead for long-probe sensor"),
+        &mut cfg.long_probe_distance,
+        1..=64,
+    );
+    widgets::stepper_field(
+        ui,
+        "Short probe distance",
+        Some("Cells ahead for barrier probe"),
+        &mut cfg.short_probe_barrier_distance,
+        1..=32,
+    );
+
+    // ─── ENERGY ────────────────────────────────────────────────────────────
+    widgets::section_header(ui, "ENERGY", None);
+    widgets::toggle_field(
+        ui,
+        "Enable energy",
+        Some("Food + per-step cost"),
+        &mut cfg.enable_energy,
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Energy / step cost",
+        Some("Drain per tick"),
+        &mut cfg.energy_per_step_cost,
+        0.0..=0.05,
+        |v| format!("{v:.4}"),
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Food regen rate",
+        Some("Per-cell regrowth per tick"),
+        &mut cfg.food_regen_rate,
+        0.0..=0.05,
+        |v| format!("{v:.4}"),
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Food initial density",
+        Some("Fraction of cells seeded with food"),
+        &mut cfg.food_initial_density,
+        0.0..=1.0,
+        |v| format!("{v:.2}"),
+    );
+
+    // ─── ENVIRONMENT ───────────────────────────────────────────────────────
+    widgets::section_header(ui, "ENVIRONMENT", None);
+    widgets::enum_field_u8(
+        ui,
+        "Barrier type",
+        Some("Procedural obstacle layout"),
+        &mut cfg.barrier_type,
+        BARRIER_TYPE_OPTIONS,
+    );
+
+    // ─── ANALYSIS ──────────────────────────────────────────────────────────
+    widgets::section_header(ui, "ANALYSIS", None);
+    widgets::enum_field_u8(
+        ui,
+        "Genome comparison",
+        Some("Drives the diversity stat"),
+        &mut cfg.genome_comparison_method,
+        GENOME_COMPARISON_OPTIONS,
     );
 
     ui.add_space(8.0);
@@ -895,6 +1083,10 @@ fn config_tab(
     let mut apply = false;
     let mut discard = false;
     ui.horizontal(|ui| {
+        // `draw_right_panel` zeros item_spacing at the panel root so the
+        // tab strip butts against the body — that cascades down to here,
+        // making APPLY/DISCARD touch. Restore a gap locally.
+        ui.spacing_mut().item_spacing.x = 6.0;
         if primary_button(ui, apply_label).on_hover_text(apply_hint).clicked() {
             apply = true;
         }
@@ -910,12 +1102,12 @@ fn config_tab(
     }
 
     ui.add_space(6.0);
+    let spf = crate::sim::format_spf(controls.speed);
+    let plural = if (controls.speed - 1.0).abs() < f32::EPSILON { "" } else { "s" };
     ui.label(
         egui::RichText::new(format!(
             "Running on {} threads at {} step{}/frame.",
-            controls.num_threads,
-            controls.speed,
-            if controls.speed == 1 { "" } else { "s" },
+            controls.num_threads, spf, plural,
         ))
         .size(11.0)
         .color(theme::MUTED)
@@ -934,10 +1126,6 @@ fn section(ui: &mut egui::Ui, text: &str) {
         ui.painter().rect_filled(rect, 0.0, theme::LINE);
     });
     ui.add_space(2.0);
-}
-
-fn strong_label(text: &str) -> egui::RichText {
-    egui::RichText::new(text).size(11.0).color(theme::TEXT).strong()
 }
 
 fn hero_number(ui: &mut egui::Ui, label: &str, value: String, hint: Option<String>) {
@@ -1014,57 +1202,10 @@ fn ghost_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     ui.add(btn)
 }
 
-// ── Drag-value helpers ──────────────────────────────────────────────────────
-
-fn drag_u8(ui: &mut egui::Ui, label: &str, v: &mut u8, range: std::ops::RangeInclusive<u8>) {
-    drag_row(ui, label, |ui| {
-        ui.add(egui::DragValue::new(v).range(*range.start()..=*range.end()));
-    });
-}
-fn drag_u16(ui: &mut egui::Ui, label: &str, v: &mut u16, range: std::ops::RangeInclusive<u16>) {
-    drag_row(ui, label, |ui| {
-        ui.add(egui::DragValue::new(v).range(*range.start()..=*range.end()));
-    });
-}
-fn drag_u32(ui: &mut egui::Ui, label: &str, v: &mut u32, range: std::ops::RangeInclusive<u32>) {
-    drag_row(ui, label, |ui| {
-        ui.add(egui::DragValue::new(v).range(*range.start()..=*range.end()));
-    });
-}
-fn drag_u64(ui: &mut egui::Ui, label: &str, v: &mut u64, range: std::ops::RangeInclusive<u64>) {
-    drag_row(ui, label, |ui| {
-        ui.add(egui::DragValue::new(v).range(*range.start()..=*range.end()));
-    });
-}
-fn drag_f32(ui: &mut egui::Ui, label: &str, v: &mut f32, range: std::ops::RangeInclusive<f32>) {
-    // Adaptive step + decimals: small ranges (e.g. mutation rates) need fine
-    // control with many decimals; larger ranges (e.g. probe distances) want
-    // bigger steps and fewer decimals so dragging feels responsive.
-    let span = (*range.end() - *range.start()).abs();
-    let (speed, decimals) = if span <= 0.2 {
-        (0.0005f64, 4)
-    } else if span <= 2.0 {
-        (0.01, 3)
-    } else if span <= 20.0 {
-        (0.05, 2)
-    } else {
-        (0.5, 1)
-    };
-    drag_row(ui, label, |ui| {
-        ui.add(
-            egui::DragValue::new(v)
-                .range(*range.start()..=*range.end())
-                .speed(speed)
-                .fixed_decimals(decimals),
-        );
-    });
-}
-
-fn drag_row(ui: &mut egui::Ui, label: &str, body: impl FnOnce(&mut egui::Ui)) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).size(11.0).color(theme::TEXT_2));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            body(ui);
-        });
-    });
+/// Time-derived 64-bit value used when the user clicks the seed-regen icon.
+/// Not crypto-grade; the simulation re-seeds its RNG from `cfg.rng_seed` on
+/// reset, and nanosecond noise is plenty of entropy for picking a fresh run.
+fn generate_seed() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0xC0FFEE)
 }

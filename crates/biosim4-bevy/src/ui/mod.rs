@@ -16,6 +16,7 @@ pub mod right_panel;
 pub mod telemetry;
 pub mod toolbar;
 pub mod topbar;
+pub mod widgets;
 
 /// Width of the docked right panel in screen pixels. Camera fit logic uses
 /// this to leave room on the right side of the world.
@@ -89,6 +90,12 @@ impl Plugin for UiPlugin {
         if !app.is_plugin_added::<EguiPlugin>() {
             app.add_plugins(EguiPlugin::default());
         }
+        // Per-system `.run_if(fast_forward_inactive)` skips the heavy
+        // egui panels during FF while keeping `telemetry` (user reads it
+        // to gauge convergence in real time) and `fast_forward` (progress
+        // + cancel button) always on. `install_theme_once` is one-shot
+        // and cheap so it stays unconditional.
+        let ff_off = crate::sim::fast_forward_inactive;
         app.init_resource::<UiState>()
             .insert_resource(UiState { show_telemetry: true, ..Default::default() })
             // egui systems run in the dedicated egui pass — this is the
@@ -98,14 +105,14 @@ impl Plugin for UiPlugin {
                 EguiPrimaryContextPass,
                 (
                     install_theme_once,
-                    topbar::draw_topbar,
-                    right_panel::draw_right_panel,
+                    topbar::draw_topbar.run_if(ff_off),
+                    right_panel::draw_right_panel.run_if(ff_off),
                     // Frame chrome lives below the floating overlays in z order.
-                    canvas_chrome::draw_canvas_chrome,
-                    toolbar::draw_floating_toolbar,
-                    playback::draw_playback_bar,
+                    canvas_chrome::draw_canvas_chrome.run_if(ff_off),
+                    toolbar::draw_floating_toolbar.run_if(ff_off),
+                    playback::draw_playback_bar.run_if(ff_off),
                     telemetry::draw_telemetry_overlay,
-                    inspector::draw_agent_inspector,
+                    inspector::draw_agent_inspector.run_if(ff_off),
                     // Modal lives last so it sits above everything else.
                     fast_forward::draw_fast_forward_modal,
                 )

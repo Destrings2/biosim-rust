@@ -67,18 +67,29 @@ pub fn draw_playback_bar(
                         thin_divider(ui);
 
                         // ── Group 2: speed (zoom is handled by the scroll wheel,
-                        // displayed in the top bar)
+                        // displayed in the top bar). Slider is fractional in
+                        // sub-1.0 range so the user can watch agent decisions
+                        // unfold step-by-step at slower-than-realtime
+                        // playback. Logarithmic spacing keeps the 0.1..1
+                        // range as visually present as the 1..128 range.
                         slider_with_label(ui, "SPF", &mut |level| {
-                            let mut s = controls.speed as i32;
+                            let mut s = controls.speed;
                             let r = level.add(
-                                egui::Slider::new(&mut s, 1..=128)
-                                    .logarithmic(true)
-                                    .show_value(false),
+                                egui::Slider::new(
+                                    &mut s,
+                                    crate::sim::MIN_STEPS_PER_FRAME
+                                        ..=crate::sim::MAX_STEPS_PER_FRAME,
+                                )
+                                .logarithmic(true)
+                                .show_value(false),
                             );
                             if r.changed() {
-                                controls.speed = s.max(1) as u32;
+                                controls.speed = s.clamp(
+                                    crate::sim::MIN_STEPS_PER_FRAME,
+                                    crate::sim::MAX_STEPS_PER_FRAME,
+                                );
                             }
-                            format!("{}×", controls.speed)
+                            format!("{}×", crate::sim::format_spf(controls.speed))
                         });
 
                         thin_divider(ui);

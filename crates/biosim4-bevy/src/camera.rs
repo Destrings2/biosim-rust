@@ -32,8 +32,14 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_camera)
-            .add_systems(Update, (pan_camera, zoom_camera, fit_to_grid).chain());
+        app.add_systems(Startup, setup_camera).add_systems(
+            Update,
+            // No need to handle camera input or grid-fit while FF runs —
+            // the canvas isn't being redrawn anyway.
+            (pan_camera, zoom_camera, fit_to_grid)
+                .chain()
+                .run_if(crate::sim::fast_forward_inactive),
+        );
     }
 }
 

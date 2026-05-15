@@ -51,8 +51,16 @@ bevy = { version = "0.18", default-features = false, features = [
 # bevy_egui pairs egui's mature widget set (sliders, dropdowns, multi-tabs,
 # painter for the neural-net inspector) with Bevy's rendering. Pinned to a
 # version that targets Bevy 0.18 — if Cargo resolves a mismatch, bump this
-# along with the Bevy major.
-bevy_egui = "0.39"
+# along with the Bevy major. `picking` is dropped: it would otherwise require
+# bevy's `bevy_picking` feature (we don't enable it; agent selection uses
+# raw cursor coords), and bevy_egui logs a runtime WARN about the mismatch.
+bevy_egui = { version = "0.39", default-features = false, features = [
+    "manage_clipboard",
+    "open_url",
+    "default_fonts",
+    "render",
+    "bevy_ui",
+] }
 
 
 [lints]

@@ -36,8 +36,13 @@ pub struct ToolPlugin;
 
 impl Plugin for ToolPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<HoveredCell>()
-            .add_systems(Update, (track_hover, handle_tool_input, tool_keyboard_shortcuts));
+        app.init_resource::<HoveredCell>().add_systems(
+            Update,
+            // Tools are user-input driven against the visible canvas; FF
+            // hides the canvas, so input handling is wasted work there.
+            (track_hover, handle_tool_input, tool_keyboard_shortcuts)
+                .run_if(crate::sim::fast_forward_inactive),
+        );
     }
 }
 

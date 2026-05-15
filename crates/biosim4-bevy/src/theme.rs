@@ -152,6 +152,8 @@ pub enum Icon {
     KillBarrier, // square with diagonal slash
     Kill,        // X
     Reproduce,   // 4-point spark
+    // Misc UI affordances
+    Refresh, // circular arrow (used for seed-regen)
     // Right-panel vertical tabs
     TabStats,     // bar chart
     TabChallenge, // target rings
@@ -253,6 +255,28 @@ pub fn paint_icon(painter: &egui::Painter, rect: egui::Rect, kind: Icon, color: 
             let d = r * 0.55;
             painter.line_segment([pos2(c.x - d, c.y - d), pos2(c.x + d, c.y + d)], stroke);
             painter.line_segment([pos2(c.x - d, c.y + d), pos2(c.x + d, c.y - d)], stroke);
+        }
+        Icon::Refresh => {
+            // 3/4 circular arrow with an arrow head at the top-right gap.
+            use std::f32::consts::PI;
+            let r = s * 0.28;
+            let steps = 24;
+            // Sweep from ~30° (top-right) clockwise around to ~-60° (top), leaving
+            // a wedge open in the upper-right for the arrowhead to sit in.
+            let start = -PI * 0.15;
+            let end = start + PI * 1.6;
+            let mut prev = pos2(c.x + r * start.cos(), c.y + r * start.sin());
+            for i in 1..=steps {
+                let t = start + (end - start) * (i as f32 / steps as f32);
+                let p = pos2(c.x + r * t.cos(), c.y + r * t.sin());
+                painter.line_segment([prev, p], stroke);
+                prev = p;
+            }
+            // Arrowhead at the starting end of the sweep — two short ticks.
+            let tip = pos2(c.x + r * start.cos(), c.y + r * start.sin());
+            let h = s * 0.12;
+            painter.line_segment([tip, pos2(tip.x - h, tip.y - h * 0.2)], stroke);
+            painter.line_segment([tip, pos2(tip.x - h * 0.2, tip.y - h)], stroke);
         }
         Icon::TabStats => {
             // Three rising bars.

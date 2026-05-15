@@ -37,11 +37,36 @@ fn fresh_state(config: SimConfig) -> SimulationState {
 
 /// Maximum simulation steps we'll execute in a single frame in normal
 /// (rendered) playback. Above this we'd starve the renderer of frame time.
-const MAX_STEPS_PER_FRAME: u32 = 256;
+pub const MAX_STEPS_PER_FRAME: f32 = 128.0;
+/// Minimum steps per frame. Values below `1.0` mean "step every Nth frame"
+/// (fractional SPF accumulates across frames via `step_accumulator`), letting
+/// the user watch agent-by-agent decisions at slower-than-realtime playback.
+pub const MIN_STEPS_PER_FRAME: f32 = 0.1;
+
+/// Format a fractional SPF compactly for UI display: integer values drop the
+/// decimal (e.g. `4.0 -> "4"`), fractional values keep one decimal place
+/// (`0.5 -> "0.5"`).
+pub fn format_spf(speed: f32) -> String {
+    if (speed - speed.round()).abs() < 1e-4 {
+        format!("{:.0}", speed)
+    } else {
+        format!("{:.1}", speed)
+    }
+}
 
 /// Per-frame wall-clock budget for fast-forward mode. We still yield to the
-/// renderer this often so the progress modal can update + remain cancellable.
+/// renderer this often so the progress modal + telemetry can update and
+/// remain cancellable.
 const FF_FRAME_BUDGET: std::time::Duration = std::time::Duration::from_millis(35);
+
+/// Bevy run-condition: `true` when fast-forward is **not** active. Render
+/// and UI systems that aren't load-bearing for FF (grid texture re-encoder,
+/// most egui panels, tool input handlers, camera input) gate themselves on
+/// this so FF iterations don't pay the per-frame render cost. Telemetry,
+/// the FF progress modal, and the theme installer stay always-on.
+pub fn fast_forward_inactive(ff: Res<FastForward>) -> bool {
+    ff.active.is_none()
+}
 
 /// History buffer cap. 64 mirrors the React frontend's `HISTORY_CAP`.
 const HISTORY_CAP: usize = 64;
@@ -159,8 +184,15 @@ impl Tool {
 #[derive(Resource)]
 pub struct SimControls {
     pub running: bool,
-    /// Steps per frame. 1 = 60 sps at 60fps, 8 = 480 sps, etc.
-    pub speed: u32,
+    /// Steps per frame. 1.0 = one sim step per render frame (60 sps at 60fps);
+    /// 4.0 = four steps per frame (240 sps); 0.1 = one step every ten frames
+    /// (6 sps). Fractional values accumulate via [`SimControls::step_accumulator`].
+    pub speed: f32,
+    /// Running residual of fractional SPF. Each frame we add `speed` to this
+    /// accumulator and step the sim `accumulator.floor()` times, then keep
+    /// the fractional remainder. With `speed = 0.1` the sim steps once every
+    /// ten frames.
+    pub step_accumulator: f32,
     /// Pixels per cell — controls the rendered grid scale.
     pub pixel_scale: f32,
     pub tool: Tool,
@@ -181,7 +213,8 @@ impl Default for SimControls {
     fn default() -> Self {
         Self {
             running: false,
-            speed: 4,
+            speed: 4.0,
+            step_accumulator: 0.0,
             pixel_scale: 4.0,
             tool: Tool::default(),
             num_threads: 4,
@@ -286,7 +319,7 @@ pub struct SimCommandQueue {
 pub enum SimCommand {
     Reset,
     Recreate(SimConfig),
-    SetSpeed(u32),
+    SetSpeed(f32),
     StepOnce,
     StepGeneration,
     RunEpoch,
@@ -402,7 +435,9 @@ fn process_commands(
                     controls.grid_dirty = true;
                 }
             }
-            SimCommand::SetSpeed(s) => controls.speed = s.clamp(1, MAX_STEPS_PER_FRAME),
+            SimCommand::SetSpeed(s) => {
+                controls.speed = s.clamp(MIN_STEPS_PER_FRAME, MAX_STEPS_PER_FRAME);
+            }
             SimCommand::StepOnce => {
                 if !controls.running {
                     single_step(&mut sim, &mut history);
@@ -484,8 +519,15 @@ fn process_commands(
     }
 }
 
-/// Advance the simulation. Two modes: fast-forward (tight loop, rendering
-/// suppressed) and normal playback (steps-per-frame from the speed slider).
+/// Advance the simulation. Two modes:
+///
+/// - **Fast-forward**: tight per-sim-step loop bounded by `FF_FRAME_BUDGET`.
+///   The non-essential render and UI systems are skipped via the
+///   [`fast_forward_inactive`] run-condition, so most of the frame is sim
+///   work. Yields once per frame so the FF modal + telemetry can refresh
+///   and the cancel button stays responsive.
+/// - **Normal playback**: steps-per-frame from the speed slider, with
+///   fractional accumulation for sub-1 SPF.
 fn step_simulation(
     mut sim: ResMut<Sim>,
     mut history: ResMut<SimHistory>,
@@ -495,9 +537,20 @@ fn step_simulation(
     // ── Fast-forward path ───────────────────────────────────────────────
     if let Some(ff) = fast_forward.active.as_mut() {
         let frame_start = std::time::Instant::now();
-        while frame_start.elapsed() < FF_FRAME_BUDGET && sim.state.generation < ff.target_gen {
-            run_full_epoch(&mut sim, &mut history);
-            ff.last_gen = sim.state.generation;
+        let total = sim.state.config.steps_per_generation;
+        // Per-step granularity so we don't overshoot the budget by a whole
+        // unfinished epoch's worth of work. `Instant::elapsed()` is in the
+        // µs range; one sim step is ~1 ms at typical configs, so the check
+        // overhead is below 1%.
+        while sim.state.generation < ff.target_gen && frame_start.elapsed() < FF_FRAME_BUDGET {
+            if sim.state.sim_step >= total {
+                advance_generation(&mut sim, &mut history);
+                ff.last_gen = sim.state.generation;
+            } else {
+                let cur = sim.state.sim_step;
+                sim.step(cur);
+                sim.state.sim_step = cur + 1;
+            }
         }
         if sim.state.generation >= ff.target_gen {
             fast_forward.active = None;
@@ -508,10 +561,20 @@ fn step_simulation(
 
     // ── Normal playback ─────────────────────────────────────────────────
     if !controls.running {
+        // Drop any partial step credit when paused so re-starting after a
+        // long pause doesn't dump a backlog of steps in one frame.
+        controls.step_accumulator = 0.0;
         return;
     }
-    let speed = controls.speed.min(MAX_STEPS_PER_FRAME);
-    for _ in 0..speed {
+    let speed = controls.speed.clamp(MIN_STEPS_PER_FRAME, MAX_STEPS_PER_FRAME);
+    controls.step_accumulator += speed;
+    let steps = controls.step_accumulator.floor();
+    controls.step_accumulator -= steps;
+    let mut steps_this_frame = steps as u32;
+    if steps_this_frame == 0 {
+        return;
+    }
+    while steps_this_frame > 0 {
         let total = sim.state.config.steps_per_generation;
         if sim.state.sim_step >= total {
             advance_generation(&mut sim, &mut history);
@@ -520,6 +583,7 @@ fn step_simulation(
             sim.step(cur);
             sim.state.sim_step = cur + 1;
         }
+        steps_this_frame -= 1;
     }
     controls.grid_dirty = true;
 }
