@@ -60,7 +60,9 @@ impl Program for Predator {
             return;
         }
 
-        if let Some((target_loc, _agent_id)) = sensors::nearest_peep_in_los(ctx, this.loc, self.view_distance) {
+        if let Some((target_loc, _agent_id)) =
+            sensors::nearest_peep_in_los(ctx, this.loc, self.view_distance)
+        {
             this.state[STATE_IS_CHASING] = 1.0;
             this.state[STATE_CHASING_TARGET_X] = target_loc.x as f32;
             this.state[STATE_CHASING_TARGET_Y] = target_loc.y as f32;
@@ -69,10 +71,15 @@ impl Program for Predator {
             let dy = (target_loc.y - this.loc.y).abs();
 
             if dx <= 1 && dy <= 1 {
-                // Consume the adjacent peep.
+                // Consume the adjacent peep. The merge phase frees the
+                // peep's grid cell before applying our move, so the
+                // predator steps onto the prey in one tick.
                 out.kill_peep_at = Some(target_loc);
-                // Claim the cell; peep death is processed first in the merge phase.
                 out.move_to = Some(target_loc);
+                // Track heading so the inspector + overlays show the
+                // strike direction; without this the predator visually
+                // "snaps" to the new cell with its previous facing.
+                this.heading = (target_loc - this.loc).as_dir();
 
                 // Reset starvation and enter fullness cooldown.
                 this.state[STATE_STARVATION_TIMER] = self.max_starvation_time as f32;
@@ -108,24 +115,12 @@ impl Program for Predator {
 }
 
 impl Predator {
-    /// Random 8-directional step.
+    /// Random 8-directional step. Delegates to the shared library helper
+    /// so `Wanderer` and `Predator` agree on the random-walk distribution.
     fn wander(&self, this: &mut Programmable, ctx: &mut ProgramContext, out: &mut ProgramOutput) {
-        let roll = ctx.rng.gen_range_u32(0, 9) as i16;
-        let (dx, dy) = match roll {
-            0 => (0, 0),
-            1 => (-1, 0),
-            2 => (1, 0),
-            3 => (0, -1),
-            4 => (0, 1),
-            5 => (-1, -1),
-            6 => (1, -1),
-            7 => (-1, 1),
-            _ => (1, 1),
-        };
-        if dx != 0 || dy != 0 {
-            let dest = Coord::new(this.loc.x + dx, this.loc.y + dy);
+        if let Some(dest) = actions::random_walk_step(this.loc, ctx.rng) {
             out.move_to = Some(dest);
-            this.heading = Coord::new(dx, dy).as_dir();
+            this.heading = (dest - this.loc).as_dir();
         }
     }
 
@@ -138,7 +133,8 @@ impl Predator {
 
     /// Color while hungry: bright red fading to near-black as starvation grows.
     fn set_color_hungry(&self, this: &Programmable, out: &mut ProgramOutput) {
-        let fraction = this.state[STATE_STARVATION_TIMER] / (self.max_starvation_time as f32).max(1.0);
+        let fraction =
+            this.state[STATE_STARVATION_TIMER] / (self.max_starvation_time as f32).max(1.0);
         let red = (50.0 + 205.0 * fraction) as u8;
         out.set_color = Some([red, 0, 0]);
     }
@@ -231,17 +227,17 @@ impl Challenge for PredatorsChallenge {
     }
 
     fn on_generation_start(&mut self, ctx: &mut WorldMut) {
-        let view_distance = self.view_distance;
-        let max_starvation_time = self.max_starvation_time;
-        let fullness_duration = self.fullness_duration;
-
-        let prog = ctx.programmable.register_or_get("predator", || {
-            Box::new(Predator {
-                view_distance,
-                max_starvation_time,
-                fullness_duration,
-            })
-        });
+        // `register_program` upserts: a re-registration under the same id
+        // replaces the existing slot with the fresh `Box<dyn Program>`.
+        // That's what we want — without it, edits to `view_distance` /
+        // `max_starvation_time` / `fullness_duration` in the Config UI
+        // would never propagate past the first generation because
+        // `register_or_get` would return the cached stale program.
+        let prog = ctx.programmable.register_program(Box::new(Predator {
+            view_distance: self.view_distance,
+            max_starvation_time: self.max_starvation_time,
+            fullness_duration: self.fullness_duration,
+        }));
 
         for _ in 0..self.count {
             let loc = ctx.grid.find_empty_location(ctx.rng);

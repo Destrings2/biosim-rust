@@ -20,9 +20,9 @@
 //!     are never evaluated as such).
 
 use biosim4_core::agent::Agent;
+use biosim4_core::programmable::library::actions;
 use biosim4_core::programmable::{OwnerTag, Program, ProgramContext, ProgramOutput, Programmable};
 use biosim4_core::registry::challenge::{Challenge, ChallengeOverlay, WorldMut};
-use biosim4_core::types::Coord;
 use biosim4_core::world::World;
 use serde_json::{json, Value};
 
@@ -44,29 +44,15 @@ impl Program for Wanderer {
         "Wanderer"
     }
     fn step(&self, this: &mut Programmable, ctx: &mut ProgramContext, out: &mut ProgramOutput) {
-        // Pick a random of the 8 compass directions plus "stay put" (9 choices).
+        // 1-in-9 chance of staying put, otherwise step one Chebyshev cell.
         // No fancy collision logic — the merge will silently drop the move if
         // the target cell is occupied, which gives a Brownian feel.
-        let roll = ctx.rng.gen_range_u32(0, 9) as i16;
-        let (dx, dy) = match roll {
-            0 => (0, 0), // stay
-            1 => (-1, 0),
-            2 => (1, 0),
-            3 => (0, -1),
-            4 => (0, 1),
-            5 => (-1, -1),
-            6 => (1, -1),
-            7 => (-1, 1),
-            _ => (1, 1),
-        };
-        if dx == 0 && dy == 0 {
-            return;
+        if let Some(dest) = actions::random_walk_step(this.loc, ctx.rng) {
+            out.move_to = Some(dest);
+            // Track heading so the renderer / debug overlays can show
+            // direction even though we don't otherwise consult it.
+            this.heading = (dest - this.loc).as_dir();
         }
-        let dest = Coord::new(this.loc.x + dx, this.loc.y + dy);
-        out.move_to = Some(dest);
-        // Track heading so the renderer / debug overlays can show direction
-        // even though we don't otherwise consult it.
-        this.heading = Coord::new(dx, dy).as_dir();
     }
 }
 
