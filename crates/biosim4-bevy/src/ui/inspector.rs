@@ -5,10 +5,12 @@
 //! The network section has two display modes:
 //!   - **LAYERED**: sensors stacked left, neurons middle, actions right.
 //!     Fast, deterministic, no animation. Best for reading the topology.
-//!   - **FORCE**: spring-driven layout — sensors pinned to the left and
-//!     actions to the right, but neurons float freely under repulsion and
-//!     edge-spring forces. Surfaces recurrent / intra-layer connections that
-//!     the layered view collapses onto each other.
+//!   - **FORCE**: spring-driven layout — every node floats under repulsion
+//!     and edge springs. Sensors and actions feel a soft horizontal anchor
+//!     toward their side of the canvas so the left/right structure
+//!     survives, but they still drift vertically with the tension of their
+//!     connections. Surfaces recurrent / intra-layer connections that the
+//!     layered view collapses onto each other.
 
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
@@ -42,7 +44,10 @@ struct NodeView {
     vel: egui::Vec2,
     idx: u16,
     kind: NodeKind,
-    pinned: bool,
+    // Some(x) ⇒ soft horizontal spring pulls the node toward this X.
+    // None ⇒ node floats freely. Sensors / actions are anchored to their
+    // gutter columns; neurons have no anchor.
+    anchor_x: Option<f32>,
 }
 
 #[derive(Clone)]
@@ -732,6 +737,10 @@ const DAMPING: f32 = 0.85;
 const MAX_VELOCITY: f32 = 60.0;
 const ITERATIONS_PER_FRAME: usize = 4;
 const SETTLED_VELOCITY: f32 = 0.2;
+// Soft X-only pull on sensors/actions toward their gutter column. Weak
+// enough that edge springs can still drag them around, strong enough to
+// keep them recognisably on their side of the canvas.
+const ANCHOR_STRENGTH: f32 = 0.05;
 
 fn draw_force(
     ui: &egui::Ui,
@@ -748,9 +757,8 @@ fn draw_force(
     let pad = 18.0;
     let inner = rect.shrink2(egui::vec2(pad, 50.0));
     // Same gutter math as LAYERED — sensor labels extend leftward from the
-    // node, action labels extend rightward, so we need to keep the pinned
-    // columns inset by enough room for the longest label or they clip off
-    // the painter rect.
+    // node, action labels extend rightward, so we anchor each column inset
+    // by enough room for the longest label.
     let gutter = (inner.width() * 0.32).clamp(96.0, 160.0);
     let header_y = rect.top() + 26.0;
     painter.text(
@@ -800,25 +808,18 @@ fn draw_force(
         state.last_rect = rect;
     }
 
-    // Re-pin sensors / actions inside the gutter so labels have room.
-    let n_sensors = sensors.len();
-    let n_actions = actions.len();
-    pin_column(
-        &mut state.nodes,
-        NodeKind::Sensor,
-        n_sensors,
-        inner.left() + gutter,
-        inner.top(),
-        inner.bottom(),
-    );
-    pin_column(
-        &mut state.nodes,
-        NodeKind::Action,
-        n_actions,
-        inner.right() - gutter,
-        inner.top(),
-        inner.bottom(),
-    );
+    // Refresh anchor positions each frame so they follow the current
+    // gutter — necessary after a canvas resize. Sensors anchor at the
+    // left gutter, actions at the right, neurons stay free.
+    let sensor_anchor = inner.left() + gutter;
+    let action_anchor = inner.right() - gutter;
+    for n in state.nodes.iter_mut() {
+        n.anchor_x = match n.kind {
+            NodeKind::Sensor => Some(sensor_anchor),
+            NodeKind::Action => Some(action_anchor),
+            NodeKind::Neuron => None,
+        };
+    }
 
     // Build edge list once per frame (cheap; ~50 edges typical).
     let edges = build_edges(&agent.nnet, sensors, neurons, actions, &state.nodes);
@@ -828,9 +829,7 @@ fn draw_force(
     for _ in 0..ITERATIONS_PER_FRAME {
         step_forces(&mut state.nodes, &edges, inner);
         for n in &state.nodes {
-            if !n.pinned {
-                max_v = max_v.max(n.vel.length());
-            }
+            max_v = max_v.max(n.vel.length());
         }
     }
 
@@ -899,25 +898,29 @@ fn build_initial_nodes(
 ) -> Vec<NodeView> {
     let mut nodes = Vec::with_capacity(sensors.len() + neurons.len() + actions.len());
 
-    // Pinned columns — inset by `gutter` from each edge so labels have room.
+    // Anchored columns — sensors on the left, actions on the right, inset
+    // by `gutter` so labels have room. They start on their anchor and the
+    // soft spring keeps them in that neighbourhood as edges tug at them.
+    let sensor_x = inner.left() + gutter;
+    let action_x = inner.right() - gutter;
     for (i, &idx) in sensors.iter().enumerate() {
         let y = lerp_y(inner, i as f32 / (sensors.len().max(1) as f32 - 1.0).max(1.0));
         nodes.push(NodeView {
-            pos: egui::vec2(inner.left() + gutter, y),
+            pos: egui::vec2(sensor_x, y),
             vel: egui::Vec2::ZERO,
             idx,
             kind: NodeKind::Sensor,
-            pinned: true,
+            anchor_x: Some(sensor_x),
         });
     }
     for (i, &idx) in actions.iter().enumerate() {
         let y = lerp_y(inner, i as f32 / (actions.len().max(1) as f32 - 1.0).max(1.0));
         nodes.push(NodeView {
-            pos: egui::vec2(inner.right() - gutter, y),
+            pos: egui::vec2(action_x, y),
             vel: egui::Vec2::ZERO,
             idx,
             kind: NodeKind::Action,
-            pinned: true,
+            anchor_x: Some(action_x),
         });
     }
     // Neurons start jittered around the middle so the simulation has gradient
@@ -932,7 +935,7 @@ fn build_initial_nodes(
             vel: egui::Vec2::ZERO,
             idx,
             kind: NodeKind::Neuron,
-            pinned: false,
+            anchor_x: None,
         });
     }
     nodes
@@ -941,27 +944,6 @@ fn build_initial_nodes(
 fn lerp_y(inner: egui::Rect, t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     inner.top() + 20.0 + t * (inner.height() - 40.0)
-}
-
-fn pin_column(
-    nodes: &mut [NodeView],
-    kind: NodeKind,
-    count: usize,
-    x: f32,
-    y_top: f32,
-    y_bot: f32,
-) {
-    let mut k = 0usize;
-    for n in nodes.iter_mut() {
-        if n.kind == kind {
-            let t = if count <= 1 { 0.5 } else { k as f32 / (count as f32 - 1.0) };
-            let y = y_top + 20.0 + t * (y_bot - y_top - 40.0).max(0.0);
-            n.pos = egui::vec2(x, y);
-            n.vel = egui::Vec2::ZERO;
-            n.pinned = true;
-            k += 1;
-        }
-    }
 }
 
 fn build_edges(
@@ -1034,18 +1016,24 @@ fn step_forces(nodes: &mut [NodeView], edges: &[(usize, usize, f32)], bounds: eg
         forces[b] -= f;
     }
 
-    // Integrate. Pinned nodes ignore forces entirely.
-    for (i, node) in nodes.iter_mut().enumerate() {
-        if node.pinned {
-            continue;
+    // Soft X-only anchor for sensors/actions — pulls them back toward
+    // their column without freezing them, so they still drift vertically
+    // with edge tension. Neurons have anchor_x = None and feel nothing.
+    for (i, node) in nodes.iter().enumerate() {
+        if let Some(ax) = node.anchor_x {
+            forces[i].x += ANCHOR_STRENGTH * (ax - node.pos.x);
         }
+    }
+
+    // Integrate every node — the old hard-pin path is gone; anchors live
+    // as forces above.
+    for (i, node) in nodes.iter_mut().enumerate() {
         node.vel = (node.vel + forces[i]) * DAMPING;
         let speed = node.vel.length();
         if speed > MAX_VELOCITY {
             node.vel *= MAX_VELOCITY / speed;
         }
         node.pos += node.vel;
-        // Keep neurons inside the inner rect.
         let margin = 12.0;
         node.pos.x = node.pos.x.clamp(bounds.left() + margin, bounds.right() - margin);
         node.pos.y = node.pos.y.clamp(bounds.top() + margin, bounds.bottom() - margin);
