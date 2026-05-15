@@ -151,7 +151,7 @@ pub fn slider_field_u32(
     presets: &[u32],
 ) {
     field_row(ui, title, hint, |ui| {
-        slider_row(ui, value, range.clone(), &|v: u32| format_u32_commas(v));
+        slider_row(ui, title, value, range.clone(), &|v: u32| format_u32_commas(v));
         if !presets.is_empty() {
             ui.add_space(4.0);
             chip_row(ui, value, presets, &|v: u32| format_u32_commas(v));
@@ -169,7 +169,7 @@ pub fn slider_field_u16(
     presets: &[u16],
 ) {
     field_row(ui, title, hint, |ui| {
-        slider_row(ui, value, range.clone(), &|v: u16| format_u32_commas(v as u32));
+        slider_row(ui, title, value, range.clone(), &|v: u16| format_u32_commas(v as u32));
         if !presets.is_empty() {
             ui.add_space(4.0);
             chip_row(ui, value, presets, &|v: u16| format_u32_commas(v as u32));
@@ -187,7 +187,7 @@ pub fn slider_field_f32(
     fmt: impl Fn(f32) -> String,
 ) {
     field_row(ui, title, hint, |ui| {
-        slider_row(ui, value, range, &fmt);
+        slider_row(ui, title, value, range, &fmt);
     });
 }
 
@@ -382,8 +382,13 @@ pub fn enum_field_u8(
 /// `add_sized` passes — the theme sets that to 140, which would overflow
 /// the body column. Overriding `slider_width` inside a `ui.scope` is the
 /// only way to force a narrower slider.
+///
+/// `id_source` is the row's title — it makes the per-row edit-mode state
+/// (kept in `egui::Memory`) collision-free without plumbing identifiers
+/// through every public wrapper.
 fn slider_row<T: Numeric>(
     ui: &mut egui::Ui,
+    id_source: &str,
     value: &mut T,
     range: RangeInclusive<T>,
     fmt: &dyn Fn(T) -> String,
@@ -393,19 +398,79 @@ fn slider_row<T: Numeric>(
         let slider_w = (avail - VALUE_STRIP_WIDTH - SLIDER_VALUE_GAP).max(60.0);
         ui.scope(|ui| {
             ui.spacing_mut().slider_width = slider_w;
-            ui.add(egui::Slider::new(value, range).show_value(false));
+            ui.add(egui::Slider::new(value, range.clone()).show_value(false));
         });
         ui.add_space(SLIDER_VALUE_GAP);
-        ui.allocate_ui_with_layout(
-            egui::vec2(VALUE_STRIP_WIDTH, BODY_HEIGHT),
-            egui::Layout::right_to_left(egui::Align::Center),
-            |ui| {
-                ui.label(
-                    egui::RichText::new(fmt(*value)).monospace().size(11.5).color(theme::TEXT),
-                );
-            },
-        );
+        editable_value_strip(ui, id_source, value, range, fmt);
     });
+}
+
+/// Value strip on the right of a slider row. Double-clicking the label
+/// swaps it for an inline `TextEdit`; Enter or focus loss commits, Esc
+/// cancels. The transient buffer lives in `egui::Memory`, keyed by
+/// `id_source`, so no extra plumbing is needed at call sites.
+fn editable_value_strip<T: Numeric>(
+    ui: &mut egui::Ui,
+    id_source: &str,
+    value: &mut T,
+    range: RangeInclusive<T>,
+    fmt: &dyn Fn(T) -> String,
+) {
+    let edit_id = ui.id().with(("slider_edit", id_source));
+    let textedit_id = edit_id.with("textedit");
+    let mut buffer: Option<String> = ui.data(|d| d.get_temp(edit_id));
+
+    ui.allocate_ui_with_layout(
+        egui::vec2(VALUE_STRIP_WIDTH, BODY_HEIGHT),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            if let Some(buf) = buffer.as_mut() {
+                let resp = ui.add(
+                    egui::TextEdit::singleline(buf)
+                        .id(textedit_id)
+                        .desired_width(VALUE_STRIP_WIDTH)
+                        .font(egui::TextStyle::Monospace),
+                );
+                let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                let commit = enter || (resp.lost_focus() && !esc);
+                if commit {
+                    if let Ok(parsed) = buf.replace(',', "").parse::<f64>() {
+                        let min = range.start().to_f64();
+                        let max = range.end().to_f64();
+                        *value = T::from_f64(parsed.clamp(min, max));
+                    }
+                    ui.data_mut(|d| d.remove::<String>(edit_id));
+                } else if esc {
+                    ui.data_mut(|d| d.remove::<String>(edit_id));
+                } else {
+                    ui.data_mut(|d| d.insert_temp(edit_id, buf.clone()));
+                }
+            } else {
+                let label =
+                    egui::RichText::new(fmt(*value)).monospace().size(11.5).color(theme::TEXT);
+                let resp = ui
+                    .add(egui::Label::new(label).sense(egui::Sense::click()))
+                    .on_hover_text("Double-click to edit");
+                if resp.double_clicked() {
+                    let seed = fmt(*value).replace(',', "");
+                    // Pre-select the seeded text so the next keystroke
+                    // replaces the value instead of appending to it.
+                    let mut state =
+                        egui::widgets::text_edit::TextEditState::load(ui.ctx(), textedit_id)
+                            .unwrap_or_default();
+                    let end = seed.chars().count();
+                    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(end),
+                    )));
+                    state.store(ui.ctx(), textedit_id);
+                    ui.data_mut(|d| d.insert_temp(edit_id, seed));
+                    ui.memory_mut(|m| m.request_focus(textedit_id));
+                }
+            }
+        },
+    );
 }
 
 fn chip_row<T: Numeric + Copy + PartialEq>(
