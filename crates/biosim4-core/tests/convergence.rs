@@ -1,7 +1,9 @@
 use biosim4_core::{
-    sim_config::SimConfig, sim_state::SimulationState, sim_step::step_generation,
+    registry::challenge::{ChallengeComposition, ChallengeConfig},
+    sim_config::SimConfig,
+    sim_state::SimulationState,
+    sim_step::step_generation,
     spawn::{initialize_generation_0, spawn_new_generation},
-    registry::challenge::{ChallengeConfig, ChallengeComposition},
 };
 
 fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> Vec<f32> {
@@ -20,12 +22,15 @@ fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> 
     cfg.num_threads = 1;
 
     let mut state = SimulationState::new(cfg);
-    biosim4_core::challenges::register_builtin_challenges(&mut state.challenges);
-    state.challenges.apply_config(ChallengeConfig {
-        active: vec![challenge_id.to_string()],
-        composition: ChallengeComposition::Any,
-        params: Default::default(),
-    }).expect("set challenge");
+    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+    state
+        .challenges
+        .apply_config(ChallengeConfig {
+            active: vec![challenge_id.to_string()],
+            composition: ChallengeComposition::Any,
+            params: Default::default(),
+        })
+        .expect("set challenge");
 
     initialize_generation_0(&mut state);
 
@@ -39,7 +44,9 @@ fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> 
     rates
 }
 
-fn mean(xs: &[f32]) -> f32 { xs.iter().sum::<f32>() / xs.len() as f32 }
+fn mean(xs: &[f32]) -> f32 {
+    xs.iter().sum::<f32>() / xs.len() as f32
+}
 
 fn assert_improves(challenge: &str, rates: &[f32], min_gain: f32) {
     let n = rates.len();
@@ -48,13 +55,19 @@ fn assert_improves(challenge: &str, rates: &[f32], min_gain: f32) {
     let gain = tail - head;
     eprintln!(
         "[{}] head_5={:.3} tail_5={:.3} gain={:.3} (need >= {:.2})\n  series: {:?}",
-        challenge, head, tail, gain, min_gain,
+        challenge,
+        head,
+        tail,
+        gain,
+        min_gain,
         rates.iter().map(|r| (r * 100.0).round() / 100.0).collect::<Vec<_>>(),
     );
     assert!(
         gain >= min_gain,
         "{}: survival rate did not improve enough (gain {:.3} < {:.2})",
-        challenge, gain, min_gain,
+        challenge,
+        gain,
+        min_gain,
     );
 }
 

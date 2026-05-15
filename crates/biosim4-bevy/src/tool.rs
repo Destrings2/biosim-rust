@@ -36,10 +36,8 @@ pub struct ToolPlugin;
 
 impl Plugin for ToolPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<HoveredCell>().add_systems(
-            Update,
-            (track_hover, handle_tool_input, tool_keyboard_shortcuts),
-        );
+        app.init_resource::<HoveredCell>()
+            .add_systems(Update, (track_hover, handle_tool_input, tool_keyboard_shortcuts));
     }
 }
 
@@ -71,10 +69,10 @@ fn track_hover(
             hovered.cell = Some((x, y));
             let loc = biosim4_core::types::Coord::new(x as i16, y as i16);
             hovered.kind = match sim.state.grid.at(loc) {
-                biosim4_core::grid::EMPTY        => CellKind::Empty,
-                biosim4_core::grid::BARRIER      => CellKind::Barrier,
+                biosim4_core::grid::EMPTY => CellKind::Empty,
+                biosim4_core::grid::BARRIER => CellKind::Barrier,
                 biosim4_core::grid::KILL_BARRIER => CellKind::KillBarrier,
-                id                               => CellKind::Agent(id),
+                id => CellKind::Agent(id),
             };
         }
         None => {

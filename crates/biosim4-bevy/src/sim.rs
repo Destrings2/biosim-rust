@@ -14,11 +14,11 @@
 //! (selection + reproduction) happens automatically when running.
 
 use bevy::prelude::*;
+use biosim4_core::analysis::collect_epoch_stats;
 use biosim4_core::sim_config::SimConfig;
 use biosim4_core::sim_state::SimulationState;
 use biosim4_core::sim_step::step_one;
 use biosim4_core::spawn::spawn_new_generation;
-use biosim4_core::analysis::collect_epoch_stats;
 
 /// Maximum simulation steps we'll execute in a single frame in normal
 /// (rendered) playback. Above this we'd starve the renderer of frame time.
@@ -63,12 +63,15 @@ impl Sim {
     pub fn new(config: SimConfig) -> Self {
         let pool = build_pool(config.num_threads);
         let json = serde_json::to_string_pretty(&config).unwrap_or_default();
-        let state = SimulationState::new(config);
+        let mut state = SimulationState::new(config);
+        biosim4_challenges::register_builtin_challenges(&mut state.challenges);
         Self { state, config_json: json, pool }
     }
 
     /// Convenience: alive count snapshot (cheap — just a length read).
-    pub fn alive(&self) -> u32 { self.state.population.alive_count() as u32 }
+    pub fn alive(&self) -> u32 {
+        self.state.population.alive_count() as u32
+    }
 
     /// Run a single sim step on the owned worker pool. All `step_one` calls
     /// must go through this so phase 1/2 use the configured thread count.
@@ -110,20 +113,20 @@ pub enum Tool {
 impl Tool {
     pub fn label(self) -> &'static str {
         match self {
-            Tool::Inspect     => "Inspect",
-            Tool::Barrier     => "Barrier",
+            Tool::Inspect => "Inspect",
+            Tool::Barrier => "Barrier",
             Tool::KillBarrier => "Kill Zone",
-            Tool::Kill        => "Kill",
-            Tool::Reproduce   => "Reproduce",
+            Tool::Kill => "Kill",
+            Tool::Reproduce => "Reproduce",
         }
     }
     pub fn shortcut(self) -> &'static str {
         match self {
-            Tool::Inspect     => "I",
-            Tool::Barrier     => "B",
+            Tool::Inspect => "I",
+            Tool::Barrier => "B",
             Tool::KillBarrier => "Z",
-            Tool::Kill        => "K",
-            Tool::Reproduce   => "R",
+            Tool::Kill => "K",
+            Tool::Reproduce => "R",
         }
     }
     pub fn description(self) -> &'static str {
@@ -205,19 +208,29 @@ pub struct FastForwardState {
 }
 
 impl FastForwardState {
-    pub fn done_count(&self) -> u32 { self.last_gen.saturating_sub(self.start_gen) }
-    pub fn total(&self) -> u32 { self.target_gen.saturating_sub(self.start_gen) }
+    pub fn done_count(&self) -> u32 {
+        self.last_gen.saturating_sub(self.start_gen)
+    }
+    pub fn total(&self) -> u32 {
+        self.target_gen.saturating_sub(self.start_gen)
+    }
     pub fn progress(&self) -> f32 {
         let total = self.total();
-        if total == 0 { return 1.0; }
+        if total == 0 {
+            return 1.0;
+        }
         (self.done_count() as f32 / total as f32).clamp(0.0, 1.0)
     }
-    pub fn elapsed(&self) -> std::time::Duration { self.start_time.elapsed() }
+    pub fn elapsed(&self) -> std::time::Duration {
+        self.start_time.elapsed()
+    }
     /// Estimated remaining wall time. Returns `None` until at least one
     /// generation has finished (so we have a rate to extrapolate).
     pub fn eta(&self) -> Option<std::time::Duration> {
         let done = self.done_count();
-        if done == 0 { return None; }
+        if done == 0 {
+            return None;
+        }
         let secs_per_gen = self.elapsed().as_secs_f64() / done as f64;
         let remaining = self.total().saturating_sub(done);
         Some(std::time::Duration::from_secs_f64(secs_per_gen * remaining as f64))
@@ -237,9 +250,13 @@ impl SimHistory {
         self.points.push(p);
     }
 
-    pub fn clear(&mut self) { self.points.clear(); }
+    pub fn clear(&mut self) {
+        self.points.clear();
+    }
 
-    pub fn latest(&self) -> Option<&HistoryPoint> { self.points.last() }
+    pub fn latest(&self) -> Option<&HistoryPoint> {
+        self.points.last()
+    }
 }
 
 /// One-shot command pump: the UI pushes requests here, a single system drains
@@ -261,9 +278,19 @@ pub enum SimCommand {
     RunEpoch,
     /// `tile = Some(kind)` paints a wall or kill barrier; `tile = None`
     /// erases (force-empty, even if a procedural barrier was here).
-    SetBarrier { x: u16, y: u16, tile: Option<biosim4_core::sim_state::BarrierTile> },
-    Kill { x: u16, y: u16 },
-    Reproduce { x: u16, y: u16 },
+    SetBarrier {
+        x: u16,
+        y: u16,
+        tile: Option<biosim4_core::sim_state::BarrierTile>,
+    },
+    Kill {
+        x: u16,
+        y: u16,
+    },
+    Reproduce {
+        x: u16,
+        y: u16,
+    },
     ClearUserBarriers,
     SetThreads(u32),
     SetSensorEnabled(String, bool),
@@ -285,20 +312,12 @@ impl Plugin for SimPlugin {
         let cfg = default_config();
         let threads = cfg.num_threads;
 
-        app
-            .insert_resource(Sim::new(cfg.clone()))
-            .insert_resource(SimControls {
-                num_threads: threads,
-                ..Default::default()
-            })
+        app.insert_resource(Sim::new(cfg.clone()))
+            .insert_resource(SimControls { num_threads: threads, ..Default::default() })
             .init_resource::<SimHistory>()
             .init_resource::<SimCommandQueue>()
             .init_resource::<FastForward>()
-            .add_systems(Update, (
-                update_fps,
-                process_commands,
-                step_simulation,
-            ).chain());
+            .add_systems(Update, (update_fps, process_commands, step_simulation).chain());
     }
 }
 
@@ -317,13 +336,16 @@ fn process_commands(
     mut queue: ResMut<SimCommandQueue>,
     mut fast_forward: ResMut<FastForward>,
 ) {
-    if queue.items.is_empty() { return; }
+    if queue.items.is_empty() {
+        return;
+    }
     let items = std::mem::take(&mut queue.items);
     for cmd in items {
         match cmd {
             SimCommand::Reset => {
                 let cfg = sim.state.config.clone();
                 sim.state = SimulationState::new(cfg);
+                biosim4_challenges::register_builtin_challenges(&mut sim.state.challenges);
                 history.clear();
                 controls.selected_agent = None;
                 controls.running = false;
@@ -338,6 +360,7 @@ fn process_commands(
                 sim.rebuild_pool(cfg.num_threads);
                 controls.num_threads = cfg.num_threads;
                 sim.state = SimulationState::new(cfg);
+                biosim4_challenges::register_builtin_challenges(&mut sim.state.challenges);
                 history.clear();
                 controls.selected_agent = None;
                 controls.running = false;
@@ -347,15 +370,21 @@ fn process_commands(
             }
             SimCommand::SetSpeed(s) => controls.speed = s.clamp(1, MAX_STEPS_PER_FRAME),
             SimCommand::StepOnce => {
-                if !controls.running { single_step(&mut sim, &mut history); }
+                if !controls.running {
+                    single_step(&mut sim, &mut history);
+                }
                 controls.grid_dirty = true;
             }
             SimCommand::StepGeneration => {
-                if !controls.running { finish_or_advance_generation(&mut sim, &mut history); }
+                if !controls.running {
+                    finish_or_advance_generation(&mut sim, &mut history);
+                }
                 controls.grid_dirty = true;
             }
             SimCommand::RunEpoch => {
-                if !controls.running { run_full_epoch(&mut sim, &mut history); }
+                if !controls.running {
+                    run_full_epoch(&mut sim, &mut history);
+                }
                 controls.grid_dirty = true;
             }
             SimCommand::SetBarrier { x, y, tile } => {
@@ -396,14 +425,16 @@ fn process_commands(
                 }
             }
             SimCommand::FastForward(n) => {
-                if n == 0 { continue; }
+                if n == 0 {
+                    continue;
+                }
                 controls.running = false;
                 let cur = sim.state.generation;
                 fast_forward.active = Some(FastForwardState {
-                    start_gen:  cur,
+                    start_gen: cur,
                     target_gen: cur + n,
                     start_time: std::time::Instant::now(),
-                    last_gen:   cur,
+                    last_gen: cur,
                 });
             }
             SimCommand::CancelFastForward => {
@@ -425,9 +456,7 @@ fn step_simulation(
     // ── Fast-forward path ───────────────────────────────────────────────
     if let Some(ff) = fast_forward.active.as_mut() {
         let frame_start = std::time::Instant::now();
-        while frame_start.elapsed() < FF_FRAME_BUDGET
-            && sim.state.generation < ff.target_gen
-        {
+        while frame_start.elapsed() < FF_FRAME_BUDGET && sim.state.generation < ff.target_gen {
             run_full_epoch(&mut sim, &mut history);
             ff.last_gen = sim.state.generation;
         }
@@ -439,7 +468,9 @@ fn step_simulation(
     }
 
     // ── Normal playback ─────────────────────────────────────────────────
-    if !controls.running { return; }
+    if !controls.running {
+        return;
+    }
     let speed = controls.speed.min(MAX_STEPS_PER_FRAME);
     for _ in 0..speed {
         let total = sim.state.config.steps_per_generation;
@@ -507,32 +538,31 @@ fn advance_generation(sim: &mut Sim, history: &mut SimHistory) {
 /// Paint or erase a user barrier. `tile = Some(_)` stamps a wall or kill
 /// barrier; `tile = None` erases (force-empty). Refuses to overwrite an
 /// agent slot — use the kill tool for that.
-fn set_barrier(
-    sim: &mut Sim,
-    x: u16,
-    y: u16,
-    tile: Option<biosim4_core::sim_state::BarrierTile>,
-) {
+fn set_barrier(sim: &mut Sim, x: u16, y: u16, tile: Option<biosim4_core::sim_state::BarrierTile>) {
     use biosim4_core::grid::{BARRIER, EMPTY, KILL_BARRIER};
     use biosim4_core::sim_state::BarrierTile;
 
     let sx = sim.state.config.size_x;
     let sy = sim.state.config.size_y;
-    if x >= sx || y >= sy { return; }
+    if x >= sx || y >= sy {
+        return;
+    }
     let loc = biosim4_core::types::Coord::new(x as i16, y as i16);
     let cell = sim.state.grid.at(loc);
     let blocking = cell == BARRIER || cell == KILL_BARRIER;
     let empty = cell == EMPTY;
 
     let target_val = match tile {
-        Some(BarrierTile::Wall)  => BARRIER,
-        Some(BarrierTile::Kill)  => KILL_BARRIER,
+        Some(BarrierTile::Wall) => BARRIER,
+        Some(BarrierTile::Kill) => KILL_BARRIER,
         Some(BarrierTile::Clear) | None => EMPTY,
     };
 
     // Only stamp into empty or already-blocking cells; never overwrite
     // an agent slot.
-    if !(empty || blocking) { return; }
+    if !(empty || blocking) {
+        return;
+    }
     sim.state.grid.set(loc, target_val);
 
     let override_tile = match tile {
@@ -546,10 +576,14 @@ fn set_barrier(
 fn kill_at(sim: &mut Sim, x: u16, y: u16) {
     let sx = sim.state.config.size_x;
     let sy = sim.state.config.size_y;
-    if x >= sx || y >= sy { return; }
+    if x >= sx || y >= sy {
+        return;
+    }
     let loc = biosim4_core::types::Coord::new(x as i16, y as i16);
     let id = sim.state.grid.at(loc);
-    if id == biosim4_core::grid::EMPTY || id == biosim4_core::grid::BARRIER { return; }
+    if id == biosim4_core::grid::EMPTY || id == biosim4_core::grid::BARRIER {
+        return;
+    }
     if let Some(a) = sim.state.population.get_mut(id) {
         a.alive = false;
     }
@@ -561,10 +595,14 @@ fn kill_at(sim: &mut Sim, x: u16, y: u16) {
 fn reproduce_at(sim: &mut Sim, x: u16, y: u16) {
     let sx = sim.state.config.size_x;
     let sy = sim.state.config.size_y;
-    if x >= sx || y >= sy { return; }
+    if x >= sx || y >= sy {
+        return;
+    }
     let parent_loc = biosim4_core::types::Coord::new(x as i16, y as i16);
     let parent_id = sim.state.grid.at(parent_loc);
-    if parent_id == biosim4_core::grid::EMPTY || parent_id == biosim4_core::grid::BARRIER { return; }
+    if parent_id == biosim4_core::grid::EMPTY || parent_id == biosim4_core::grid::BARRIER {
+        return;
+    }
 
     let (parent_genome, parent_color) = match sim.state.population.get(parent_id) {
         Some(a) if a.alive => (a.genome.clone(), a.color),
@@ -574,18 +612,24 @@ fn reproduce_at(sim: &mut Sim, x: u16, y: u16) {
     let mut candidates: Vec<biosim4_core::types::Coord> = Vec::with_capacity(8);
     for dy in -1..=1i16 {
         for dx in -1..=1i16 {
-            if dx == 0 && dy == 0 { continue; }
+            if dx == 0 && dy == 0 {
+                continue;
+            }
             let c = biosim4_core::types::Coord::new(parent_loc.x + dx, parent_loc.y + dy);
-            if sim.state.grid.is_empty_at(c) { candidates.push(c); }
+            if sim.state.grid.is_empty_at(c) {
+                candidates.push(c);
+            }
         }
     }
-    if candidates.is_empty() { return; }
+    if candidates.is_empty() {
+        return;
+    }
     let idx = sim.state.rng.gen_range_usize(0, candidates.len());
     let child_loc = candidates[idx];
 
-    use biosim4_core::genome::ops::{generate_child_genome, ReproductionParams};
-    use biosim4_core::genome::neural_net::create_wiring;
     use biosim4_core::agent::Agent;
+    use biosim4_core::genome::neural_net::create_wiring;
+    use biosim4_core::genome::ops::{generate_child_genome, ReproductionParams};
 
     let cfg = sim.state.config.clone();
     let parents = vec![parent_genome];
@@ -617,8 +661,5 @@ fn rebuild_procedural_barriers(sim: &mut Sim) {
             }
         }
     }
-    biosim4_core::barriers::create_barrier(
-        &mut sim.state.grid,
-        sim.state.config.barrier_type,
-    );
+    biosim4_core::barriers::create_barrier(&mut sim.state.grid, sim.state.config.barrier_type);
 }

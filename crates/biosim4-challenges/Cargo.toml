@@ -1,0 +1,12 @@
+[package]
+name = "biosim4-challenges"
+version = "0.1.0"
+edition = "2021"
+description = "Built-in challenge implementations for biosim4-core"
+
+[dependencies]
+biosim4-core = { path = "../biosim4-core" }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -20,25 +20,42 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum Compass {
-    SW = 0, S = 1, SE = 2,
-    W  = 3, CENTER = 4, E = 5,
-    NW = 6, N = 7, NE = 8,
+    SW = 0,
+    S = 1,
+    SE = 2,
+    W = 3,
+    CENTER = 4,
+    E = 5,
+    NW = 6,
+    N = 7,
+    NE = 8,
 }
 
 impl Compass {
     pub const ALL8: [Compass; 8] = [
-        Compass::SW, Compass::S, Compass::SE,
-        Compass::W,              Compass::E,
-        Compass::NW, Compass::N, Compass::NE,
+        Compass::SW,
+        Compass::S,
+        Compass::SE,
+        Compass::W,
+        Compass::E,
+        Compass::NW,
+        Compass::N,
+        Compass::NE,
     ];
 }
 
 impl From<u8> for Compass {
     fn from(v: u8) -> Self {
         match v % 9 {
-            0 => Compass::SW, 1 => Compass::S, 2 => Compass::SE,
-            3 => Compass::W,  4 => Compass::CENTER, 5 => Compass::E,
-            6 => Compass::NW, 7 => Compass::N, _ => Compass::NE,
+            0 => Compass::SW,
+            1 => Compass::S,
+            2 => Compass::SE,
+            3 => Compass::W,
+            4 => Compass::CENTER,
+            5 => Compass::E,
+            6 => Compass::NW,
+            7 => Compass::N,
+            _ => Compass::NE,
         }
     }
 }
@@ -51,61 +68,71 @@ pub struct Dir(pub Compass);
 // Pre-computed for the 8 non-center directions.
 const ROTATIONS: [u8; 64] = [
     // SW(0) rotated 0..7 CW
-    0, 3, 6, 7, 8, 5, 2, 1,
-    // S(1)
-    1, 0, 3, 6, 7, 8, 5, 2,
-    // SE(2)
-    2, 1, 0, 3, 6, 7, 8, 5,
-    // W(3)
-    3, 6, 7, 8, 5, 2, 1, 0,
-    // E(5) — stored at index 4 (skip CENTER)
-    5, 2, 1, 0, 3, 6, 7, 8,
-    // NW(6)
-    6, 7, 8, 5, 2, 1, 0, 3,
-    // N(7)
-    7, 8, 5, 2, 1, 0, 3, 6,
-    // NE(8)
+    0, 3, 6, 7, 8, 5, 2, 1, // S(1)
+    1, 0, 3, 6, 7, 8, 5, 2, // SE(2)
+    2, 1, 0, 3, 6, 7, 8, 5, // W(3)
+    3, 6, 7, 8, 5, 2, 1, 0, // E(5) — stored at index 4 (skip CENTER)
+    5, 2, 1, 0, 3, 6, 7, 8, // NW(6)
+    6, 7, 8, 5, 2, 1, 0, 3, // N(7)
+    7, 8, 5, 2, 1, 0, 3, 6, // NE(8)
     8, 5, 2, 1, 0, 3, 6, 7,
 ];
 
 /// Map from Compass ordinal (0..8) to rotation-table row index (skipping CENTER=4).
 fn compass_to_row(c: Compass) -> usize {
     match c {
-        Compass::SW => 0, Compass::S => 1, Compass::SE => 2,
-        Compass::W  => 3, Compass::E => 4,
-        Compass::NW => 5, Compass::N => 6, Compass::NE => 7,
+        Compass::SW => 0,
+        Compass::S => 1,
+        Compass::SE => 2,
+        Compass::W => 3,
+        Compass::E => 4,
+        Compass::NW => 5,
+        Compass::N => 6,
+        Compass::NE => 7,
         Compass::CENTER => 0, // fallback; shouldn't rotate CENTER
     }
 }
 
 impl Dir {
-    pub fn new(c: Compass) -> Self { Dir(c) }
-    pub fn center() -> Self { Dir(Compass::CENTER) }
+    pub fn new(c: Compass) -> Self {
+        Dir(c)
+    }
+    pub fn center() -> Self {
+        Dir(Compass::CENTER)
+    }
 
     /// Rotate by `n` steps clockwise (negative = counter-clockwise). 8 steps = full circle.
     pub fn rotate(&self, n: i32) -> Self {
-        if self.0 == Compass::CENTER { return *self; }
+        if self.0 == Compass::CENTER {
+            return *self;
+        }
         let row = compass_to_row(self.0);
         let steps = ((n % 8) + 8) as usize % 8;
         Dir(Compass::from(ROTATIONS[row * 8 + steps]))
     }
 
-    pub fn rotate90cw(&self)  -> Self { self.rotate(2) }
-    pub fn rotate90ccw(&self) -> Self { self.rotate(-2) }
-    pub fn rotate180(&self)   -> Self { self.rotate(4) }
+    pub fn rotate90cw(&self) -> Self {
+        self.rotate(2)
+    }
+    pub fn rotate90ccw(&self) -> Self {
+        self.rotate(-2)
+    }
+    pub fn rotate180(&self) -> Self {
+        self.rotate(4)
+    }
 
     /// Unit offset vector for this direction (-1/0/1 per axis).
     pub fn as_normalized_coord(&self) -> Coord {
         match self.0 {
             Compass::SW => Coord::new(-1, -1),
-            Compass::S  => Coord::new( 0, -1),
-            Compass::SE => Coord::new( 1, -1),
-            Compass::W  => Coord::new(-1,  0),
+            Compass::S => Coord::new(0, -1),
+            Compass::SE => Coord::new(1, -1),
+            Compass::W => Coord::new(-1, 0),
             Compass::CENTER => Coord::new(0, 0),
-            Compass::E  => Coord::new( 1,  0),
-            Compass::NW => Coord::new(-1,  1),
-            Compass::N  => Coord::new( 0,  1),
-            Compass::NE => Coord::new( 1,  1),
+            Compass::E => Coord::new(1, 0),
+            Compass::NW => Coord::new(-1, 1),
+            Compass::N => Coord::new(0, 1),
+            Compass::NE => Coord::new(1, 1),
         }
     }
 
@@ -115,7 +142,9 @@ impl Dir {
 }
 
 impl Default for Dir {
-    fn default() -> Self { Dir(Compass::CENTER) }
+    fn default() -> Self {
+        Dir(Compass::CENTER)
+    }
 }
 
 #[cfg(test)]

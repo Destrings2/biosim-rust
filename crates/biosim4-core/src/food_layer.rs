@@ -79,7 +79,9 @@ impl FoodLayer {
             sum += self.get(loc);
             count += 1;
         });
-        if count == 0 { return 0.0; }
+        if count == 0 {
+            return 0.0;
+        }
         (sum / count as f32).clamp(0.0, 1.0)
     }
 
@@ -89,15 +91,22 @@ impl FoodLayer {
         let mut fwd_sum = 0.0f32;
         let mut bwd_sum = 0.0f32;
         visit_neighborhood(grid, center, radius, |loc| {
-            if loc == center { return; }
+            if loc == center {
+                return;
+            }
             let offset = loc - center;
             let mag = self.get(loc);
             let sameness = offset.ray_sameness_dir(dir);
-            if sameness >= 0.0 { fwd_sum += mag * sameness; }
-            else               { bwd_sum += mag * (-sameness); }
+            if sameness >= 0.0 {
+                fwd_sum += mag * sameness;
+            } else {
+                bwd_sum += mag * (-sameness);
+            }
         });
         let total = fwd_sum + bwd_sum;
-        if total == 0.0 { return 0.5; }
+        if total == 0.0 {
+            return 0.5;
+        }
         (fwd_sum / total).clamp(0.0, 1.0)
     }
 }

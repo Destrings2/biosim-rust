@@ -4,18 +4,19 @@
 
 use biosim4_core::{
     agent::{Agent, AgentId, PropValue},
-    grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
     genome::ops::make_random_genome,
+    grid::Grid,
     population::Population,
     rng::Rng,
     sim_config::SimConfig,
-    types::{Coord, Compass},
+    types::{Compass, Coord},
 };
 
 fn make_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> Agent {
     let g = make_random_genome(cfg, rng);
-    let w = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
+    let w =
+        WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
     let n = create_wiring(&g, w);
     Agent::new(id, loc, g, n)
 }
@@ -101,7 +102,7 @@ fn double_queue_for_death_does_not_double_kill() {
     grid.set(Coord::new(3, 3), id);
 
     pop.queue_for_death(id);
-    pop.queue_for_death(id);  // duplicate
+    pop.queue_for_death(id); // duplicate
     pop.drain_death_queue(&mut grid);
 
     assert_eq!(pop.alive_count(), 0);
@@ -115,7 +116,8 @@ fn genome_color_is_deterministic() {
     let mut rng = Rng::seeded(123);
     let g = make_random_genome(&cfg, &mut rng);
 
-    let w = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
+    let w =
+        WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
     let n1 = create_wiring(&g, w);
     let n2 = create_wiring(&g, w);
 
@@ -131,7 +133,11 @@ fn genome_color_is_not_too_dark() {
     let mut rng = Rng::seeded(0);
     for _ in 0..50 {
         let g = make_random_genome(&cfg, &mut rng);
-        let w = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
+        let w = WiringConfig {
+            sensor_count: 21,
+            action_count: 17,
+            max_neurons: cfg.max_number_neurons,
+        };
         let n = create_wiring(&g, w);
         let a = Agent::new(1, Coord::new(0, 0), g, n);
         let lum = (a.color[0] as u16 + a.color[1] as u16 + a.color[2] as u16) / 3;
@@ -144,7 +150,8 @@ fn agent_property_bag_roundtrips() {
     let cfg = SimConfig::default();
     let mut rng = Rng::seeded(0);
     let g = make_random_genome(&cfg, &mut rng);
-    let w = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
+    let w =
+        WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
     let n = create_wiring(&g, w);
     let mut a = Agent::new(1, Coord::new(0, 0), g, n);
 
@@ -165,7 +172,8 @@ fn agent_starts_with_default_state() {
     let cfg = SimConfig::default();
     let mut rng = Rng::seeded(0);
     let g = make_random_genome(&cfg, &mut rng);
-    let w = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
+    let w =
+        WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
     let n = create_wiring(&g, w);
     let a = Agent::new(42, Coord::new(3, 4), g, n);
 

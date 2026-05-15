@@ -23,22 +23,22 @@ use biosim4_core::{
     agent::{Agent, AgentId},
     food_layer::FoodLayer,
     genome::{
-        ops::make_random_genome,
         neural_net::{create_wiring, WiringConfig},
+        ops::make_random_genome,
     },
     grid::Grid,
     population::Population,
     registry::{
         action::{ActionContext, ActionRegistry},
         sensor::{SensorContext, SensorRegistry},
-        ChallengeConfig, ChallengeComposition,
+        ChallengeComposition, ChallengeConfig,
     },
     rng::Rng,
     sensors::register_builtin_sensors,
+    signals_layer::Signals,
     sim_config::SimConfig,
     sim_state::SimulationState,
     sim_step::step_generation,
-    signals_layer::Signals,
     spawn::spawn_new_generation,
     types::Coord,
     world::World,
@@ -61,20 +61,29 @@ fn small_cfg() -> SimConfig {
 
 fn make_test_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> Agent {
     let genome = make_random_genome(cfg, rng);
-    let wcfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
+    let wcfg =
+        WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
     let nnet = create_wiring(&genome, wcfg);
     Agent::new(id, loc, genome, nnet)
 }
 
 fn build_world<'a>(
-    grid: &'a Grid, signals: &'a Signals, food: &'a FoodLayer, population: &'a Population, cfg: &SimConfig,
+    grid: &'a Grid,
+    signals: &'a Signals,
+    food: &'a FoodLayer,
+    population: &'a Population,
+    cfg: &SimConfig,
 ) -> World<'a> {
     World {
-        grid, signals, food, population,
+        grid,
+        signals,
+        food,
+        population,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
-        generation: 0, step: 0,
+        generation: 0,
+        step: 0,
     }
 }
 
@@ -110,7 +119,8 @@ fn with_action_ctx<R>(
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
-        generation: 0, step: 0,
+        generation: 0,
+        step: 0,
     };
 
     let mut ctx = ActionContext {
@@ -185,7 +195,8 @@ fn enabled_count_equals_total_count_when_all_enabled() {
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
     assert_eq!(
-        reg.enabled_count(), reg.count(),
+        reg.enabled_count(),
+        reg.count(),
         "all sensors enabled: enabled_count should equal total count"
     );
 }
@@ -202,8 +213,11 @@ fn sensor_enabled_count_decreases_after_commit() {
     assert_eq!(reg.enabled_count(), total, "enabled_count must not change before commit");
 
     reg.commit_enabled();
-    assert_eq!(reg.enabled_count(), total - 2,
-        "enabled_count should drop by 2 after committing two disables");
+    assert_eq!(
+        reg.enabled_count(),
+        total - 2,
+        "enabled_count should drop by 2 after committing two disables"
+    );
 }
 
 #[test]
@@ -215,8 +229,7 @@ fn action_enabled_count_decreases_after_commit() {
     reg.set_enabled("move_east", false);
     reg.set_enabled("move_west", false);
     reg.commit_enabled();
-    assert_eq!(reg.enabled_count(), total - 2,
-        "enabled_count should drop by 2 after commit");
+    assert_eq!(reg.enabled_count(), total - 2, "enabled_count should drop by 2 after commit");
 }
 
 #[test]
@@ -280,17 +293,19 @@ fn disabled_sensor_returns_zero_before_commit() {
 
     let agent_ref = population.get(1).unwrap();
     let mut srng = Rng::seeded(0);
-    let before = reg.evaluate(loc_x_enabled_idx, &mut SensorContext {
-        agent: agent_ref, world: &world, sim_step: 0, rng: &mut srng,
-    });
+    let before = reg.evaluate(
+        loc_x_enabled_idx,
+        &mut SensorContext { agent: agent_ref, world: &world, sim_step: 0, rng: &mut srng },
+    );
     assert!(before > 0.0, "loc_x at center should be non-zero before disable: {}", before);
 
     // Disable it (pending — no commit). The active_map still points to loc_x,
     // but evaluate() checks the pending disabled set and returns 0.0.
     reg.set_enabled("loc_x", false);
-    let after = reg.evaluate(loc_x_enabled_idx, &mut SensorContext {
-        agent: agent_ref, world: &world, sim_step: 0, rng: &mut srng,
-    });
+    let after = reg.evaluate(
+        loc_x_enabled_idx,
+        &mut SensorContext { agent: agent_ref, world: &world, sim_step: 0, rng: &mut srng },
+    );
     assert_eq!(after, 0.0, "disabled sensor must return 0.0 immediately (mid-gen)");
 }
 
@@ -320,28 +335,31 @@ fn disabled_action_is_not_executed_before_commit() {
 
     // Pre-condition: move_east with high level queues a move
     let mut arng = Rng::seeded(99);
-    let queued_before = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| {
-            for _ in 0..20 { reg.execute(east_enabled_idx, 10.0, ctx); }
+    let queued_before =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
+            for _ in 0..20 {
+                reg.execute(east_enabled_idx, 10.0, ctx);
+            }
             ctx.move_queue.clone()
-        },
-    );
+        });
     assert!(!queued_before.is_empty(), "pre-condition: move_east should queue moves when enabled");
 
     // Disable move_east (pending — no commit)
     reg.set_enabled("move_east", false);
 
     let mut arng2 = Rng::seeded(99);
-    let queued_after = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id, &mut arng2,
-        |ctx| {
-            for _ in 0..20 { reg.execute(east_enabled_idx, 10.0, ctx); }
+    let queued_after =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng2, |ctx| {
+            for _ in 0..20 {
+                reg.execute(east_enabled_idx, 10.0, ctx);
+            }
             ctx.move_queue.clone()
-        },
+        });
+    assert!(
+        queued_after.is_empty(),
+        "disabled action must not execute even before commit; got {:?}",
+        queued_after
     );
-    assert!(queued_after.is_empty(),
-        "disabled action must not execute even before commit; got {:?}", queued_after);
 }
 
 // ── 4. Generation boundary — wiring_config reflects enabled set ───────────
@@ -365,7 +383,8 @@ fn wiring_config_sensor_count_uses_enabled_count_after_commit() {
 
     let wcfg = state.wiring_config();
     assert_eq!(
-        wcfg.sensor_count, baseline - 2,
+        wcfg.sensor_count,
+        baseline - 2,
         "wiring_config.sensor_count should equal enabled_count after commit"
     );
 }
@@ -387,7 +406,8 @@ fn wiring_config_action_count_uses_enabled_count_after_commit() {
 
     let wcfg = state.wiring_config();
     assert_eq!(
-        wcfg.action_count, baseline - 3,
+        wcfg.action_count,
+        baseline - 3,
         "wiring_config.action_count should equal enabled_count after commit"
     );
 }
@@ -418,7 +438,9 @@ fn new_generation_agents_wired_against_reduced_genome() {
                 assert!(
                     (g.source_num() as u16) < expected_sensor_count,
                     "agent {} has a gene referencing sensor #{} but only {} are enabled",
-                    agent.id, g.source_num(), expected_sensor_count
+                    agent.id,
+                    g.source_num(),
+                    expected_sensor_count
                 );
             }
         }
@@ -430,6 +452,7 @@ fn new_generation_agents_wired_against_reduced_genome() {
 #[test]
 fn three_generations_with_disabled_sensors_and_actions_no_panic() {
     let mut state = SimulationState::new(small_cfg());
+    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
 
     // Apply a challenge so there's selection pressure
     let cc = ChallengeConfig {
@@ -462,13 +485,11 @@ fn three_generations_with_disabled_sensors_and_actions_no_panic() {
 fn all_sensors_disabled_simulation_runs_without_panic() {
     // Degenerate case: no sensor input → all outputs ≈ 0 → agents wander randomly
     // (or just stand still). The sim must not panic or overflow.
-    let mut state = SimulationState::new(SimConfig {
-        population: 20,
-        steps_per_generation: 20,
-        ..small_cfg()
-    });
+    let mut state =
+        SimulationState::new(SimConfig { population: 20, steps_per_generation: 20, ..small_cfg() });
 
-    let sensor_ids: Vec<String> = state.sensors.iter().map(|(_, s, _)| s.id().to_string()).collect();
+    let sensor_ids: Vec<String> =
+        state.sensors.iter().map(|(_, s, _)| s.id().to_string()).collect();
     for id in &sensor_ids {
         state.sensors.set_enabled(id, false);
     }
@@ -482,13 +503,11 @@ fn all_sensors_disabled_simulation_runs_without_panic() {
 
 #[test]
 fn all_actions_disabled_agents_remain_alive() {
-    let mut state = SimulationState::new(SimConfig {
-        population: 20,
-        steps_per_generation: 20,
-        ..small_cfg()
-    });
+    let mut state =
+        SimulationState::new(SimConfig { population: 20, steps_per_generation: 20, ..small_cfg() });
 
-    let action_ids: Vec<String> = state.actions.iter().map(|(_, a, _)| a.id().to_string()).collect();
+    let action_ids: Vec<String> =
+        state.actions.iter().map(|(_, a, _)| a.id().to_string()).collect();
     for id in &action_ids {
         state.actions.set_enabled(id, false);
     }
@@ -506,7 +525,13 @@ fn all_actions_disabled_agents_remain_alive() {
 
 #[test]
 fn remaining_sensors_still_return_unit_interval_when_some_are_disabled() {
-    let cfg = SimConfig { size_x: 32, size_y: 32, population: 4, steps_per_generation: 100, ..SimConfig::default() };
+    let cfg = SimConfig {
+        size_x: 32,
+        size_y: 32,
+        population: 4,
+        steps_per_generation: 100,
+        ..SimConfig::default()
+    };
     let grid = Grid::new(cfg.size_x, cfg.size_y);
     let signals = Signals::new(3, cfg.size_x, cfg.size_y);
     let mut population = Population::new(cfg.population);
@@ -531,12 +556,15 @@ fn remaining_sensors_still_return_unit_interval_when_some_are_disabled() {
     let mut srng = Rng::seeded(0);
 
     for enabled_idx in 0..reg.enabled_count() {
-        let v = reg.evaluate(enabled_idx, &mut SensorContext {
-            agent: agent_ref, world: &world, sim_step: 5, rng: &mut srng,
-        });
+        let v = reg.evaluate(
+            enabled_idx,
+            &mut SensorContext { agent: agent_ref, world: &world, sim_step: 5, rng: &mut srng },
+        );
         assert!(
             v.is_finite() && (-1e-6..=1.0 + 1e-6).contains(&v),
-            "enabled sensor at index {} returned out-of-range value: {}", enabled_idx, v
+            "enabled sensor at index {} returned out-of-range value: {}",
+            enabled_idx,
+            v
         );
     }
 }
@@ -565,6 +593,5 @@ fn disable_and_reenable_before_generation_is_deterministic() {
 
     let r1 = run(false);
     let r2 = run(true);
-    assert_eq!(r1, r2,
-        "toggling a sensor off then back on before commit should be a no-op");
+    assert_eq!(r1, r2, "toggling a sensor off then back on before commit should be a no-op");
 }

@@ -3,7 +3,7 @@
 
 use biosim4_core::{
     barriers::create_barrier,
-    grid::{Grid, visit_neighborhood},
+    grid::{visit_neighborhood, Grid},
     types::Coord,
 };
 
@@ -11,7 +11,9 @@ fn count_barrier_cells(grid: &Grid) -> usize {
     let mut n = 0;
     for x in 0..grid.size_x as i16 {
         for y in 0..grid.size_y as i16 {
-            if grid.is_barrier_at(Coord::new(x, y)) { n += 1; }
+            if grid.is_barrier_at(Coord::new(x, y)) {
+                n += 1;
+            }
         }
     }
     n
@@ -31,7 +33,8 @@ fn nonzero_barrier_types_create_at_least_one_barrier() {
         create_barrier(&mut g, t);
         assert!(
             count_barrier_cells(&g) > 0,
-            "barrier type {} should create at least one barrier cell", t
+            "barrier type {} should create at least one barrier cell",
+            t
         );
     }
 }
@@ -103,7 +106,7 @@ fn grid_zero_fill_clears_agents_only() {
     create_barrier(&mut g, 1);
     let barriers_before = count_barrier_cells(&g);
 
-    g.set(Coord::new(0, 0), 99);  // agent
+    g.set(Coord::new(0, 0), 99); // agent
     g.zero_fill();
 
     assert!(g.is_empty_at(Coord::new(0, 0)), "agent location should be cleared");

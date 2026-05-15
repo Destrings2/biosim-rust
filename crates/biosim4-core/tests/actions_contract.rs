@@ -8,21 +8,22 @@ use biosim4_core::{
     actions::{prob2bool, register_builtin_actions, response_curve},
     agent::{Agent, AgentId},
     food_layer::FoodLayer,
-    grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
     genome::ops::make_random_genome,
+    grid::Grid,
     population::Population,
     registry::{ActionContext, ActionRegistry},
     rng::Rng,
-    sim_config::SimConfig,
     signals_layer::Signals,
+    sim_config::SimConfig,
     types::{Compass, Coord, Dir},
     world::World,
 };
 
 fn make_test_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> Agent {
     let genome = make_random_genome(cfg, rng);
-    let wcfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
+    let wcfg =
+        WiringConfig { sensor_count: 21, action_count: 17, max_neurons: cfg.max_number_neurons };
     let nnet = create_wiring(&genome, wcfg);
     Agent::new(id, loc, genome, nnet)
 }
@@ -64,7 +65,8 @@ fn with_action_ctx<R>(
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
-        generation: 0, step: 0,
+        generation: 0,
+        step: 0,
     };
 
     let mut ctx = ActionContext {
@@ -93,13 +95,29 @@ fn registry_has_known_action_ids() {
     register_builtin_actions(&mut reg);
     let ids: Vec<&str> = (0..reg.count()).map(|i| reg.id(i)).collect();
     for required in [
-        "move_x", "move_y", "move_forward", "move_reverse",
-        "move_north", "move_south", "move_east", "move_west",
-        "move_left", "move_right", "move_random", "move_rl",
-        "set_responsiveness", "set_oscillator_period", "set_longprobe_dist",
-        "emit_signal0", "kill_forward",
-        "emit_signal1", "emit_signal2",
-        "write_memory_0", "write_memory_1", "write_memory_2", "write_memory_3",
+        "move_x",
+        "move_y",
+        "move_forward",
+        "move_reverse",
+        "move_north",
+        "move_south",
+        "move_east",
+        "move_west",
+        "move_left",
+        "move_right",
+        "move_random",
+        "move_rl",
+        "set_responsiveness",
+        "set_oscillator_period",
+        "set_longprobe_dist",
+        "emit_signal0",
+        "kill_forward",
+        "emit_signal1",
+        "emit_signal2",
+        "write_memory_0",
+        "write_memory_1",
+        "write_memory_2",
+        "write_memory_3",
     ] {
         assert!(ids.contains(&required), "missing action id: {required}");
     }
@@ -122,15 +140,13 @@ fn move_east_with_high_level_queues_move_to_x_plus_1() {
     let east_idx = (0..reg.count()).find(|&i| reg.id(i) == "move_east").unwrap();
 
     let mut arng = Rng::seeded(99);
-    let queued: Vec<(AgentId, Coord)> = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| {
+    let queued: Vec<(AgentId, Coord)> =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
             for _ in 0..20 {
                 reg.execute(east_idx, 5.0, ctx);
             }
             ctx.move_queue.clone()
-        },
-    );
+        });
 
     assert!(!queued.is_empty(), "move_east with high level should queue at least one move");
     for (queued_id, target) in &queued {
@@ -156,10 +172,13 @@ fn move_west_queues_move_to_x_minus_1() {
     register_builtin_actions(&mut reg);
     let idx = (0..reg.count()).find(|&i| reg.id(i) == "move_west").unwrap();
     let mut arng = Rng::seeded(123);
-    let queued: Vec<(AgentId, Coord)> = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| { for _ in 0..20 { reg.execute(idx, 5.0, ctx); } ctx.move_queue.clone() },
-    );
+    let queued: Vec<(AgentId, Coord)> =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
+            for _ in 0..20 {
+                reg.execute(idx, 5.0, ctx);
+            }
+            ctx.move_queue.clone()
+        });
     for (_, t) in &queued {
         assert_eq!(t.x, 4, "west move should be x-1");
         assert_eq!(t.y, 5);
@@ -182,10 +201,13 @@ fn move_north_queues_move_to_y_plus_1() {
     register_builtin_actions(&mut reg);
     let idx = (0..reg.count()).find(|&i| reg.id(i) == "move_north").unwrap();
     let mut arng = Rng::seeded(123);
-    let queued: Vec<(AgentId, Coord)> = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| { for _ in 0..20 { reg.execute(idx, 5.0, ctx); } ctx.move_queue.clone() },
-    );
+    let queued: Vec<(AgentId, Coord)> =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
+            for _ in 0..20 {
+                reg.execute(idx, 5.0, ctx);
+            }
+            ctx.move_queue.clone()
+        });
     for (_, t) in &queued {
         assert_eq!(t.x, 5);
         assert_eq!(t.y, 6, "north move should be y+1");
@@ -208,10 +230,13 @@ fn move_blocked_by_grid_boundary_does_not_queue() {
     register_builtin_actions(&mut reg);
     let east_idx = (0..reg.count()).find(|&i| reg.id(i) == "move_east").unwrap();
     let mut arng = Rng::seeded(0);
-    let queued: Vec<(AgentId, Coord)> = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| { for _ in 0..50 { reg.execute(east_idx, 10.0, ctx); } ctx.move_queue.clone() },
-    );
+    let queued: Vec<(AgentId, Coord)> =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
+            for _ in 0..50 {
+                reg.execute(east_idx, 10.0, ctx);
+            }
+            ctx.move_queue.clone()
+        });
     assert!(queued.is_empty(), "move_east at right edge must not queue any moves");
 }
 
@@ -234,10 +259,13 @@ fn move_blocked_by_occupied_cell_does_not_queue() {
     register_builtin_actions(&mut reg);
     let east_idx = (0..reg.count()).find(|&i| reg.id(i) == "move_east").unwrap();
     let mut arng = Rng::seeded(0);
-    let queued: Vec<(AgentId, Coord)> = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id_a, &mut arng,
-        |ctx| { for _ in 0..50 { reg.execute(east_idx, 10.0, ctx); } ctx.move_queue.clone() },
-    );
+    let queued: Vec<(AgentId, Coord)> =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id_a, &mut arng, |ctx| {
+            for _ in 0..50 {
+                reg.execute(east_idx, 10.0, ctx);
+            }
+            ctx.move_queue.clone()
+        });
     // try_move() filters by is_empty_at — should not queue
     assert!(queued.is_empty(), "move into occupied cell must not queue, got {:?}", queued);
 }
@@ -257,16 +285,14 @@ fn set_responsiveness_clamps_to_unit_interval() {
     let idx = (0..reg.count()).find(|&i| reg.id(i) == "set_responsiveness").unwrap();
 
     let mut arng = Rng::seeded(0);
-    let (high, low) = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| {
+    let (high, low) =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
             reg.execute(idx, 100.0, ctx);
             let h = ctx.agent.responsiveness;
             reg.execute(idx, -100.0, ctx);
             let l = ctx.agent.responsiveness;
             (h, l)
-        },
-    );
+        });
 
     assert!((high - 1.0).abs() < 1e-3, "huge level should set responsiveness ≈ 1.0, got {}", high);
     assert!(low.abs() < 1e-3, "very negative level should set responsiveness ≈ 0.0, got {}", low);
@@ -315,8 +341,12 @@ fn prob2bool_high_level_is_almost_always_true() {
 fn response_curve_clamps_to_unit_interval() {
     for r in [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0_f32] {
         let v = response_curve(r, 2.0);
-        assert!(v.is_finite() && (0.0..=1.0).contains(&v),
-                "response_curve({}, 2.0) = {} not in [0,1]", r, v);
+        assert!(
+            v.is_finite() && (0.0..=1.0).contains(&v),
+            "response_curve({}, 2.0) = {} not in [0,1]",
+            r,
+            v
+        );
     }
 }
 
@@ -351,7 +381,8 @@ fn with_kill_ctx<R>(
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
-        generation: 0, step: 0,
+        generation: 0,
+        step: 0,
     };
 
     let mut ctx = ActionContext {
@@ -361,7 +392,7 @@ fn with_kill_ctx<R>(
         death_queue: &mut death_q,
         signals: unsafe { &mut *signals_mut_ptr },
         rng,
-        config_kill_enable: true,  // ← enabled
+        config_kill_enable: true, // ← enabled
     };
 
     f(&mut ctx)
@@ -394,17 +425,18 @@ fn kill_forward_disabled_never_queues_death() {
 
     // with_action_ctx has config_kill_enable = false
     let mut arng = Rng::seeded(0);
-    let death_q = with_action_ctx(
-        &cfg, &grid, &mut signals, &mut population, id_killer, &mut arng,
-        |ctx| {
-            for _ in 0..30 { reg.execute(kill_idx, 10.0, ctx); }
+    let death_q =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id_killer, &mut arng, |ctx| {
+            for _ in 0..30 {
+                reg.execute(kill_idx, 10.0, ctx);
+            }
             ctx.death_queue.clone()
-        },
+        });
+    assert!(death_q.is_empty(), "kill_forward with kill_enable=false must not queue any deaths");
+    assert!(
+        population.get(id_victim).unwrap().alive,
+        "victim must still be alive when kill is disabled"
     );
-    assert!(death_q.is_empty(),
-        "kill_forward with kill_enable=false must not queue any deaths");
-    assert!(population.get(id_victim).unwrap().alive,
-        "victim must still be alive when kill is disabled");
 }
 
 /// KillForward with `config_kill_enable = true` and a deterministically high
@@ -434,23 +466,20 @@ fn kill_forward_enabled_queues_victim_when_adjacent() {
 
     // Execute once with a very high level so prob2bool fires deterministically
     let mut arng = Rng::seeded(0);
-    let death_q = with_kill_ctx(
-        &cfg, &grid, &mut signals, &mut population, id_killer, &mut arng,
-        |ctx| {
+    let death_q =
+        with_kill_ctx(&cfg, &grid, &mut signals, &mut population, id_killer, &mut arng, |ctx| {
             reg.execute(kill_idx, 10.0, ctx);
             ctx.death_queue.clone()
-        },
-    );
+        });
 
     assert!(
         death_q.contains(&id_victim),
-        "kill_forward should queue victim (id={}) for death, got {:?}", id_victim, death_q
+        "kill_forward should queue victim (id={}) for death, got {:?}",
+        id_victim,
+        death_q
     );
     // The killer itself must not appear in the death queue
-    assert!(
-        !death_q.contains(&id_killer),
-        "killer must not appear in its own death queue"
-    );
+    assert!(!death_q.contains(&id_killer), "killer must not appear in its own death queue");
 }
 
 /// After calling `drain_death_queue`, the victim agent is marked dead and its
@@ -481,13 +510,11 @@ fn kill_forward_drain_marks_victim_dead_and_clears_grid() {
 
     // Collect the queued deaths
     let mut arng = Rng::seeded(0);
-    let death_q = with_kill_ctx(
-        &cfg, &grid, &mut signals, &mut population, id_killer, &mut arng,
-        |ctx| {
+    let death_q =
+        with_kill_ctx(&cfg, &grid, &mut signals, &mut population, id_killer, &mut arng, |ctx| {
             reg.execute(kill_idx, 10.0, ctx);
             ctx.death_queue.clone()
-        },
-    );
+        });
     assert!(death_q.contains(&id_victim), "pre-condition: victim must be queued");
 
     // Now wire the queue into population and drain
@@ -497,8 +524,10 @@ fn kill_forward_drain_marks_victim_dead_and_clears_grid() {
     // Post-drain invariants
     let victim_agent = population.get(id_victim).expect("slot must still exist");
     assert!(!victim_agent.alive, "victim.alive must be false after drain");
-    assert!(grid.is_empty_at(victim_loc),
-        "grid cell at victim location must be cleared after drain");
+    assert!(
+        grid.is_empty_at(victim_loc),
+        "grid cell at victim location must be cleared after drain"
+    );
     // Killer must be unaffected
     assert!(population.get(id_killer).unwrap().alive, "killer should remain alive");
     assert!(grid.is_occupied_at(killer_loc), "killer cell should remain occupied");
@@ -525,13 +554,15 @@ fn kill_forward_no_victim_in_front_does_not_crash() {
     let kill_idx = (0..reg.count()).find(|&i| reg.id(i) == "kill_forward").unwrap();
 
     let mut arng = Rng::seeded(0);
-    let death_q = with_kill_ctx(
-        &cfg, &grid, &mut signals, &mut population, id, &mut arng,
-        |ctx| {
-            for _ in 0..20 { reg.execute(kill_idx, 10.0, ctx); }
-            ctx.death_queue.clone()
-        },
+    let death_q = with_kill_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
+        for _ in 0..20 {
+            reg.execute(kill_idx, 10.0, ctx);
+        }
+        ctx.death_queue.clone()
+    });
+    assert!(
+        death_q.is_empty(),
+        "kill_forward with empty forward cell must produce no deaths, got {:?}",
+        death_q
     );
-    assert!(death_q.is_empty(),
-        "kill_forward with empty forward cell must produce no deaths, got {:?}", death_q);
 }

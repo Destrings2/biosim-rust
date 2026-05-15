@@ -12,10 +12,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use biosim4_core::{
-    SimConfig, SimulationState,
     analysis::{collect_epoch_stats, display_sample_genomes},
     sim_step::step_generation,
     spawn::spawn_new_generation,
+    SimConfig, SimulationState,
 };
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -67,8 +67,12 @@ fn main() {
         None => SimConfig::default(),
     };
 
-    if let Some(g) = args.generations { config.max_generations = g; }
-    if let Some(s) = args.seed        { config.rng_seed = s; }
+    if let Some(g) = args.generations {
+        config.max_generations = g;
+    }
+    if let Some(s) = args.seed {
+        config.rng_seed = s;
+    }
     if let Some(t) = args.threads {
         config.num_threads = if t == 0 { num_cpus_available() } else { t };
     } else if config.num_threads == 0 {
@@ -76,10 +80,7 @@ fn main() {
     }
 
     // ── Configure rayon thread pool ──────────────────────────────────────
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(config.num_threads as usize)
-        .build_global()
-        .ok(); // ignore "already initialized" — only happens in tests
+    rayon::ThreadPoolBuilder::new().num_threads(config.num_threads as usize).build_global().ok(); // ignore "already initialized" — only happens in tests
 
     eprintln!(
         "biosim4-rs  {}×{}  pop={}  gens={}  threads={}  seed={}",
@@ -98,6 +99,7 @@ fn main() {
     let quiet = args.quiet;
 
     let mut state = SimulationState::new(config);
+    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
 
     // ── Progress bar ─────────────────────────────────────────────────────
     let bar = ProgressBar::new(max_generations as u64);
@@ -143,19 +145,13 @@ fn main() {
             }
         }
 
-        if display_sample_count > 0
-            && verbose
-            && stats.generation.is_multiple_of(analysis_stride)
-        {
+        if display_sample_count > 0 && verbose && stats.generation.is_multiple_of(analysis_stride) {
             // display_sample_genomes prints to stdout; capture-and-emit via bar
             // would require restructuring, so just route through bar.suspend.
             bar.suspend(|| display_sample_genomes(&state, display_sample_count));
         }
 
-        bar.set_message(format!(
-            "survivors {}/{}",
-            stats.survivors, stats.population
-        ));
+        bar.set_message(format!("survivors {}/{}", stats.survivors, stats.population));
         bar.inc(1);
     }
 
@@ -172,7 +168,5 @@ fn main() {
 }
 
 fn num_cpus_available() -> u32 {
-    std::thread::available_parallelism()
-        .map(|n| n.get() as u32)
-        .unwrap_or(1)
+    std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1)
 }

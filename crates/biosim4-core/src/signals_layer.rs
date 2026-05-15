@@ -24,8 +24,8 @@
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use crate::types::Coord;
 use crate::grid::{visit_neighborhood, Grid};
+use crate::types::Coord;
 
 pub const SIGNAL_MAX: u8 = 255;
 
@@ -61,7 +61,9 @@ impl Signals {
         }
     }
 
-    pub fn layer_count(&self) -> u8 { self.layers.len() as u8 }
+    pub fn layer_count(&self) -> u8 {
+        self.layers.len() as u8
+    }
 
     pub fn get(&self, layer: u8, loc: Coord) -> u8 {
         self.layers[layer as usize][self.idx(loc)].load(Ordering::Relaxed)
@@ -75,27 +77,30 @@ impl Signals {
         let l = &self.layers[layer as usize];
         let size_x = self.size_x;
         let add = |loc: Coord, v: u8| {
-            if loc.x >= 0 && loc.y >= 0
+            if loc.x >= 0
+                && loc.y >= 0
                 && (loc.x as u16) < grid.size_x
                 && (loc.y as u16) < grid.size_y
             {
                 let i = (loc.y as usize) * (size_x as usize) + (loc.x as usize);
                 let cell = &l[i];
-                let _ = cell.fetch_update(
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                    |old| {
-                        let new = old.saturating_add(v);
-                        if new == old { None } else { Some(new) }
-                    },
-                );
+                let _ = cell.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+                    let new = old.saturating_add(v);
+                    if new == old {
+                        None
+                    } else {
+                        Some(new)
+                    }
+                });
             }
         };
 
         add(center, 2);
         for dx in -1i16..=1 {
             for dy in -1i16..=1 {
-                if dx == 0 && dy == 0 { continue; }
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
                 let d2 = (dx * dx + dy * dy) as f32;
                 if d2 <= 1.5 * 1.5 {
                     add(Coord::new(center.x + dx, center.y + dy), 1);
@@ -144,7 +149,9 @@ impl Signals {
             sum += self.get(layer, loc) as u32;
             count += 1;
         });
-        if count == 0 { return 0.0; }
+        if count == 0 {
+            return 0.0;
+        }
         (sum as f32 / count as f32) / SIGNAL_MAX as f32
     }
 }

@@ -1,7 +1,9 @@
 use biosim4_core::{
-    sim_config::SimConfig, sim_state::SimulationState, sim_step::step_generation,
+    registry::challenge::{ChallengeComposition, ChallengeConfig},
+    sim_config::SimConfig,
+    sim_state::SimulationState,
+    sim_step::step_generation,
     spawn::{initialize_generation_0, spawn_new_generation},
-    registry::challenge::{ChallengeConfig, ChallengeComposition},
 };
 
 fn run_sim(threads: u32, challenge: &str) -> u64 {
@@ -14,14 +16,17 @@ fn run_sim(threads: u32, challenge: &str) -> u64 {
     cfg.num_threads = threads;
 
     let mut state = SimulationState::new(cfg);
-    biosim4_core::challenges::register_builtin_challenges(&mut state.challenges);
-    
+    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+
     if challenge != "none" {
-        state.challenges.apply_config(ChallengeConfig {
-            active: vec![challenge.to_string()],
-            composition: ChallengeComposition::Any,
-            params: Default::default(),
-        }).unwrap();
+        state
+            .challenges
+            .apply_config(ChallengeConfig {
+                active: vec![challenge.to_string()],
+                composition: ChallengeComposition::Any,
+                params: Default::default(),
+            })
+            .unwrap();
     }
 
     initialize_generation_0(&mut state);

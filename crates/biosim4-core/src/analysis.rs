@@ -20,16 +20,16 @@ pub struct EpochStats {
 
 impl EpochStats {
     pub fn survival_rate(&self) -> f32 {
-        if self.population == 0 { 0.0 } else { self.survivors as f32 / self.population as f32 }
+        if self.population == 0 {
+            0.0
+        } else {
+            self.survivors as f32 / self.population as f32
+        }
     }
 }
 
 pub fn collect_epoch_stats(state: &mut SimulationState, survivors: u32) -> EpochStats {
-    let genomes: Vec<&Genome> = state
-        .population
-        .iter_alive()
-        .map(|a| &a.genome)
-        .collect();
+    let genomes: Vec<&Genome> = state.population.iter_alive().map(|a| &a.genome).collect();
 
     let diversity = if genomes.len() >= 2 {
         let method = state.config.genome_comparison_method;
@@ -59,12 +59,8 @@ pub fn print_epoch_stats(stats: &EpochStats) {
 
 pub fn display_sample_genomes(state: &SimulationState, count: usize) {
     for agent in state.population.iter_alive().take(count) {
-        let hex: String = agent
-            .genome
-            .iter()
-            .map(|g| format!("{:08x}", g.0))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let hex: String =
+            agent.genome.iter().map(|g| format!("{:08x}", g.0)).collect::<Vec<_>>().join(" ");
         println!("  agent {:>4}: {}", agent.id, hex);
     }
 }

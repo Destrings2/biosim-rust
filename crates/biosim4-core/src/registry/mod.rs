@@ -7,10 +7,10 @@
 //! (explicit active list rather than enable/disable) but the same JSON
 //! configuration interface.
 
-pub mod sensor;
 pub mod action;
 pub mod challenge;
+pub mod sensor;
 
-pub use sensor::{Sensor, SensorContext, SensorRegistry};
 pub use action::{Action, ActionContext, ActionRegistry};
-pub use challenge::{Challenge, ChallengeRegistry, ChallengeComposition, ChallengeConfig};
+pub use challenge::{Challenge, ChallengeComposition, ChallengeConfig, ChallengeRegistry};
+pub use sensor::{Sensor, SensorContext, SensorRegistry};

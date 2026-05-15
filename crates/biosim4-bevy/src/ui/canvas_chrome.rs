@@ -65,11 +65,8 @@ pub fn draw_canvas_chrome(
             );
 
             // ── Top-right: painted or procedural
-            let tr_text = if painted > 0 {
-                format!("{painted} PAINTED")
-            } else {
-                "PROCEDURAL".to_string()
-            };
+            let tr_text =
+                if painted > 0 { format!("{painted} PAINTED") } else { "PROCEDURAL".to_string() };
             painter.text(
                 frame.right_top() + egui::vec2(-CHROME_INSET, -CHROME_INSET - 6.0),
                 egui::Align2::RIGHT_BOTTOM,
@@ -80,10 +77,10 @@ pub fn draw_canvas_chrome(
 
             // ── Bottom-left: hover cell info (replaces the separate hover badge)
             let bl_text = match (hovered.cell, hovered.kind) {
-                (Some((x, y)), CellKind::Empty)       => format!("({x:>3}, {y:>3}) · empty"),
-                (Some((x, y)), CellKind::Barrier)     => format!("({x:>3}, {y:>3}) · barrier"),
+                (Some((x, y)), CellKind::Empty) => format!("({x:>3}, {y:>3}) · empty"),
+                (Some((x, y)), CellKind::Barrier) => format!("({x:>3}, {y:>3}) · barrier"),
                 (Some((x, y)), CellKind::KillBarrier) => format!("({x:>3}, {y:>3}) · kill zone"),
-                (Some((x, y)), CellKind::Agent(id))   => format!("({x:>3}, {y:>3}) · agent #{id}"),
+                (Some((x, y)), CellKind::Agent(id)) => format!("({x:>3}, {y:>3}) · agent #{id}"),
                 _ => "—".into(),
             };
             painter.text(
@@ -95,22 +92,14 @@ pub fn draw_canvas_chrome(
             );
 
             // ── Bottom-right: RUNNING / PAUSED · speed
-            let br_text = format!(
-                "{}  ·  {}× SPF",
-                if running { "RUNNING" } else { "PAUSED" },
-                speed,
-            );
+            let br_text =
+                format!("{}  ·  {}× SPF", if running { "RUNNING" } else { "PAUSED" }, speed,);
             painter.text(
                 frame.right_bottom() + egui::vec2(-CHROME_INSET, CHROME_INSET + 6.0),
                 egui::Align2::RIGHT_TOP,
                 br_text,
                 font,
-                if running {
-                    theme::ACCENT
-                } else {
-                    label_color_dim
-                },
+                if running { theme::ACCENT } else { label_color_dim },
             );
         });
 }
-

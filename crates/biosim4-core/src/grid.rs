@@ -31,8 +31,8 @@
 
 use crate::types::Coord;
 
-pub const EMPTY:        u32 = 0;
-pub const BARRIER:      u32 = 0xFFFF_FFFF;
+pub const EMPTY: u32 = 0;
+pub const BARRIER: u32 = 0xFFFF_FFFF;
 /// User-painted hazard cell. Agents attempting to move into it die rather
 /// than being blocked.
 pub const KILL_BARRIER: u32 = 0xFFFF_FFFE;
@@ -74,30 +74,43 @@ impl Grid {
     }
 
     pub fn is_in_bounds(&self, loc: Coord) -> bool {
-        loc.x >= 0 && loc.y >= 0
-            && (loc.x as u16) < self.size_x
-            && (loc.y as u16) < self.size_y
+        loc.x >= 0 && loc.y >= 0 && (loc.x as u16) < self.size_x && (loc.y as u16) < self.size_y
     }
 
     pub fn is_border(&self, loc: Coord) -> bool {
-        loc.x == 0 || loc.y == 0
+        loc.x == 0
+            || loc.y == 0
             || loc.x as u16 == self.size_x - 1
             || loc.y as u16 == self.size_y - 1
     }
 
-    pub fn is_empty_at(&self, loc: Coord)        -> bool { self.is_in_bounds(loc) && self.at(loc) == EMPTY }
-    pub fn is_barrier_at(&self, loc: Coord)      -> bool { self.is_in_bounds(loc) && self.at(loc) == BARRIER }
-    pub fn is_kill_barrier_at(&self, loc: Coord) -> bool { self.is_in_bounds(loc) && self.at(loc) == KILL_BARRIER }
+    pub fn is_empty_at(&self, loc: Coord) -> bool {
+        self.is_in_bounds(loc) && self.at(loc) == EMPTY
+    }
+    pub fn is_barrier_at(&self, loc: Coord) -> bool {
+        self.is_in_bounds(loc) && self.at(loc) == BARRIER
+    }
+    pub fn is_kill_barrier_at(&self, loc: Coord) -> bool {
+        self.is_in_bounds(loc) && self.at(loc) == KILL_BARRIER
+    }
     /// True if the cell blocks movement (regular wall or kill barrier).
     /// Use this to test "can an agent move here?" — kill barriers are
     /// drained specially in `drain_move_queue` so the agent doesn't end
     /// up on the cell.
-    pub fn is_blocking_at(&self, loc: Coord)     -> bool {
-        let v = if self.is_in_bounds(loc) { self.at(loc) } else { return false; };
+    pub fn is_blocking_at(&self, loc: Coord) -> bool {
+        let v = if self.is_in_bounds(loc) {
+            self.at(loc)
+        } else {
+            return false;
+        };
         v == BARRIER || v == KILL_BARRIER
     }
-    pub fn is_occupied_at(&self, loc: Coord)     -> bool {
-        let v = if self.is_in_bounds(loc) { self.at(loc) } else { return false; };
+    pub fn is_occupied_at(&self, loc: Coord) -> bool {
+        let v = if self.is_in_bounds(loc) {
+            self.at(loc)
+        } else {
+            return false;
+        };
         v != EMPTY && v != BARRIER && v != KILL_BARRIER
     }
 
@@ -107,28 +120,29 @@ impl Grid {
             let x = rng.gen_range_u32(0, self.size_x as u32) as i16;
             let y = rng.gen_range_u32(0, self.size_y as u32) as i16;
             let loc = Coord::new(x, y);
-            if self.is_empty_at(loc) { return loc; }
+            if self.is_empty_at(loc) {
+                return loc;
+            }
         }
     }
 }
 
 /// Visit all valid grid locations within a circular radius of `center`.
 /// Calls `f` for each coordinate within the circle that is in bounds.
-pub fn visit_neighborhood(
-    grid: &Grid,
-    center: Coord,
-    radius: f32,
-    mut f: impl FnMut(Coord),
-) {
+pub fn visit_neighborhood(grid: &Grid, center: Coord, radius: f32, mut f: impl FnMut(Coord)) {
     let r = radius.ceil() as i16;
     let r2 = radius * radius;
     for dx in -r..=r {
         let dx_sq = (dx as f32).powi(2);
-        if dx_sq > r2 { continue; }
+        if dx_sq > r2 {
+            continue;
+        }
         let dy_max = ((r2 - dx_sq).max(0.0).sqrt()).floor() as i16;
         for dy in -dy_max..=dy_max {
             // Explicit distance check — guards against rounding edge cases
-            if dx_sq + (dy as f32).powi(2) > r2 { continue; }
+            if dx_sq + (dy as f32).powi(2) > r2 {
+                continue;
+            }
             let loc = Coord::new(center.x + dx, center.y + dy);
             if grid.is_in_bounds(loc) {
                 f(loc);

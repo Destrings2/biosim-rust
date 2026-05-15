@@ -10,12 +10,12 @@
 //! modify the grid or population directly — moves and deaths are queued and
 //! applied at end-of-step in `drain_move_queue` / `drain_death_queue`.
 
-use std::collections::HashSet;
 use crate::agent::{Agent, AgentId};
 use crate::rng::Rng;
 use crate::signals_layer::Signals;
 use crate::types::Coord;
 use crate::world::World;
+use std::collections::HashSet;
 
 /// Mutable context passed to every action during execution.
 pub struct ActionContext<'a> {
@@ -101,15 +101,13 @@ impl ActionRegistry {
     }
 
     fn rebuild_disabled_mask(&mut self) {
-        self.disabled_mask = self.actions
-            .iter()
-            .map(|a| self.disabled.contains(a.id()))
-            .collect();
+        self.disabled_mask = self.actions.iter().map(|a| self.disabled.contains(a.id())).collect();
     }
 
     fn rebuild_state(&mut self) {
         self.rebuild_disabled_mask();
-        self.active_map = self.actions
+        self.active_map = self
+            .actions
             .iter()
             .enumerate()
             .filter(|(_, a)| !self.disabled.contains(a.id()))
@@ -120,10 +118,14 @@ impl ActionRegistry {
     // ── Counts ────────────────────────────────────────────────────────────
 
     /// Total number of registered actions.
-    pub fn count(&self) -> u16 { self.actions.len() as u16 }
+    pub fn count(&self) -> u16 {
+        self.actions.len() as u16
+    }
 
     /// Number of *active* (committed-enabled) actions.
-    pub fn enabled_count(&self) -> u16 { self.active_map.len() as u16 }
+    pub fn enabled_count(&self) -> u16 {
+        self.active_map.len() as u16
+    }
 
     // ── Execution ─────────────────────────────────────────────────────────
 
@@ -157,5 +159,7 @@ impl ActionRegistry {
 }
 
 impl Default for ActionRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

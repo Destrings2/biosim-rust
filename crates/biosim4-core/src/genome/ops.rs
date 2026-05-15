@@ -48,7 +48,9 @@ pub fn make_random_genome(cfg: &SimConfig, rng: &mut Rng) -> Genome {
 
 /// Flip a random bit in a random gene.
 pub fn random_bit_flip(genome: &mut Genome, rng: &mut Rng) {
-    if genome.is_empty() { return; }
+    if genome.is_empty() {
+        return;
+    }
     let idx = rng.gen_range_usize(0, genome.len());
     let bit = rng.gen_range_u32(0, 32);
     genome[idx] = Gene(genome[idx].0 ^ (1u32 << bit));
@@ -65,8 +67,16 @@ pub fn apply_point_mutations(genome: &mut Genome, rate: f32, rng: &mut Rng) {
 }
 
 /// With probability `rate`, insert or delete a gene. `deletion_ratio` controls the split.
-pub fn random_insert_deletion(genome: &mut Genome, rate: f32, deletion_ratio: f32, max_len: u16, rng: &mut Rng) {
-    if !rng.gen_bool(rate) { return; }
+pub fn random_insert_deletion(
+    genome: &mut Genome,
+    rate: f32,
+    deletion_ratio: f32,
+    max_len: u16,
+    rng: &mut Rng,
+) {
+    if !rng.gen_bool(rate) {
+        return;
+    }
     if rng.gen_bool(deletion_ratio) {
         // deletion
         if !genome.is_empty() {
@@ -110,7 +120,9 @@ pub fn generate_child_genome(
         deletion_ratio,
         max_len,
     } = *params;
-    if parents.is_empty() { return vec![]; }
+    if parents.is_empty() {
+        return vec![];
+    }
 
     let pick = |rng: &mut Rng| -> usize {
         if choose_by_fitness && parents.len() > 1 {
@@ -128,7 +140,9 @@ pub fn generate_child_genome(
     let mut child = if sexual && parents.len() > 1 {
         let a = pick(rng);
         let mut b = pick(rng);
-        while b == a && parents.len() > 1 { b = pick(rng); }
+        while b == a && parents.len() > 1 {
+            b = pick(rng);
+        }
         sexual_crossover(&parents[a], &parents[b], rng)
     } else {
         parents[pick(rng)].clone()
@@ -151,7 +165,7 @@ fn sexual_crossover(a: &Genome, b: &Genome, rng: &mut Rng) -> Genome {
     let mut child = a.clone();
     if !b.is_empty() && !child.is_empty() {
         let start = rng.gen_range_usize(0, child.len().min(b.len()));
-        let len   = rng.gen_range_usize(1, (child.len().min(b.len()) - start + 1).max(2));
+        let len = rng.gen_range_usize(1, (child.len().min(b.len()) - start + 1).max(2));
         for i in 0..len {
             if start + i < child.len() && start + i < b.len() {
                 child[start + i] = b[start + i];
@@ -174,8 +188,12 @@ pub fn genome_similarity(a: &Genome, b: &Genome, method: u8) -> f32 {
 }
 
 fn jaro_winkler(a: &Genome, b: &Genome) -> f32 {
-    if a.is_empty() && b.is_empty() { return 1.0; }
-    if a.is_empty() || b.is_empty() { return 0.0; }
+    if a.is_empty() && b.is_empty() {
+        return 1.0;
+    }
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
     // Sample at most 20 genes for long genomes (C++ behavior)
     let limit = 20;
     let a: Vec<u32> = a.iter().take(limit).map(|g| g.0).collect();
@@ -198,19 +216,26 @@ fn jaro_winkler(a: &Genome, b: &Genome) -> f32 {
             }
         }
     }
-    if matches == 0 { return 0.0; }
+    if matches == 0 {
+        return 0.0;
+    }
     let mut transpositions = 0usize;
     let mut k = 0;
     for i in 0..n {
         if a_match[i] {
-            while !b_match[k] { k += 1; }
-            if a[i] != b[k] { transpositions += 1; }
+            while !b_match[k] {
+                k += 1;
+            }
+            if a[i] != b[k] {
+                transpositions += 1;
+            }
             k += 1;
         }
     }
     let jaro = (matches as f32 / n as f32
         + matches as f32 / m as f32
-        + (matches - transpositions / 2) as f32 / matches as f32) / 3.0;
+        + (matches - transpositions / 2) as f32 / matches as f32)
+        / 3.0;
     // Winkler prefix bonus (use first 4 common u8 bytes as proxy for prefix).
     // Clamp to 1.0: float rounding can push jaro slightly above 1.0 (e.g.
     // 1.0000001), making (1-jaro) negative and the bonus subtractive. The
@@ -220,19 +245,25 @@ fn jaro_winkler(a: &Genome, b: &Genome) -> f32 {
 }
 
 fn hamming_distance_bits(a: &Genome, b: &Genome) -> f32 {
-    if a.is_empty() && b.is_empty() { return 1.0; }
-    if a.is_empty() || b.is_empty() { return 0.0; }
+    if a.is_empty() && b.is_empty() {
+        return 1.0;
+    }
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
     let len = a.len().min(b.len());
     let bits_total = len * 32;
-    let diff_bits: u32 = a.iter().zip(b.iter())
-        .map(|(x, y)| (x.0 ^ y.0).count_ones())
-        .sum();
+    let diff_bits: u32 = a.iter().zip(b.iter()).map(|(x, y)| (x.0 ^ y.0).count_ones()).sum();
     1.0 - diff_bits as f32 / bits_total as f32
 }
 
 fn hamming_distance_bytes(a: &Genome, b: &Genome) -> f32 {
-    if a.is_empty() && b.is_empty() { return 1.0; }
-    if a.is_empty() || b.is_empty() { return 0.0; }
+    if a.is_empty() && b.is_empty() {
+        return 1.0;
+    }
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
     let len = a.len().min(b.len());
     let bytes_total = len * 4;
     let mut same_bytes = 0u32;
@@ -248,13 +279,17 @@ fn hamming_distance_bytes(a: &Genome, b: &Genome) -> f32 {
 
 /// Sample up to 1000 random pairs and return 1.0 - average similarity.
 pub fn genetic_diversity(genomes: &[&Genome], method: u8, rng: &mut Rng) -> f32 {
-    if genomes.len() < 2 { return 0.0; }
+    if genomes.len() < 2 {
+        return 0.0;
+    }
     let samples = 1000.min(genomes.len() * (genomes.len() - 1) / 2);
     let mut total = 0.0f32;
     for _ in 0..samples {
         let i = rng.gen_range_usize(0, genomes.len());
         let mut j = rng.gen_range_usize(0, genomes.len());
-        if j == i { j = (i + 1) % genomes.len(); }
+        if j == i {
+            j = (i + 1) % genomes.len();
+        }
         total += genome_similarity(genomes[i], genomes[j], method);
     }
     1.0 - total / samples as f32

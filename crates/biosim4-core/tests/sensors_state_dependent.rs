@@ -8,35 +8,44 @@
 use biosim4_core::{
     agent::{Agent, AgentId},
     food_layer::FoodLayer,
-    grid::Grid,
     genome::neural_net::{create_wiring, WiringConfig},
     genome::ops::make_random_genome,
+    grid::Grid,
     population::Population,
     registry::{SensorContext, SensorRegistry},
     rng::Rng,
     sensors::register_builtin_sensors,
-    sim_config::SimConfig,
     signals_layer::Signals,
+    sim_config::SimConfig,
     types::Coord,
     world::World,
 };
 
 fn make_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> Agent {
     let genome = make_random_genome(cfg, rng);
-    let wcfg = WiringConfig { sensor_count: 36, action_count: 17, max_neurons: cfg.max_number_neurons };
+    let wcfg =
+        WiringConfig { sensor_count: 36, action_count: 17, max_neurons: cfg.max_number_neurons };
     let nnet = create_wiring(&genome, wcfg);
     Agent::new(id, loc, genome, nnet)
 }
 
 fn world<'a>(
-    grid: &'a Grid, signals: &'a Signals, food: &'a FoodLayer, population: &'a Population,
+    grid: &'a Grid,
+    signals: &'a Signals,
+    food: &'a FoodLayer,
+    population: &'a Population,
     cfg: &SimConfig,
 ) -> World<'a> {
     World {
-        grid, signals, food, population,
-        size_x: cfg.size_x, size_y: cfg.size_y,
+        grid,
+        signals,
+        food,
+        population,
+        size_x: cfg.size_x,
+        size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
-        generation: 0, step: 0,
+        generation: 0,
+        step: 0,
     }
 }
 
@@ -63,19 +72,26 @@ fn signal0_responds_to_local_signal() {
 
     let mut srng = Rng::seeded(0);
     let w = world(&grid, &signals, &food, &pop, &cfg);
-    let baseline = reg.evaluate(idx, &mut SensorContext {
-        agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng,
-    });
+    let baseline = reg.evaluate(
+        idx,
+        &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
+    );
 
     // Drop a strong signal at the agent's cell.
-    for _ in 0..50 { signals.increment(0, Coord::new(16, 16), &grid); }
+    for _ in 0..50 {
+        signals.increment(0, Coord::new(16, 16), &grid);
+    }
 
     let w = world(&grid, &signals, &food, &pop, &cfg);
-    let after = reg.evaluate(idx, &mut SensorContext {
-        agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng,
-    });
+    let after = reg.evaluate(
+        idx,
+        &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
+    );
 
-    assert!(after > baseline, "signal0 should rise when signal is deposited (baseline={baseline}, after={after})");
+    assert!(
+        after > baseline,
+        "signal0 should rise when signal is deposited (baseline={baseline}, after={after})"
+    );
     assert!((0.0..=1.0).contains(&after), "signal0 out of unit range: {after}");
 }
 
@@ -95,21 +111,35 @@ fn signal_sensors_each_layer_isolated() {
     register_builtin_sensors(&mut reg);
 
     // Deposit only on layer 1.
-    for _ in 0..30 { signals.increment(1, Coord::new(8, 8), &grid); }
+    for _ in 0..30 {
+        signals.increment(1, Coord::new(8, 8), &grid);
+    }
 
     let w = world(&grid, &signals, &food, &pop, &cfg);
     let mut srng = Rng::seeded(0);
     let agent_ref = pop.get(1).unwrap();
 
-    let s0 = reg.evaluate(sensor_idx(&reg, "signal0"),
-        &mut SensorContext { agent: agent_ref, world: &w, sim_step: 0, rng: &mut srng });
-    let s1 = reg.evaluate(sensor_idx(&reg, "signal1"),
-        &mut SensorContext { agent: agent_ref, world: &w, sim_step: 0, rng: &mut srng });
-    let s2 = reg.evaluate(sensor_idx(&reg, "signal2"),
-        &mut SensorContext { agent: agent_ref, world: &w, sim_step: 0, rng: &mut srng });
+    let s0 = reg.evaluate(
+        sensor_idx(&reg, "signal0"),
+        &mut SensorContext { agent: agent_ref, world: &w, sim_step: 0, rng: &mut srng },
+    );
+    let s1 = reg.evaluate(
+        sensor_idx(&reg, "signal1"),
+        &mut SensorContext { agent: agent_ref, world: &w, sim_step: 0, rng: &mut srng },
+    );
+    let s2 = reg.evaluate(
+        sensor_idx(&reg, "signal2"),
+        &mut SensorContext { agent: agent_ref, world: &w, sim_step: 0, rng: &mut srng },
+    );
 
-    assert!(s1 > s0, "signal1 should exceed signal0 when only layer 1 has signal (s0={s0}, s1={s1})");
-    assert!(s1 > s2, "signal1 should exceed signal2 when only layer 1 has signal (s2={s2}, s1={s1})");
+    assert!(
+        s1 > s0,
+        "signal1 should exceed signal0 when only layer 1 has signal (s0={s0}, s1={s1})"
+    );
+    assert!(
+        s1 > s2,
+        "signal1 should exceed signal2 when only layer 1 has signal (s2={s2}, s1={s1})"
+    );
     assert!(s0.abs() < 1e-3, "signal0 should be ~0 with no layer-0 signal (got {s0})");
     assert!(s2.abs() < 1e-3, "signal2 should be ~0 with no layer-2 signal (got {s2})");
 }
@@ -134,8 +164,12 @@ fn memory_sensors_read_agent_memory() {
 
     let m: Vec<f32> = ["memory_0", "memory_1", "memory_2", "memory_3"]
         .iter()
-        .map(|id| reg.evaluate(sensor_idx(&reg, id),
-            &mut SensorContext { agent: agent_ref, world: &w, sim_step: 0, rng: &mut srng }))
+        .map(|id| {
+            reg.evaluate(
+                sensor_idx(&reg, id),
+                &mut SensorContext { agent: agent_ref, world: &w, sim_step: 0, rng: &mut srng },
+            )
+        })
         .collect();
 
     let expected = [0.10f32, 0.42, 0.71, 0.95];
@@ -166,12 +200,18 @@ fn energy_level_clamped_to_unit_interval() {
     let mut srng = Rng::seeded(0);
     let idx = sensor_idx(&reg, "energy_level");
 
-    let v0 = reg.evaluate(idx, &mut SensorContext {
-        agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng });
-    let v1 = reg.evaluate(idx, &mut SensorContext {
-        agent: pop.get(2).unwrap(), world: &w, sim_step: 0, rng: &mut srng });
-    let v2 = reg.evaluate(idx, &mut SensorContext {
-        agent: pop.get(3).unwrap(), world: &w, sim_step: 0, rng: &mut srng });
+    let v0 = reg.evaluate(
+        idx,
+        &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
+    );
+    let v1 = reg.evaluate(
+        idx,
+        &mut SensorContext { agent: pop.get(2).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
+    );
+    let v2 = reg.evaluate(
+        idx,
+        &mut SensorContext { agent: pop.get(3).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
+    );
 
     assert!((v0 - 0.0).abs() < 1e-6, "energy=0 → 0.0 (got {v0})");
     assert!((v1 - 0.7).abs() < 1e-6, "energy=0.7 → 0.7 (got {v1})");
@@ -195,8 +235,10 @@ fn food_here_reads_local_cell() {
     register_builtin_sensors(&mut reg);
     let w = world(&grid, &signals, &food, &pop, &cfg);
     let mut srng = Rng::seeded(0);
-    let v = reg.evaluate(sensor_idx(&reg, "food_here"), &mut SensorContext {
-        agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng });
+    let v = reg.evaluate(
+        sensor_idx(&reg, "food_here"),
+        &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
+    );
     assert!((v - 0.6).abs() < 1e-6, "food_here should equal cell value (got {v})");
 }
 
@@ -219,8 +261,10 @@ fn food_fwd_increases_with_food_ahead() {
 
     let w = world(&grid, &signals, &food, &pop, &cfg);
     let mut srng = Rng::seeded(0);
-    let baseline = reg.evaluate(idx, &mut SensorContext {
-        agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng });
+    let baseline = reg.evaluate(
+        idx,
+        &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
+    );
 
     // Place food on cells east of the agent.
     for dx in 1..=3 {
@@ -228,9 +272,14 @@ fn food_fwd_increases_with_food_ahead() {
     }
 
     let w = world(&grid, &signals, &food, &pop, &cfg);
-    let after = reg.evaluate(idx, &mut SensorContext {
-        agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng });
+    let after = reg.evaluate(
+        idx,
+        &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
+    );
 
-    assert!(after > baseline, "food_fwd should rise when food is placed forward (baseline={baseline}, after={after})");
+    assert!(
+        after > baseline,
+        "food_fwd should rise when food is placed forward (baseline={baseline}, after={after})"
+    );
     assert!((0.0..=1.0).contains(&after), "food_fwd out of unit range: {after}");
 }

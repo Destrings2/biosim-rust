@@ -27,11 +27,7 @@ pub fn draw_fast_forward_modal(
         .interactable(false)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
-            ui.painter().rect_filled(
-                screen,
-                0.0,
-                egui::Color32::from_black_alpha(140),
-            );
+            ui.painter().rect_filled(screen, 0.0, egui::Color32::from_black_alpha(140));
         });
 
     egui::Area::new(egui::Id::new("ff_modal"))
@@ -74,10 +70,8 @@ pub fn draw_fast_forward_modal(
                     painter.rect_filled(rect, 5.0, theme::BG_2);
                     let fill_w = rect.width() * progress;
                     if fill_w > 1.0 {
-                        let fill_rect = egui::Rect::from_min_size(
-                            rect.min,
-                            egui::vec2(fill_w, rect.height()),
-                        );
+                        let fill_rect =
+                            egui::Rect::from_min_size(rect.min, egui::vec2(fill_w, rect.height()));
                         painter.rect_filled(fill_rect, 5.0, theme::ACCENT);
                     }
                     painter.rect_stroke(
@@ -94,13 +88,17 @@ pub fn draw_fast_forward_modal(
                         readout(
                             ui,
                             "DONE",
-                            format!("{} / {}  ({:.0}%)", state.done_count(), state.total(), progress * 100.0),
+                            format!(
+                                "{} / {}  ({:.0}%)",
+                                state.done_count(),
+                                state.total(),
+                                progress * 100.0
+                            ),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let elapsed = format_duration(state.elapsed());
-                            let eta = state.eta()
-                                .map(format_duration)
-                                .unwrap_or_else(|| "—".into());
+                            let eta =
+                                state.eta().map(format_duration).unwrap_or_else(|| "—".into());
                             readout(ui, "ETA", eta);
                             ui.add_space(16.0);
                             readout(ui, "ELAPSED", elapsed);
@@ -135,10 +133,7 @@ pub fn draw_fast_forward_modal(
 
                     // ── Cancel
                     let btn = egui::Button::new(
-                        egui::RichText::new("CANCEL")
-                            .size(11.0)
-                            .strong()
-                            .color(theme::TEXT),
+                        egui::RichText::new("CANCEL").size(11.0).strong().color(theme::TEXT),
                     )
                     .fill(theme::PANEL_2)
                     .stroke(egui::Stroke::new(1.0, theme::BAD))
@@ -154,18 +149,8 @@ pub fn draw_fast_forward_modal(
 fn readout(ui: &mut egui::Ui, label: &str, value: String) {
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
-        ui.label(
-            egui::RichText::new(label)
-                .size(9.5)
-                .color(theme::MUTED)
-                .strong(),
-        );
-        ui.label(
-            egui::RichText::new(value)
-                .monospace()
-                .size(11.5)
-                .color(theme::TEXT),
-        );
+        ui.label(egui::RichText::new(label).size(9.5).color(theme::MUTED).strong());
+        ui.label(egui::RichText::new(value).monospace().size(11.5).color(theme::TEXT));
     });
 }
 

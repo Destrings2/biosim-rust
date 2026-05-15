@@ -30,10 +30,10 @@
 //! 8. **Run** `on_generation_start` hooks.
 
 use crate::agent::Agent;
-use crate::genome::ops::{make_random_genome, generate_child_genome, Genome, ReproductionParams};
 use crate::genome::neural_net::create_wiring;
-use crate::sim_state::SimulationState;
+use crate::genome::ops::{generate_child_genome, make_random_genome, Genome, ReproductionParams};
 use crate::registry::challenge::WorldMut;
+use crate::sim_state::SimulationState;
 
 /// Apply sensor/action enabled state derived from the current config.
 /// Must be called before `commit_enabled()` at each generation boundary.
@@ -96,7 +96,9 @@ pub fn initialize_generation_0(state: &mut SimulationState) {
 /// position instead of being silently treated as "equal" by
 /// `partial_cmp().unwrap_or(Equal)`. Higher score = greater.
 #[inline]
-fn fitness_cmp(a: f32, b: f32) -> std::cmp::Ordering { a.total_cmp(&b) }
+fn fitness_cmp(a: f32, b: f32) -> std::cmp::Ordering {
+    a.total_cmp(&b)
+}
 
 /// Pick parent genomes from this generation's evaluation results.
 ///
@@ -214,12 +216,8 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     state.actions.commit_enabled();
     let wiring_cfg = state.wiring_config();
 
-    let new_genomes = generate_new_genomes(
-        parent_genomes.as_slice(),
-        &state.config,
-        &mut state.rng,
-        new_pop,
-    );
+    let new_genomes =
+        generate_new_genomes(parent_genomes.as_slice(), &state.config, &mut state.rng, new_pop);
 
     reset_world(state);
     state.generation += 1;

@@ -128,7 +128,9 @@ pub struct StepQueues {
 }
 
 impl StepQueues {
-    fn empty() -> Self { Self { moves: Vec::new(), deaths: Vec::new() } }
+    fn empty() -> Self {
+        Self { moves: Vec::new(), deaths: Vec::new() }
+    }
 }
 
 fn run_challenge_step_hooks(state: &mut SimulationState) {
@@ -150,7 +152,9 @@ fn step_all_agents(state: &mut SimulationState) -> StepQueues {
     state.scratch.alive_ids.clear();
     state.scratch.alive_ids.extend_from_slice(state.population.alive_ids());
     let n = state.scratch.alive_ids.len();
-    if n == 0 { return StepQueues::empty(); }
+    if n == 0 {
+        return StepQueues::empty();
+    }
 
     let args = StepArgs::from_state(state);
 
@@ -210,8 +214,7 @@ fn step_all_agents_parallel(state: &mut SimulationState, n: usize, args: &StepAr
         .into_par_iter()
         .with_min_len(MIN_FOLD_CHUNK)
         .fold(
-            || (Vec::<(AgentId, Coord)>::with_capacity(64),
-                Vec::<AgentId>::with_capacity(8)),
+            || (Vec::<(AgentId, Coord)>::with_capacity(64), Vec::<AgentId>::with_capacity(8)),
             |(mut moves, mut deaths), i| {
                 // SAFETY: unique `i` ⇒ unique agent_id ⇒ disjoint mutation
                 // target for agent fields (heading/age/memory/etc.) and the
@@ -227,9 +230,14 @@ fn step_all_agents_parallel(state: &mut SimulationState, n: usize, args: &StepAr
                         let (action_levels, neuron_accum) = &mut *scratch;
                         unsafe {
                             step_one_agent(
-                                state, i, args,
-                                &mut moves, &mut deaths, &mut rng,
-                                action_levels, neuron_accum,
+                                state,
+                                i,
+                                args,
+                                &mut moves,
+                                &mut deaths,
+                                &mut rng,
+                                action_levels,
+                                neuron_accum,
                             );
                         }
                     });
@@ -254,7 +262,11 @@ fn step_all_agents_parallel(state: &mut SimulationState, n: usize, args: &StepAr
 #[cfg(feature = "parallel")]
 const MIN_FOLD_CHUNK: usize = 32;
 
-fn step_all_agents_sequential(state: &mut SimulationState, n: usize, args: &StepArgs) -> StepQueues {
+fn step_all_agents_sequential(
+    state: &mut SimulationState,
+    n: usize,
+    args: &StepArgs,
+) -> StepQueues {
     let mut moves: Vec<(AgentId, Coord)> = Vec::new();
     let mut deaths: Vec<AgentId> = Vec::new();
     let mut action_levels: Vec<f32> = Vec::new();
@@ -267,9 +279,14 @@ fn step_all_agents_sequential(state: &mut SimulationState, n: usize, args: &Step
             let s: &mut SimulationState = &mut *state_ptr;
             let rng: *mut Rng = &mut s.rng;
             step_one_agent(
-                s, i, args,
-                &mut moves, &mut deaths, &mut *rng,
-                &mut action_levels, &mut neuron_accum,
+                s,
+                i,
+                args,
+                &mut moves,
+                &mut deaths,
+                &mut *rng,
+                &mut action_levels,
+                &mut neuron_accum,
             );
         }
     }
@@ -398,7 +415,10 @@ unsafe fn phase1_one_agent(
 ) {
     let agent_ptr: *mut crate::agent::Agent = match state.population.get_mut(id) {
         Some(a) if a.alive => a as *mut _,
-        _ => { action_levels.clear(); return; }
+        _ => {
+            action_levels.clear();
+            return;
+        }
     };
     // SAFETY: `nnet` is a sub-field projection; only this thread owns the
     // unique agent slot named by `id` (caller contract). The read-only
@@ -408,8 +428,7 @@ unsafe fn phase1_one_agent(
     // memory, energy, challenge_bits, genome, genome_color}`. Phase 2 will not
     // run until feed_forward returns, so the agent record is effectively
     // partitioned for this phase.
-    let nnet: &mut crate::genome::neural_net::NeuralNet =
-        unsafe { &mut (*agent_ptr).nnet };
+    let nnet: &mut crate::genome::neural_net::NeuralNet = unsafe { &mut (*agent_ptr).nnet };
     let agent_read: &crate::agent::Agent = unsafe { &*agent_ptr };
 
     let mut sensor_rng = Rng::seeded(seed);
@@ -517,7 +536,9 @@ unsafe fn energy_one_agent(
     deaths: &mut Vec<AgentId>,
 ) {
     let Some(agent) = state.population.get(id) else { return };
-    if !agent.alive { return; }
+    if !agent.alive {
+        return;
+    }
 
     let loc = agent.loc;
     let food_val = state.food.get(loc);
@@ -543,7 +564,9 @@ unsafe fn energy_one_agent(
 
 fn fade_signals(state: &mut SimulationState) {
     let layer_count = state.signals.layer_count();
-    if layer_count == 0 { return; }
+    if layer_count == 0 {
+        return;
+    }
 
     #[cfg(feature = "parallel")]
     {

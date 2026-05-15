@@ -5,19 +5,20 @@
 
 use bevy_egui::egui;
 
-pub const BG:         egui::Color32 = egui::Color32::from_rgb(0x0a, 0x0b, 0x0d);
-pub const BG_2:       egui::Color32 = egui::Color32::from_rgb(0x0f, 0x11, 0x14);
-pub const PANEL:      egui::Color32 = egui::Color32::from_rgb(0x14, 0x16, 0x1a);
-pub const PANEL_2:    egui::Color32 = egui::Color32::from_rgb(0x1a, 0x1d, 0x22);
-pub const LINE:       egui::Color32 = egui::Color32::from_rgb(0x23, 0x27, 0x2e);
-pub const LINE_2:     egui::Color32 = egui::Color32::from_rgb(0x2d, 0x32, 0x3b);
-pub const TEXT:       egui::Color32 = egui::Color32::from_rgb(0xe6, 0xe8, 0xec);
-pub const TEXT_2:     egui::Color32 = egui::Color32::from_rgb(0xa8, 0xae, 0xb9);
-pub const MUTED:      egui::Color32 = egui::Color32::from_rgb(0x6b, 0x71, 0x7c);
-pub const ACCENT:     egui::Color32 = egui::Color32::from_rgb(0x7d, 0xd3, 0xa8);
-pub const ACCENT_SOFT:egui::Color32 = egui::Color32::from_rgba_premultiplied(0x32, 0x55, 0x44, 0x70);
-pub const WARN:       egui::Color32 = egui::Color32::from_rgb(0xe8, 0xa8, 0x7c);
-pub const BAD:        egui::Color32 = egui::Color32::from_rgb(0xe0, 0x7b, 0x7b);
+pub const BG: egui::Color32 = egui::Color32::from_rgb(0x0a, 0x0b, 0x0d);
+pub const BG_2: egui::Color32 = egui::Color32::from_rgb(0x0f, 0x11, 0x14);
+pub const PANEL: egui::Color32 = egui::Color32::from_rgb(0x14, 0x16, 0x1a);
+pub const PANEL_2: egui::Color32 = egui::Color32::from_rgb(0x1a, 0x1d, 0x22);
+pub const LINE: egui::Color32 = egui::Color32::from_rgb(0x23, 0x27, 0x2e);
+pub const LINE_2: egui::Color32 = egui::Color32::from_rgb(0x2d, 0x32, 0x3b);
+pub const TEXT: egui::Color32 = egui::Color32::from_rgb(0xe6, 0xe8, 0xec);
+pub const TEXT_2: egui::Color32 = egui::Color32::from_rgb(0xa8, 0xae, 0xb9);
+pub const MUTED: egui::Color32 = egui::Color32::from_rgb(0x6b, 0x71, 0x7c);
+pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(0x7d, 0xd3, 0xa8);
+pub const ACCENT_SOFT: egui::Color32 =
+    egui::Color32::from_rgba_premultiplied(0x32, 0x55, 0x44, 0x70);
+pub const WARN: egui::Color32 = egui::Color32::from_rgb(0xe8, 0xa8, 0x7c);
+pub const BAD: egui::Color32 = egui::Color32::from_rgb(0xe0, 0x7b, 0x7b);
 
 /// Apply the biosim theme to an egui context. Called once at startup.
 pub fn install(ctx: &egui::Context) {
@@ -98,30 +99,19 @@ pub fn float_shadow() -> egui::Shadow {
 
 /// Tight inset shadow used by docked panels (top bar, side panel).
 pub fn dock_shadow() -> egui::Shadow {
-    egui::Shadow {
-        offset: [0, 2],
-        blur: 6,
-        spread: 0,
-        color: egui::Color32::from_black_alpha(60),
-    }
+    egui::Shadow { offset: [0, 2], blur: 6, spread: 0, color: egui::Color32::from_black_alpha(60) }
 }
 
 /// "10px UPPERCASE  ACCENT-TINT  STRONG" key label used on stat chips.
 #[inline]
 pub fn key_label(text: &str) -> egui::RichText {
-    egui::RichText::new(text)
-        .size(10.0)
-        .color(MUTED)
-        .strong()
+    egui::RichText::new(text).size(10.0).color(MUTED).strong()
 }
 
 /// Monospace tabular value (uses egui's default tnum-friendly mono font).
 #[inline]
 pub fn mono_value(text: impl Into<String>) -> egui::RichText {
-    egui::RichText::new(text.into())
-        .monospace()
-        .size(12.0)
-        .color(TEXT)
+    egui::RichText::new(text.into()).monospace().size(12.0).color(TEXT)
 }
 
 /// Render a small "kbd"-style hint chip next to a button label.
@@ -134,12 +124,7 @@ pub fn kbd_hint(ui: &mut egui::Ui, text: &str) {
         .corner_radius(egui::CornerRadius::same(3))
         .inner_margin(egui::Margin { left: 4, right: 4, top: 1, bottom: 1 })
         .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new(text)
-                    .monospace()
-                    .size(9.5)
-                    .color(MUTED),
-            );
+            ui.label(egui::RichText::new(text).monospace().size(9.5).color(MUTED));
         });
 }
 

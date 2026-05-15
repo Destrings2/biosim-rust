@@ -58,18 +58,24 @@ fn pan_camera(
     // egui takes pointer input first — don't pan when the user is dragging in
     // a panel.
     if let Ok(ctx) = contexts.ctx_mut() {
-        if ctx.wants_pointer_input() { return; }
+        if ctx.wants_pointer_input() {
+            return;
+        }
     }
 
     let panning = buttons.pressed(MouseButton::Middle) || buttons.pressed(MouseButton::Right);
-    if !panning { return; }
+    if !panning {
+        return;
+    }
     let Ok((mut t, proj)) = cam_q.single_mut() else { return };
     let scale = match proj {
         Projection::Orthographic(o) => o.scale,
         _ => 1.0,
     };
     let delta = motion.delta;
-    if delta == Vec2::ZERO { return; }
+    if delta == Vec2::ZERO {
+        return;
+    }
     // Mouse motion is in screen pixels (y-down); world is y-up. Negate y and
     // multiply by scale so pan speed feels consistent across zoom levels.
     t.translation.x -= delta.x * scale;
@@ -83,20 +89,30 @@ fn zoom_camera(
     mut contexts: EguiContexts,
 ) {
     if let Ok(ctx) = contexts.ctx_mut() {
-        if ctx.wants_pointer_input() { return; }
+        if ctx.wants_pointer_input() {
+            return;
+        }
     }
 
-    let Ok(window) = windows.single() else { return; };
-    let Ok((mut t, mut proj, cam, cam_xform)) = cam_q.single_mut() else { return; };
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let Ok((mut t, mut proj, cam, cam_xform)) = cam_q.single_mut() else {
+        return;
+    };
 
     let total: f32 = scroll.delta.y;
-    if total == 0.0 { return; }
+    if total == 0.0 {
+        return;
+    }
 
     let Projection::Orthographic(ortho) = &mut *proj else { return };
     let old_scale = ortho.scale;
     let factor = if total > 0.0 { 1.0 / ZOOM_STEP } else { ZOOM_STEP };
     let new_scale = (old_scale * factor).clamp(ZOOM_MIN, ZOOM_MAX);
-    if (new_scale - old_scale).abs() < f32::EPSILON { return; }
+    if (new_scale - old_scale).abs() < f32::EPSILON {
+        return;
+    }
 
     // Cursor-anchored zoom: keep the world point under the cursor fixed.
     if let Some(cursor) = window.cursor_position() {
@@ -125,7 +141,9 @@ fn fit_to_grid(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut cam_q: Query<(&mut Transform, &mut Projection), With<SimCamera>>,
 ) {
-    if !controls.refit_camera { return; }
+    if !controls.refit_camera {
+        return;
+    }
     let Ok(window) = windows.single() else { return };
     let Ok((mut t, mut proj)) = cam_q.single_mut() else { return };
 

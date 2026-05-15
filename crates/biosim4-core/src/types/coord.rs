@@ -20,7 +20,9 @@ pub struct Coord {
 }
 
 impl Coord {
-    pub fn new(x: i16, y: i16) -> Self { Self { x, y } }
+    pub fn new(x: i16, y: i16) -> Self {
+        Self { x, y }
+    }
 
     pub fn length(&self) -> f32 {
         ((self.x as f32).powi(2) + (self.y as f32).powi(2)).sqrt()
@@ -37,9 +39,17 @@ impl Coord {
         let y = self.y as i32;
         // Use 8-quadrant classification by sign and |x| vs |y|
         let c = if x == 0 {
-            if y > 0 { Compass::N } else { Compass::S }
+            if y > 0 {
+                Compass::N
+            } else {
+                Compass::S
+            }
         } else if y == 0 {
-            if x > 0 { Compass::E } else { Compass::W }
+            if x > 0 {
+                Compass::E
+            } else {
+                Compass::W
+            }
         } else {
             let ax = x.abs();
             let ay = y.abs();
@@ -49,16 +59,24 @@ impl Coord {
             // Diagonal zone: everything in between.
             if ay * 33461 < ax * 13860 {
                 // angle < 22.5° from horizontal axis → E or W
-                if x > 0 { Compass::E } else { Compass::W }
+                if x > 0 {
+                    Compass::E
+                } else {
+                    Compass::W
+                }
             } else if ay * 13860 > ax * 33461 {
                 // angle > 67.5° from horizontal axis → N or S
-                if y > 0 { Compass::N } else { Compass::S }
+                if y > 0 {
+                    Compass::N
+                } else {
+                    Compass::S
+                }
             } else {
                 // diagonal
                 match (x > 0, y > 0) {
-                    (true,  true)  => Compass::NE,
-                    (true,  false) => Compass::SE,
-                    (false, true)  => Compass::NW,
+                    (true, true) => Compass::NE,
+                    (true, false) => Compass::SE,
+                    (false, true) => Compass::NW,
                     (false, false) => Compass::SW,
                 }
             }
@@ -80,7 +98,9 @@ impl Coord {
     pub fn ray_sameness(&self, other: Coord) -> f32 {
         let mag_a = self.length();
         let mag_b = other.length();
-        if mag_a == 0.0 || mag_b == 0.0 { return 0.0; }
+        if mag_a == 0.0 || mag_b == 0.0 {
+            return 0.0;
+        }
         let dot = self.x as f32 * other.x as f32 + self.y as f32 * other.y as f32;
         (dot / (mag_a * mag_b)).clamp(-1.0, 1.0)
     }
@@ -92,15 +112,21 @@ impl Coord {
 
 impl std::ops::Add for Coord {
     type Output = Coord;
-    fn add(self, rhs: Coord) -> Coord { Coord::new(self.x + rhs.x, self.y + rhs.y) }
+    fn add(self, rhs: Coord) -> Coord {
+        Coord::new(self.x + rhs.x, self.y + rhs.y)
+    }
 }
 impl std::ops::Sub for Coord {
     type Output = Coord;
-    fn sub(self, rhs: Coord) -> Coord { Coord::new(self.x - rhs.x, self.y - rhs.y) }
+    fn sub(self, rhs: Coord) -> Coord {
+        Coord::new(self.x - rhs.x, self.y - rhs.y)
+    }
 }
 impl std::ops::Mul<i16> for Coord {
     type Output = Coord;
-    fn mul(self, rhs: i16) -> Coord { Coord::new(self.x * rhs, self.y * rhs) }
+    fn mul(self, rhs: i16) -> Coord {
+        Coord::new(self.x * rhs, self.y * rhs)
+    }
 }
 
 /// Magnitude + direction.
@@ -114,10 +140,7 @@ impl Polar {
     pub fn as_coord(&self) -> Coord {
         let unit = self.dir.as_normalized_coord();
         // For diagonal directions, scale by 1/sqrt(2) ≈ 45_341/64_000 (fixed point)
-        let is_diag = matches!(
-            self.dir.0,
-            Compass::NE | Compass::NW | Compass::SE | Compass::SW
-        );
+        let is_diag = matches!(self.dir.0, Compass::NE | Compass::NW | Compass::SE | Compass::SW);
         if is_diag {
             let scaled = (self.mag as i64 * 45_341 / 64_000) as i16;
             Coord::new(unit.x * scaled, unit.y * scaled)

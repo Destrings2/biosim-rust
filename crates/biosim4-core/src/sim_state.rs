@@ -25,20 +25,20 @@
 //! They are public so `sim_step` can split-borrow them alongside `population`
 //! and other fields. See the `StepScratch` doc comment for details.
 
+use crate::agent::AgentId;
 use crate::barriers::create_barrier;
+use crate::food_layer::FoodLayer;
+use crate::genome::neural_net::WiringConfig;
 use crate::grid::Grid;
 use crate::population::Population;
 use crate::registry::action::ActionRegistry;
 use crate::registry::challenge::{ChallengeConfig, ChallengeRegistry};
 use crate::registry::sensor::SensorRegistry;
 use crate::rng::Rng;
-use crate::sim_config::SimConfig;
-use crate::food_layer::FoodLayer;
 use crate::signals_layer::Signals;
-use crate::world::World;
-use crate::genome::neural_net::WiringConfig;
-use crate::agent::AgentId;
+use crate::sim_config::SimConfig;
 use crate::types::Coord;
+use crate::world::World;
 use std::collections::HashMap;
 
 /// Reusable scratch buffers — allocated once, cleared and reused each step.
@@ -92,7 +92,9 @@ impl SimulationState {
         let sx = self.config.size_x as i16;
         let sy = self.config.size_y as i16;
         for (&(x, y), &tile) in &self.user_barriers {
-            if x < 0 || y < 0 || x >= sx || y >= sy { continue; }
+            if x < 0 || y < 0 || x >= sx || y >= sy {
+                continue;
+            }
             let loc = Coord::new(x, y);
             // Don't stamp over an agent slot (shouldn't happen at gen-boundary
             // since the grid is freshly zero-filled, but defensive).
@@ -103,19 +105,22 @@ impl SimulationState {
             {
                 continue;
             }
-            self.grid.set(loc, match tile {
-                BarrierTile::Clear => crate::grid::EMPTY,
-                BarrierTile::Wall  => crate::grid::BARRIER,
-                BarrierTile::Kill  => crate::grid::KILL_BARRIER,
-            });
+            self.grid.set(
+                loc,
+                match tile {
+                    BarrierTile::Clear => crate::grid::EMPTY,
+                    BarrierTile::Wall => crate::grid::BARRIER,
+                    BarrierTile::Kill => crate::grid::KILL_BARRIER,
+                },
+            );
         }
     }
 }
 
 impl SimulationState {
     pub fn new(config: SimConfig) -> Self {
-        use crate::sensors::register_builtin_sensors;
         use crate::actions::register_builtin_actions;
+        use crate::sensors::register_builtin_sensors;
 
         let mut sensors = SensorRegistry::new();
         register_builtin_sensors(&mut sensors);
@@ -123,8 +128,11 @@ impl SimulationState {
         let mut actions = ActionRegistry::new();
         register_builtin_actions(&mut actions);
 
-        let mut challenges = ChallengeRegistry::new();
-        crate::challenges::register_builtin_challenges(&mut challenges);
+        // Built-in challenges live in the sibling `biosim4-challenges` crate
+        // so adding a new challenge doesn't trigger a core rebuild. Callers
+        // register them explicitly with
+        // `biosim4_challenges::register_builtin_challenges(&mut state.challenges)`.
+        let challenges = ChallengeRegistry::new();
 
         let mut grid = Grid::new(config.size_x, config.size_y);
         create_barrier(&mut grid, config.barrier_type);
@@ -132,11 +140,8 @@ impl SimulationState {
         let signals = Signals::new(config.signal_layers, config.size_x, config.size_y);
         let food = FoodLayer::new(config.size_x, config.size_y);
         let population = Population::new(config.population);
-        let rng = if config.rng_seed == 0 {
-            Rng::from_entropy()
-        } else {
-            Rng::seeded(config.rng_seed)
-        };
+        let rng =
+            if config.rng_seed == 0 { Rng::from_entropy() } else { Rng::seeded(config.rng_seed) };
 
         let mut state = Self {
             config,

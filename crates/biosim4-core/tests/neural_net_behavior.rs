@@ -23,7 +23,7 @@ fn empty_genome_has_no_connections() {
 #[test]
 fn sensor_to_action_connection_survives_culling() {
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
-    let g = vec![make_gene(1, 0, 1, 0, 4096)];  // sensor 0 → action 0
+    let g = vec![make_gene(1, 0, 1, 0, 4096)]; // sensor 0 → action 0
     let nnet = create_wiring(&g, cfg);
     assert_eq!(nnet.connection_count(), 1, "direct sensor→action should survive");
     assert_eq!(nnet.neurons.len(), 0, "no neurons needed");
@@ -34,8 +34,8 @@ fn dangling_neuron_chain_is_culled() {
     // Sensor 0 → neuron 0 → neuron 1 → (nothing). All must be culled.
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let g = vec![
-        make_gene(1, 0, 0, 0, 4096),  // sensor 0 → neuron 0
-        make_gene(0, 0, 0, 1, 4096),  // neuron 0 → neuron 1
+        make_gene(1, 0, 0, 0, 4096), // sensor 0 → neuron 0
+        make_gene(0, 0, 0, 1, 4096), // neuron 0 → neuron 1
     ];
     let nnet = create_wiring(&g, cfg);
     assert_eq!(nnet.connection_count(), 0, "dangling chain should be fully culled");
@@ -47,8 +47,8 @@ fn neuron_with_action_output_survives() {
     // Sensor 0 → neuron 0 → action 0
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let g = vec![
-        make_gene(1, 0, 0, 0, 4096),  // sensor 0 → neuron 0
-        make_gene(0, 0, 1, 0, 4096),  // neuron 0 → action 0
+        make_gene(1, 0, 0, 0, 4096), // sensor 0 → neuron 0
+        make_gene(0, 0, 1, 0, 4096), // neuron 0 → action 0
     ];
     let nnet = create_wiring(&g, cfg);
     assert_eq!(nnet.connection_count(), 2);
@@ -62,10 +62,10 @@ fn connections_split_into_neuron_and_action_lists() {
     // every connection in the right bucket regardless of input ordering.
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let g = vec![
-        make_gene(0, 0, 1, 0, 4096),  // neuron 0 → action 0
-        make_gene(1, 0, 0, 0, 4096),  // sensor 0 → neuron 0
-        make_gene(0, 0, 0, 1, 4096),  // neuron 0 → neuron 1
-        make_gene(0, 1, 1, 0, 4096),  // neuron 1 → action 0
+        make_gene(0, 0, 1, 0, 4096), // neuron 0 → action 0
+        make_gene(1, 0, 0, 0, 4096), // sensor 0 → neuron 0
+        make_gene(0, 0, 0, 1, 4096), // neuron 0 → neuron 1
+        make_gene(0, 1, 1, 0, 4096), // neuron 1 → action 0
     ];
     let nnet = create_wiring(&g, cfg);
     for c in &nnet.neuron_connections {
@@ -86,7 +86,13 @@ fn feed_forward_with_constant_sensor_produces_finite_actions() {
     ];
     let mut nnet = create_wiring(&g, cfg);
     let levels = feed_forward_alloc(&mut nnet, 17, |idx| {
-        if idx == 0 { 0.7 } else if idx == 1 { 0.3 } else { 0.5 }
+        if idx == 0 {
+            0.7
+        } else if idx == 1 {
+            0.3
+        } else {
+            0.5
+        }
     });
     assert_eq!(levels.len(), 17);
     for (i, l) in levels.iter().enumerate() {
@@ -142,15 +148,14 @@ fn recurrent_neuron_output_latches_across_steps() {
     // weight 8192 / 8192.0 = 1.0
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let g = vec![
-        make_gene(1, 0, 0, 0, 8192),  // sensor 0 → neuron 0 (weight +1.0)
-        make_gene(0, 0, 0, 0, 8192),  // neuron 0 → neuron 0 self-loop (weight +1.0)
-        make_gene(0, 0, 1, 0, 8192),  // neuron 0 → action 0 (weight +1.0)
+        make_gene(1, 0, 0, 0, 8192), // sensor 0 → neuron 0 (weight +1.0)
+        make_gene(0, 0, 0, 0, 8192), // neuron 0 → neuron 0 self-loop (weight +1.0)
+        make_gene(0, 0, 1, 0, 8192), // neuron 0 → action 0 (weight +1.0)
     ];
     let mut nnet = create_wiring(&g, cfg);
 
     assert_eq!(nnet.neurons.len(), 1, "expected exactly one internal neuron");
-    assert!(nnet.neurons[0].driven,
-        "neuron0 has both sensor input and self-input, so driven=true");
+    assert!(nnet.neurons[0].driven, "neuron0 has both sensor input and self-input, so driven=true");
     // Initial output is 0.5 (set in create_wiring)
     assert!((nnet.neurons[0].output - 0.5).abs() < 1e-6);
 
@@ -159,8 +164,11 @@ fn recurrent_neuron_output_latches_across_steps() {
     // neuron.output ← tanh(1.5) ≈ 0.9051
     let _levels1 = feed_forward_alloc(&mut nnet, 17, |_| 1.0);
     let v1 = nnet.neurons[0].output;
-    assert!(v1 > 0.8,
-        "after step with sensor=1.0, neuron should have large positive output, got {}", v1);
+    assert!(
+        v1 > 0.8,
+        "after step with sensor=1.0, neuron should have large positive output, got {}",
+        v1
+    );
 
     // ── Step 2: sensor = 0.0 ──
     // With latching:    neuron_accum = 1.0*0.0 + 1.0*v1  ≈ 0.905  → action ≈ tanh(0.905) ≈ 0.72
@@ -183,7 +191,7 @@ fn undriven_neuron_acts_as_constant_bias() {
     // neuron0.driven = false  →  output stays at the initial 0.5 forever.
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let g = vec![
-        make_gene(0, 0, 1, 0, 8192),  // neuron 0 → action 0 (weight +1.0)
+        make_gene(0, 0, 1, 0, 8192), // neuron 0 → action 0 (weight +1.0)
     ];
     let mut nnet = create_wiring(&g, cfg);
 
@@ -197,16 +205,20 @@ fn undriven_neuron_acts_as_constant_bias() {
 
     assert!(
         (levels1[0] - 0.5).abs() < 1e-5,
-        "undriven neuron contributes constant 0.5 to action, got {}", levels1[0]
+        "undriven neuron contributes constant 0.5 to action, got {}",
+        levels1[0]
     );
     assert!(
         (levels2[0] - levels1[0]).abs() < 1e-5,
-        "undriven neuron output must be identical across steps: {} vs {}", levels1[0], levels2[0]
+        "undriven neuron output must be identical across steps: {} vs {}",
+        levels1[0],
+        levels2[0]
     );
     // Neuron output itself must remain 0.5 (never updated)
     assert!(
         (nnet.neurons[0].output - 0.5).abs() < 1e-6,
-        "undriven neuron.output must still be 0.5, got {}", nnet.neurons[0].output
+        "undriven neuron.output must still be 0.5, got {}",
+        nnet.neurons[0].output
     );
 }
 
@@ -216,11 +228,14 @@ fn undriven_neuron_acts_as_constant_bias() {
 fn pure_self_loop_neuron_is_culled() {
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     let g = vec![
-        make_gene(0, 0, 0, 0, 8192),  // neuron 0 → neuron 0 only — no action output
+        make_gene(0, 0, 0, 0, 8192), // neuron 0 → neuron 0 only — no action output
     ];
     let nnet = create_wiring(&g, cfg);
-    assert_eq!(nnet.connection_count(), 0,
-        "self-loop with no downstream action must be fully culled");
+    assert_eq!(
+        nnet.connection_count(),
+        0,
+        "self-loop with no downstream action must be fully culled"
+    );
     assert_eq!(nnet.neurons.len(), 0);
 }
 
@@ -232,9 +247,9 @@ fn recurrent_output_decays_across_multiple_silent_steps() {
     let cfg = WiringConfig { sensor_count: 21, action_count: 17, max_neurons: 5 };
     // Self-loop weight 0.5 so the decay is gradual rather than explosive
     let g = vec![
-        make_gene(1, 0, 0, 0, 8192),   // sensor 0 → neuron 0  (weight +1.0)
-        make_gene(0, 0, 0, 0, 4096),   // neuron 0 → neuron 0  (weight +0.5)
-        make_gene(0, 0, 1, 0, 8192),   // neuron 0 → action 0  (weight +1.0)
+        make_gene(1, 0, 0, 0, 8192), // sensor 0 → neuron 0  (weight +1.0)
+        make_gene(0, 0, 0, 0, 4096), // neuron 0 → neuron 0  (weight +0.5)
+        make_gene(0, 0, 1, 0, 8192), // neuron 0 → action 0  (weight +1.0)
     ];
     let mut nnet = create_wiring(&g, cfg);
 
@@ -245,13 +260,21 @@ fn recurrent_output_decays_across_multiple_silent_steps() {
     let step1 = feed_forward_alloc(&mut nnet, 17, |_| 0.0);
     let step2 = feed_forward_alloc(&mut nnet, 17, |_| 0.0);
 
-    assert!(step1[0].abs() > 1e-3,
-        "one step after sensor pulse, action should still be nonzero (got {})", step1[0]);
-    assert!(step2[0].abs() > 1e-3,
-        "two steps after pulse, action should still be nonzero (got {})", step2[0]);
+    assert!(
+        step1[0].abs() > 1e-3,
+        "one step after sensor pulse, action should still be nonzero (got {})",
+        step1[0]
+    );
+    assert!(
+        step2[0].abs() > 1e-3,
+        "two steps after pulse, action should still be nonzero (got {})",
+        step2[0]
+    );
     // Signal must decay (not amplify unboundedly)
     assert!(
         step2[0].abs() <= step1[0].abs() + 1e-3,
-        "action should not grow after sensor goes silent: step1={} step2={}", step1[0], step2[0]
+        "action should not grow after sensor goes silent: step1={} step2={}",
+        step1[0],
+        step2[0]
     );
 }

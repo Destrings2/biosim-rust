@@ -35,9 +35,9 @@
 
 pub mod helpers;
 
+use crate::genome::genome_similarity;
 use crate::registry::{Sensor, SensorContext, SensorRegistry};
 use crate::sensors::helpers::*;
-use crate::genome::genome_similarity;
 
 pub fn register_builtin_sensors(registry: &mut SensorRegistry) {
     registry.register(Box::new(LocX));
@@ -84,8 +84,12 @@ pub fn register_builtin_sensors(registry: &mut SensorRegistry) {
 
 struct LocX;
 impl Sensor for LocX {
-    fn id(&self) -> &str { "loc_x" }
-    fn name(&self) -> &str { "loc X" }
+    fn id(&self) -> &str {
+        "loc_x"
+    }
+    fn name(&self) -> &str {
+        "loc X"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         ctx.agent.loc.x as f32 / (ctx.world.size_x - 1) as f32
     }
@@ -93,8 +97,12 @@ impl Sensor for LocX {
 
 struct LocY;
 impl Sensor for LocY {
-    fn id(&self) -> &str { "loc_y" }
-    fn name(&self) -> &str { "loc Y" }
+    fn id(&self) -> &str {
+        "loc_y"
+    }
+    fn name(&self) -> &str {
+        "loc Y"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         ctx.agent.loc.y as f32 / (ctx.world.size_y - 1) as f32
     }
@@ -102,8 +110,12 @@ impl Sensor for LocY {
 
 struct BoundaryDistX;
 impl Sensor for BoundaryDistX {
-    fn id(&self) -> &str { "boundary_dist_x" }
-    fn name(&self) -> &str { "boundary dist X" }
+    fn id(&self) -> &str {
+        "boundary_dist_x"
+    }
+    fn name(&self) -> &str {
+        "boundary dist X"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let x = ctx.agent.loc.x as f32;
         let sx = (ctx.world.size_x - 1) as f32;
@@ -113,8 +125,12 @@ impl Sensor for BoundaryDistX {
 
 struct BoundaryDistY;
 impl Sensor for BoundaryDistY {
-    fn id(&self) -> &str { "boundary_dist_y" }
-    fn name(&self) -> &str { "boundary dist Y" }
+    fn id(&self) -> &str {
+        "boundary_dist_y"
+    }
+    fn name(&self) -> &str {
+        "boundary dist Y"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let y = ctx.agent.loc.y as f32;
         let sy = (ctx.world.size_y - 1) as f32;
@@ -124,8 +140,12 @@ impl Sensor for BoundaryDistY {
 
 struct BoundaryDist;
 impl Sensor for BoundaryDist {
-    fn id(&self) -> &str { "boundary_dist" }
-    fn name(&self) -> &str { "boundary dist" }
+    fn id(&self) -> &str {
+        "boundary_dist"
+    }
+    fn name(&self) -> &str {
+        "boundary dist"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let x = ctx.agent.loc.x as f32;
         let y = ctx.agent.loc.y as f32;
@@ -143,8 +163,12 @@ impl Sensor for BoundaryDist {
 
 struct LastMoveDirX;
 impl Sensor for LastMoveDirX {
-    fn id(&self) -> &str { "last_move_dir_x" }
-    fn name(&self) -> &str { "last move dir X" }
+    fn id(&self) -> &str {
+        "last_move_dir_x"
+    }
+    fn name(&self) -> &str {
+        "last move dir X"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let dx = ctx.agent.last_move_dir.as_normalized_coord().x;
         (dx as f32 + 1.0) / 2.0
@@ -153,8 +177,12 @@ impl Sensor for LastMoveDirX {
 
 struct LastMoveDirY;
 impl Sensor for LastMoveDirY {
-    fn id(&self) -> &str { "last_move_dir_y" }
-    fn name(&self) -> &str { "last move dir Y" }
+    fn id(&self) -> &str {
+        "last_move_dir_y"
+    }
+    fn name(&self) -> &str {
+        "last move dir Y"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let dy = ctx.agent.last_move_dir.as_normalized_coord().y;
         (dy as f32 + 1.0) / 2.0
@@ -167,41 +195,60 @@ impl Sensor for LastMoveDirY {
 
 struct PopulationSensor;
 impl Sensor for PopulationSensor {
-    fn id(&self) -> &str { "population" }
-    fn name(&self) -> &str { "population density" }
+    fn id(&self) -> &str {
+        "population"
+    }
+    fn name(&self) -> &str {
+        "population density"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let mut count = 0u32;
         let mut total = 0u32;
         crate::grid::visit_neighborhood(
-            ctx.world.grid, ctx.agent.loc,
+            ctx.world.grid,
+            ctx.agent.loc,
             crate::constants::POPULATION_SENSOR_RADIUS,
             |loc| {
                 total += 1;
-                if ctx.world.grid.is_occupied_at(loc) { count += 1; }
+                if ctx.world.grid.is_occupied_at(loc) {
+                    count += 1;
+                }
             },
         );
-        if total == 0 { return 0.0; }
+        if total == 0 {
+            return 0.0;
+        }
         count as f32 / total as f32
     }
 }
 
 struct PopulationFwd;
 impl Sensor for PopulationFwd {
-    fn id(&self) -> &str { "population_fwd" }
-    fn name(&self) -> &str { "population fwd" }
+    fn id(&self) -> &str {
+        "population_fwd"
+    }
+    fn name(&self) -> &str {
+        "population fwd"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         population_density_along_axis(
-            ctx.agent.loc, ctx.agent.last_move_dir,
+            ctx.agent.loc,
+            ctx.agent.last_move_dir,
             crate::constants::POPULATION_SENSOR_RADIUS,
-            ctx.world.grid, ctx.world.population,
+            ctx.world.grid,
+            ctx.world.population,
         )
     }
 }
 
 struct PopulationLR;
 impl Sensor for PopulationLR {
-    fn id(&self) -> &str { "population_lr" }
-    fn name(&self) -> &str { "population LR" }
+    fn id(&self) -> &str {
+        "population_lr"
+    }
+    fn name(&self) -> &str {
+        "population LR"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let r = crate::constants::POPULATION_SENSOR_RADIUS;
         lr_average(ctx.agent.last_move_dir, |d| {
@@ -212,18 +259,24 @@ impl Sensor for PopulationLR {
 
 struct GeneticSimFwd;
 impl Sensor for GeneticSimFwd {
-    fn id(&self) -> &str { "genetic_sim_fwd" }
-    fn name(&self) -> &str { "genetic similarity fwd" }
+    fn id(&self) -> &str {
+        "genetic_sim_fwd"
+    }
+    fn name(&self) -> &str {
+        "genetic similarity fwd"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let step = ctx.agent.last_move_dir.as_normalized_coord();
         let grid = ctx.world.grid;
-        let pop  = ctx.world.population;
+        let pop = ctx.world.population;
         for i in 1..=crate::constants::GENETIC_SIM_PROBE_DIST {
             let target = crate::types::Coord::new(
                 ctx.agent.loc.x + step.x * i,
                 ctx.agent.loc.y + step.y * i,
             );
-            if !grid.is_in_bounds(target) { break; }
+            if !grid.is_in_bounds(target) {
+                break;
+            }
             if let Some(neighbor) = pop.get_at(grid, target) {
                 return genome_similarity(&ctx.agent.genome, &neighbor.genome, 0);
             }
@@ -238,24 +291,36 @@ impl Sensor for GeneticSimFwd {
 
 struct BarrierFwd;
 impl Sensor for BarrierFwd {
-    fn id(&self) -> &str { "barrier_fwd" }
-    fn name(&self) -> &str { "barrier fwd" }
+    fn id(&self) -> &str {
+        "barrier_fwd"
+    }
+    fn name(&self) -> &str {
+        "barrier fwd"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         1.0 - short_probe_barrier_fwd(
-            ctx.agent.loc, ctx.agent.last_move_dir,
-            crate::constants::SHORT_PROBE_DIST, ctx.world.grid,
+            ctx.agent.loc,
+            ctx.agent.last_move_dir,
+            crate::constants::SHORT_PROBE_DIST,
+            ctx.world.grid,
         )
     }
 }
 
 struct BarrierLR;
 impl Sensor for BarrierLR {
-    fn id(&self) -> &str { "barrier_lr" }
-    fn name(&self) -> &str { "barrier LR" }
+    fn id(&self) -> &str {
+        "barrier_lr"
+    }
+    fn name(&self) -> &str {
+        "barrier LR"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         1.0 - short_probe_barrier_lr(
-            ctx.agent.loc, ctx.agent.last_move_dir,
-            crate::constants::SHORT_PROBE_DIST, ctx.world.grid,
+            ctx.agent.loc,
+            ctx.agent.last_move_dir,
+            crate::constants::SHORT_PROBE_DIST,
+            ctx.world.grid,
         )
     }
 }
@@ -266,18 +331,26 @@ impl Sensor for BarrierLR {
 /// by the user.
 struct KillBarrierFwd;
 impl Sensor for KillBarrierFwd {
-    fn id(&self) -> &str { "kill_barrier_fwd" }
-    fn name(&self) -> &str { "kill barrier fwd" }
+    fn id(&self) -> &str {
+        "kill_barrier_fwd"
+    }
+    fn name(&self) -> &str {
+        "kill barrier fwd"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let step = ctx.agent.last_move_dir.as_normalized_coord();
-        if step.x == 0 && step.y == 0 { return 0.0; }
+        if step.x == 0 && step.y == 0 {
+            return 0.0;
+        }
         let max = crate::constants::GENETIC_SIM_PROBE_DIST;
         for i in 1..=max {
             let p = crate::types::Coord::new(
                 ctx.agent.loc.x + step.x * i,
                 ctx.agent.loc.y + step.y * i,
             );
-            if !ctx.world.grid.is_in_bounds(p) { return 0.0; }
+            if !ctx.world.grid.is_in_bounds(p) {
+                return 0.0;
+            }
             if ctx.world.grid.is_kill_barrier_at(p) {
                 // Closer kill barrier = stronger reading.
                 return 1.0 - (i as f32 - 1.0) / max as f32;
@@ -289,24 +362,36 @@ impl Sensor for KillBarrierFwd {
 
 struct LongprobePopFwd;
 impl Sensor for LongprobePopFwd {
-    fn id(&self) -> &str { "longprobe_pop_fwd" }
-    fn name(&self) -> &str { "long probe pop fwd" }
+    fn id(&self) -> &str {
+        "longprobe_pop_fwd"
+    }
+    fn name(&self) -> &str {
+        "long probe pop fwd"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         long_probe_population_fwd(
-            ctx.agent.loc, ctx.agent.last_move_dir,
-            ctx.agent.long_probe_dist, ctx.world.grid,
+            ctx.agent.loc,
+            ctx.agent.last_move_dir,
+            ctx.agent.long_probe_dist,
+            ctx.world.grid,
         )
     }
 }
 
 struct LongprobeBarFwd;
 impl Sensor for LongprobeBarFwd {
-    fn id(&self) -> &str { "longprobe_bar_fwd" }
-    fn name(&self) -> &str { "long probe barrier fwd" }
+    fn id(&self) -> &str {
+        "longprobe_bar_fwd"
+    }
+    fn name(&self) -> &str {
+        "long probe barrier fwd"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         long_probe_barrier_fwd(
-            ctx.agent.loc, ctx.agent.last_move_dir,
-            ctx.agent.long_probe_dist, ctx.world.grid,
+            ctx.agent.loc,
+            ctx.agent.last_move_dir,
+            ctx.agent.long_probe_dist,
+            ctx.world.grid,
         )
     }
 }
@@ -317,8 +402,12 @@ impl Sensor for LongprobeBarFwd {
 
 struct Osc1;
 impl Sensor for Osc1 {
-    fn id(&self) -> &str { "osc1" }
-    fn name(&self) -> &str { "oscillator 1" }
+    fn id(&self) -> &str {
+        "osc1"
+    }
+    fn name(&self) -> &str {
+        "oscillator 1"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let phase = ctx.sim_step % ctx.agent.osc_period;
         (std::f32::consts::TAU * phase as f32 / ctx.agent.osc_period as f32).sin() * 0.5 + 0.5
@@ -327,8 +416,12 @@ impl Sensor for Osc1 {
 
 struct Age;
 impl Sensor for Age {
-    fn id(&self) -> &str { "age" }
-    fn name(&self) -> &str { "age" }
+    fn id(&self) -> &str {
+        "age"
+    }
+    fn name(&self) -> &str {
+        "age"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         ctx.agent.age as f32 / ctx.world.steps_per_generation as f32
     }
@@ -336,8 +429,12 @@ impl Sensor for Age {
 
 struct RandomSensor;
 impl Sensor for RandomSensor {
-    fn id(&self) -> &str { "random" }
-    fn name(&self) -> &str { "random" }
+    fn id(&self) -> &str {
+        "random"
+    }
+    fn name(&self) -> &str {
+        "random"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         ctx.rng.gen_f32()
     }
@@ -351,37 +448,58 @@ macro_rules! signal_sensors {
     ($s:ident, $sf:ident, $slr:ident, $layer:literal, $id:literal, $idf:literal, $idlr:literal, $name:literal, $namef:literal, $namelr:literal) => {
         struct $s;
         impl Sensor for $s {
-            fn id(&self)   -> &str { $id }
-            fn name(&self) -> &str { $name }
+            fn id(&self) -> &str {
+                $id
+            }
+            fn name(&self) -> &str {
+                $name
+            }
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
                 ctx.world.signals.get_density(
-                    $layer, ctx.agent.loc,
-                    crate::constants::SIGNAL_SENSOR_RADIUS, ctx.world.grid,
+                    $layer,
+                    ctx.agent.loc,
+                    crate::constants::SIGNAL_SENSOR_RADIUS,
+                    ctx.world.grid,
                 )
             }
         }
         struct $sf;
         impl Sensor for $sf {
-            fn id(&self)   -> &str { $idf }
-            fn name(&self) -> &str { $namef }
+            fn id(&self) -> &str {
+                $idf
+            }
+            fn name(&self) -> &str {
+                $namef
+            }
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
                 signal_density_along_axis(
-                    $layer, ctx.agent.loc, ctx.agent.last_move_dir,
+                    $layer,
+                    ctx.agent.loc,
+                    ctx.agent.last_move_dir,
                     crate::constants::SIGNAL_SENSOR_RADIUS,
-                    ctx.world.grid, ctx.world.signals,
+                    ctx.world.grid,
+                    ctx.world.signals,
                 )
             }
         }
         struct $slr;
         impl Sensor for $slr {
-            fn id(&self)   -> &str { $idlr }
-            fn name(&self) -> &str { $namelr }
+            fn id(&self) -> &str {
+                $idlr
+            }
+            fn name(&self) -> &str {
+                $namelr
+            }
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
                 let r = crate::constants::SIGNAL_SENSOR_RADIUS;
                 lr_average(ctx.agent.last_move_dir, |d| {
                     signal_density_along_axis(
-                        $layer, ctx.agent.loc, d, r,
-                        ctx.world.grid, ctx.world.signals,
+                        $layer,
+                        ctx.agent.loc,
+                        d,
+                        r,
+                        ctx.world.grid,
+                        ctx.world.signals,
                     )
                 })
             }
@@ -389,16 +507,42 @@ macro_rules! signal_sensors {
     };
 }
 
-
-signal_sensors!(Signal0, Signal0Fwd, Signal0LR,
-    0, "signal0", "signal0_fwd", "signal0_lr",
-    "signal layer 0", "signal 0 fwd", "signal 0 LR");
-signal_sensors!(Signal1, Signal1Fwd, Signal1LR,
-    1, "signal1", "signal1_fwd", "signal1_lr",
-    "signal layer 1", "signal 1 fwd", "signal 1 LR");
-signal_sensors!(Signal2, Signal2Fwd, Signal2LR,
-    2, "signal2", "signal2_fwd", "signal2_lr",
-    "signal layer 2", "signal 2 fwd", "signal 2 LR");
+signal_sensors!(
+    Signal0,
+    Signal0Fwd,
+    Signal0LR,
+    0,
+    "signal0",
+    "signal0_fwd",
+    "signal0_lr",
+    "signal layer 0",
+    "signal 0 fwd",
+    "signal 0 LR"
+);
+signal_sensors!(
+    Signal1,
+    Signal1Fwd,
+    Signal1LR,
+    1,
+    "signal1",
+    "signal1_fwd",
+    "signal1_lr",
+    "signal layer 1",
+    "signal 1 fwd",
+    "signal 1 LR"
+);
+signal_sensors!(
+    Signal2,
+    Signal2Fwd,
+    Signal2LR,
+    2,
+    "signal2",
+    "signal2_fwd",
+    "signal2_lr",
+    "signal layer 2",
+    "signal 2 fwd",
+    "signal 2 LR"
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Memory sensors
@@ -408,8 +552,12 @@ macro_rules! read_memory {
     ($name:ident, $id:literal, $label:literal, $reg:literal) => {
         struct $name;
         impl Sensor for $name {
-            fn id(&self)   -> &str { $id }
-            fn name(&self) -> &str { $label }
+            fn id(&self) -> &str {
+                $id
+            }
+            fn name(&self) -> &str {
+                $label
+            }
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
                 ctx.agent.memory[$reg]
             }
@@ -428,8 +576,12 @@ read_memory!(Memory3, "memory_3", "memory 3", 3);
 
 struct EnergyLevel;
 impl Sensor for EnergyLevel {
-    fn id(&self)   -> &str { "energy_level" }
-    fn name(&self) -> &str { "energy level" }
+    fn id(&self) -> &str {
+        "energy_level"
+    }
+    fn name(&self) -> &str {
+        "energy level"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         ctx.agent.energy.clamp(0.0, 1.0)
     }
@@ -437,8 +589,12 @@ impl Sensor for EnergyLevel {
 
 struct FoodHere;
 impl Sensor for FoodHere {
-    fn id(&self)   -> &str { "food_here" }
-    fn name(&self) -> &str { "food here" }
+    fn id(&self) -> &str {
+        "food_here"
+    }
+    fn name(&self) -> &str {
+        "food here"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         ctx.world.food.get(ctx.agent.loc)
     }
@@ -446,20 +602,30 @@ impl Sensor for FoodHere {
 
 struct FoodFwd;
 impl Sensor for FoodFwd {
-    fn id(&self)   -> &str { "food_fwd" }
-    fn name(&self) -> &str { "food fwd" }
+    fn id(&self) -> &str {
+        "food_fwd"
+    }
+    fn name(&self) -> &str {
+        "food fwd"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         ctx.world.food.get_density_fwd(
-            ctx.agent.loc, ctx.agent.last_move_dir,
-            crate::constants::FOOD_SENSOR_RADIUS, ctx.world.grid,
+            ctx.agent.loc,
+            ctx.agent.last_move_dir,
+            crate::constants::FOOD_SENSOR_RADIUS,
+            ctx.world.grid,
         )
     }
 }
 
 struct FoodLR;
 impl Sensor for FoodLR {
-    fn id(&self)   -> &str { "food_lr" }
-    fn name(&self) -> &str { "food LR" }
+    fn id(&self) -> &str {
+        "food_lr"
+    }
+    fn name(&self) -> &str {
+        "food LR"
+    }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let r = crate::constants::FOOD_SENSOR_RADIUS;
         lr_average(ctx.agent.last_move_dir, |d| {

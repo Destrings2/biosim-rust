@@ -8,21 +8,13 @@
 use std::time::Instant;
 
 use biosim4_core::{
-    sim_config::SimConfig,
-    sim_state::SimulationState,
-    sim_step::step_generation,
+    sim_config::SimConfig, sim_state::SimulationState, sim_step::step_generation,
     spawn::spawn_new_generation,
 };
 
 fn main() {
-    let threads: u32 = std::env::args()
-        .nth(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(4);
-    let population: u32 = std::env::args()
-        .nth(2)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1500);
+    let threads: u32 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(4);
+    let population: u32 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(1500);
 
     let gens: u32 = 30;
     let mut cfg = SimConfig::default();

@@ -4,9 +4,9 @@
 //! zones via `on_sim_step`. The border width and lethality probability are
 //! configurable. Agents that survive all steps in a non-lethal zone pass.
 
-use crate::agent::Agent;
-use crate::registry::challenge::{Challenge, WorldMut};
-use crate::world::World;
+use biosim4_core::agent::Agent;
+use biosim4_core::registry::challenge::{Challenge, WorldMut};
+use biosim4_core::world::World;
 use serde_json::{json, Value};
 
 /// Each step, agents take probabilistic damage proportional to proximity to
@@ -22,12 +22,18 @@ pub struct RadioactiveWallsChallenge {
 }
 
 impl Default for RadioactiveWallsChallenge {
-    fn default() -> Self { Self { intensity: 0.5, half_life: 8.0 } }
+    fn default() -> Self {
+        Self { intensity: 0.5, half_life: 8.0 }
+    }
 }
 
 impl Challenge for RadioactiveWallsChallenge {
-    fn id(&self) -> &str { "radioactive_walls" }
-    fn name(&self) -> &str { "Radioactive Walls" }
+    fn id(&self) -> &str {
+        "radioactive_walls"
+    }
+    fn name(&self) -> &str {
+        "Radioactive Walls"
+    }
     fn description(&self) -> &str {
         "Active wall (west, then east) emits radiation. Per-step kill probability falls off exponentially with distance. Survivors at gen-end pass."
     }
@@ -43,8 +49,12 @@ impl Challenge for RadioactiveWallsChallenge {
         })
     }
     fn configure(&mut self, p: Value) -> Result<(), String> {
-        if let Some(v) = p.get("intensity") { self.intensity = v.as_f64().ok_or("intensity")? as f32; }
-        if let Some(v) = p.get("half_life") { self.half_life = v.as_f64().ok_or("half_life")? as f32; }
+        if let Some(v) = p.get("intensity") {
+            self.intensity = v.as_f64().ok_or("intensity")? as f32;
+        }
+        if let Some(v) = p.get("half_life") {
+            self.half_life = v.as_f64().ok_or("half_life")? as f32;
+        }
         Ok(())
     }
     fn evaluate(&self, _agent: &Agent, _world: &World) -> (bool, f32) {
@@ -59,11 +69,19 @@ impl Challenge for RadioactiveWallsChallenge {
         let k = (2.0_f32).ln() / self.half_life.max(0.5);
 
         // Collect victim ids first so we can borrow population mutably afterward.
-        let victims: Vec<u32> = ctx.population.iter_alive().filter_map(|a| {
-            let dist = (a.loc.x as i32 - active_wall_x as i32).unsigned_abs() as f32;
-            let p = self.intensity * (-k * dist).exp();
-            if ctx.rng.gen_bool(p) { Some(a.id) } else { None }
-        }).collect();
+        let victims: Vec<u32> = ctx
+            .population
+            .iter_alive()
+            .filter_map(|a| {
+                let dist = (a.loc.x as i32 - active_wall_x as i32).unsigned_abs() as f32;
+                let p = self.intensity * (-k * dist).exp();
+                if ctx.rng.gen_bool(p) {
+                    Some(a.id)
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         for id in victims {
             ctx.population.queue_for_death(id);

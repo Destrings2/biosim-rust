@@ -3,9 +3,8 @@
 
 use biosim4_core::{
     genome::ops::{
-        apply_point_mutations, generate_child_genome, genetic_diversity,
-        genome_similarity, make_random_genome, random_bit_flip, random_insert_deletion,
-        Genome, ReproductionParams,
+        apply_point_mutations, generate_child_genome, genetic_diversity, genome_similarity,
+        make_random_genome, random_bit_flip, random_insert_deletion, Genome, ReproductionParams,
     },
     rng::Rng,
     sim_config::SimConfig,
@@ -19,10 +18,7 @@ fn make_random_genome_respects_length_range() {
     let mut rng = Rng::seeded(7);
     for _ in 0..50 {
         let g = make_random_genome(&cfg, &mut rng);
-        assert!(
-            g.len() >= 10 && g.len() <= 20,
-            "genome length {} not in [10, 20]", g.len()
-        );
+        assert!(g.len() >= 10 && g.len() <= 20, "genome length {} not in [10, 20]", g.len());
     }
 }
 
@@ -36,9 +32,8 @@ fn random_bit_flip_changes_exactly_one_bit() {
     let mut mutated = original.clone();
     random_bit_flip(&mut mutated, &mut rng);
 
-    let diff_bits: u32 = original.iter().zip(mutated.iter())
-        .map(|(a, b)| (a.0 ^ b.0).count_ones())
-        .sum();
+    let diff_bits: u32 =
+        original.iter().zip(mutated.iter()).map(|(a, b)| (a.0 ^ b.0).count_ones()).sum();
     assert_eq!(diff_bits, 1, "bit flip should change exactly one bit, got {}", diff_bits);
 }
 
@@ -78,8 +73,12 @@ fn genome_similarity_self_is_one() {
     // Try all comparison methods (0=jw, 1=hamming-bits, 2=hamming-bytes)
     for method in 0..=2u8 {
         let s = genome_similarity(&g, &g, method);
-        assert!((s - 1.0).abs() < 1e-3,
-                "method {} self-similarity should be 1.0, got {}", method, s);
+        assert!(
+            (s - 1.0).abs() < 1e-3,
+            "method {} self-similarity should be 1.0, got {}",
+            method,
+            s
+        );
     }
 }
 
@@ -94,8 +93,12 @@ fn genome_similarity_is_in_unit_interval() {
     let g2 = make_random_genome(&cfg, &mut rng_b);
     for method in 0..=2u8 {
         let s = genome_similarity(&g1, &g2, method);
-        assert!(s.is_finite() && (0.0..=1.0).contains(&s),
-                "method {} similarity {} out of [0,1]", method, s);
+        assert!(
+            s.is_finite() && (0.0..=1.0).contains(&s),
+            "method {} similarity {} out of [0,1]",
+            method,
+            s
+        );
     }
 }
 
@@ -144,7 +147,14 @@ fn generate_child_with_high_mutation_diverges_from_parent() {
 fn generate_child_from_empty_pool_returns_empty() {
     let mut rng = Rng::seeded(0);
     let pool: Vec<Genome> = Vec::new();
-    let params = ReproductionParams { sexual: false, choose_by_fitness: false, mutation_rate: 0.001, insertion_deletion_rate: 0.0, deletion_ratio: 0.5, max_len: 100 };
+    let params = ReproductionParams {
+        sexual: false,
+        choose_by_fitness: false,
+        mutation_rate: 0.001,
+        insertion_deletion_rate: 0.0,
+        deletion_ratio: 0.5,
+        max_len: 100,
+    };
     let child = generate_child_genome(&pool, &params, &mut rng);
     assert!(child.is_empty(), "empty parent pool should give empty child");
 }
@@ -188,9 +198,12 @@ fn sexual_crossover_child_length_bounded_by_average_of_parents() {
         let mut r = Rng::seeded(seed);
         let child = generate_child_genome(&pool, &params, &mut r);
         assert_eq!(
-            child.len(), expected_len,
+            child.len(),
+            expected_len,
             "seed {}: equal-length parents crossover child length should be {}, got {}",
-            seed, expected_len, child.len()
+            seed,
+            expected_len,
+            child.len()
         );
     }
 }
@@ -213,7 +226,8 @@ fn jaro_winkler_stays_in_unit_interval_for_nearly_identical_genomes() {
     let s = genome_similarity(&base, &similar, 0);
     assert!(
         s.is_finite() && (0.0..=1.0).contains(&s),
-        "jaro-winkler similarity {} out of [0, 1]", s
+        "jaro-winkler similarity {} out of [0, 1]",
+        s
     );
 }
 
@@ -235,5 +249,8 @@ fn generate_child_with_sexual_true_and_two_parents_returns_nonempty() {
         max_len: 100,
     };
     let child = generate_child_genome(&pool, &params, &mut rng);
-    assert!(!child.is_empty(), "sexual reproduction from two non-empty parents must produce a non-empty child");
+    assert!(
+        !child.is_empty(),
+        "sexual reproduction from two non-empty parents must produce a non-empty child"
+    );
 }

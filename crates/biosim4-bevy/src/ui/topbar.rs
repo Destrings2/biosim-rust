@@ -11,7 +11,7 @@ use bevy_egui::{egui, EguiContexts};
 use crate::camera::SimCamera;
 use crate::sim::{Sim, SimControls};
 use crate::theme;
-use crate::ui::{TOPBAR_HEIGHT, UiState};
+use crate::ui::{UiState, TOPBAR_HEIGHT};
 
 pub fn draw_topbar(
     mut contexts: EguiContexts,
@@ -96,19 +96,8 @@ fn draw_brand(ui: &mut egui::Ui) {
         let inner = rect.shrink(3.0);
         painter.rect_filled(inner, 0.5, theme::BG);
 
-        ui.label(
-            egui::RichText::new("BIOSIM4")
-                .monospace()
-                .size(13.0)
-                .strong()
-                .color(theme::TEXT),
-        );
-        ui.label(
-            egui::RichText::new("BEVY")
-                .size(9.5)
-                .color(theme::MUTED)
-                .strong(),
-        );
+        ui.label(egui::RichText::new("BIOSIM4").monospace().size(13.0).strong().color(theme::TEXT));
+        ui.label(egui::RichText::new("BEVY").size(9.5).color(theme::MUTED).strong());
     });
 }
 
@@ -147,11 +136,10 @@ fn telemetry_toggle(ui: &mut egui::Ui, state: &mut UiState) {
 /// Screen pixels covered by one world cell at the camera's current zoom.
 /// `pixel_scale` is world-units-per-cell; `ortho.scale` is world-units-per-screen-pixel,
 /// so dividing one by the other yields screen-pixels-per-cell.
-fn compute_zoom_px_per_cell(
-    pixel_scale: f32,
-    cam_q: &Query<&Projection, With<SimCamera>>,
-) -> f32 {
-    let Ok(proj) = cam_q.single() else { return pixel_scale; };
+fn compute_zoom_px_per_cell(pixel_scale: f32, cam_q: &Query<&Projection, With<SimCamera>>) -> f32 {
+    let Ok(proj) = cam_q.single() else {
+        return pixel_scale;
+    };
     match proj {
         Projection::Orthographic(o) if o.scale > 1e-6 => pixel_scale / o.scale,
         _ => pixel_scale,
@@ -159,13 +147,7 @@ fn compute_zoom_px_per_cell(
 }
 
 fn challenge_chip(ui: &mut egui::Ui, sim: &Sim, state: &mut UiState) {
-    let total = sim
-        .state
-        .challenges
-        .schema_list()
-        .as_array()
-        .map(|a| a.len())
-        .unwrap_or(0);
+    let total = sim.state.challenges.schema_list().as_array().map(|a| a.len()).unwrap_or(0);
     let active = total > 0;
     let chip = egui::Button::new(
         egui::RichText::new(format!("●  {total} CHALLENGES"))

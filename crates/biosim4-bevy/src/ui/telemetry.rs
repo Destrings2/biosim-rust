@@ -16,7 +16,9 @@ pub fn draw_telemetry_overlay(
     history: Res<SimHistory>,
     ui_state: Res<UiState>,
 ) {
-    if !ui_state.show_telemetry { return; }
+    if !ui_state.show_telemetry {
+        return;
+    }
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
     let dx = -(RIGHT_PANEL_WIDTH * 0.5);
@@ -50,9 +52,10 @@ pub fn draw_telemetry_overlay(
                     }
 
                     let latest = history.latest().cloned().unwrap_or_default();
-                    let survival:  Vec<f32> = history.points.iter().map(|p| p.survival_rate).collect();
+                    let survival: Vec<f32> =
+                        history.points.iter().map(|p| p.survival_rate).collect();
                     let diversity: Vec<f32> = history.points.iter().map(|p| p.diversity).collect();
-                    let alive:     Vec<f32> = history.points.iter().map(|p| p.alive as f32).collect();
+                    let alive: Vec<f32> = history.points.iter().map(|p| p.alive as f32).collect();
                     let max_alive = alive.iter().cloned().fold(0.0_f32, f32::max).max(1.0);
 
                     ui.horizontal(|ui| {
@@ -102,19 +105,8 @@ fn inline_metric(
 ) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 5.0;
-        ui.label(
-            egui::RichText::new(label)
-                .size(9.5)
-                .color(theme::MUTED)
-                .strong(),
-        );
-        ui.label(
-            egui::RichText::new(value)
-                .monospace()
-                .size(11.5)
-                .color(theme::TEXT)
-                .strong(),
-        );
+        ui.label(egui::RichText::new(label).size(9.5).color(theme::MUTED).strong());
+        ui.label(egui::RichText::new(value).monospace().size(11.5).color(theme::TEXT).strong());
 
         let (rect, _) = ui.allocate_exact_size(egui::vec2(86.0, 18.0), egui::Sense::hover());
         let painter = ui.painter();

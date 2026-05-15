@@ -10,10 +10,7 @@ use crate::sim::{SimControls, Tool};
 use crate::theme;
 use crate::ui::RIGHT_PANEL_WIDTH;
 
-pub fn draw_floating_toolbar(
-    mut contexts: EguiContexts,
-    mut controls: ResMut<SimControls>,
-) {
+pub fn draw_floating_toolbar(mut contexts: EguiContexts, mut controls: ResMut<SimControls>) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
     let dx = -(RIGHT_PANEL_WIDTH * 0.5);
@@ -54,18 +51,15 @@ fn tool_button(ui: &mut egui::Ui, tool: Tool, controls: &mut SimControls) {
     };
 
     let glyph = match tool {
-        Tool::Inspect     => "◎",
-        Tool::Barrier     => "▣",
+        Tool::Inspect => "◎",
+        Tool::Barrier => "▣",
         Tool::KillBarrier => "☠",
-        Tool::Kill        => "✕",
-        Tool::Reproduce   => "✦",
+        Tool::Kill => "✕",
+        Tool::Reproduce => "✦",
     };
 
     let btn = egui::Button::new(
-        egui::RichText::new(format!("{glyph}  {}", tool.label()))
-            .size(11.0)
-            .color(fg)
-            .strong(),
+        egui::RichText::new(format!("{glyph}  {}", tool.label())).size(11.0).color(fg).strong(),
     )
     .fill(fill)
     .stroke(egui::Stroke::new(1.0, stroke))

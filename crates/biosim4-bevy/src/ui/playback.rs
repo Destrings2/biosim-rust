@@ -39,12 +39,30 @@ pub fn draw_playback_bar(
 
                         // ── Group 1: transport
                         play_button(ui, &mut controls);
-                        ghost_button(ui, "STEP",     "Space-aware single step", "S",
-                            controls.running, || queue.items.push(SimCommand::StepOnce));
-                        ghost_button(ui, "STEP GEN", "Run rest of generation",  "G",
-                            controls.running, || queue.items.push(SimCommand::StepGeneration));
-                        ghost_button(ui, "EPOCH",    "Generation + reproduce",  "E",
-                            controls.running, || queue.items.push(SimCommand::RunEpoch));
+                        ghost_button(
+                            ui,
+                            "STEP",
+                            "Space-aware single step",
+                            "S",
+                            controls.running,
+                            || queue.items.push(SimCommand::StepOnce),
+                        );
+                        ghost_button(
+                            ui,
+                            "STEP GEN",
+                            "Run rest of generation",
+                            "G",
+                            controls.running,
+                            || queue.items.push(SimCommand::StepGeneration),
+                        );
+                        ghost_button(
+                            ui,
+                            "EPOCH",
+                            "Generation + reproduce",
+                            "E",
+                            controls.running,
+                            || queue.items.push(SimCommand::RunEpoch),
+                        );
 
                         thin_divider(ui);
 
@@ -57,7 +75,9 @@ pub fn draw_playback_bar(
                                     .logarithmic(true)
                                     .show_value(false),
                             );
-                            if r.changed() { controls.speed = s.max(1) as u32; }
+                            if r.changed() {
+                                controls.speed = s.max(1) as u32;
+                            }
                             format!("{}×", controls.speed)
                         });
 
@@ -100,17 +120,12 @@ fn play_button(ui: &mut egui::Ui, controls: &mut SimControls) {
     let label = if running { "⏸  PAUSE" } else { "▶  PLAY" };
     let color = if running { theme::WARN } else { theme::ACCENT };
     let stroke = if running { theme::WARN } else { theme::ACCENT };
-    let btn = egui::Button::new(
-        egui::RichText::new(label)
-            .monospace()
-            .size(11.0)
-            .strong()
-            .color(color),
-    )
-    .fill(egui::Color32::from_rgba_premultiplied(0, 0, 0, 0))
-    .stroke(egui::Stroke::new(1.0, stroke))
-    .corner_radius(egui::CornerRadius::same(5))
-    .min_size(egui::vec2(88.0, 26.0));
+    let btn =
+        egui::Button::new(egui::RichText::new(label).monospace().size(11.0).strong().color(color))
+            .fill(egui::Color32::from_rgba_premultiplied(0, 0, 0, 0))
+            .stroke(egui::Stroke::new(1.0, stroke))
+            .corner_radius(egui::CornerRadius::same(5))
+            .min_size(egui::vec2(88.0, 26.0));
     let r = ui.add(btn);
     if r.clicked() {
         controls.running = !controls.running;
@@ -139,7 +154,9 @@ fn ghost_button(
     .corner_radius(egui::CornerRadius::same(5))
     .min_size(egui::vec2(64.0, 26.0));
     let r = ui.add_enabled(!disabled, btn).on_hover_text(tip);
-    if r.clicked() { on_click(); }
+    if r.clicked() {
+        on_click();
+    }
     ui.add_space(2.0);
     theme::kbd_hint(ui, kbd);
 }
@@ -153,12 +170,7 @@ fn slider_with_label(
         ui.spacing_mut().item_spacing.x = 6.0;
         ui.label(theme::key_label(label));
         let value = body(ui);
-        ui.label(
-            egui::RichText::new(value)
-                .monospace()
-                .size(11.0)
-                .color(theme::TEXT),
-        );
+        ui.label(egui::RichText::new(value).monospace().size(11.0).color(theme::TEXT));
     });
 }
 

@@ -85,14 +85,16 @@ fn try_move(ctx: &mut ActionContext, dir: Dir) {
     }
 }
 
-
-
 // ── Internal state modulators ─────────────────────────────────────────────
 
 struct SetResponsiveness;
 impl Action for SetResponsiveness {
-    fn id(&self) -> &str { "set_responsiveness" }
-    fn name(&self) -> &str { "set responsiveness" }
+    fn id(&self) -> &str {
+        "set_responsiveness"
+    }
+    fn name(&self) -> &str {
+        "set responsiveness"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         ctx.agent.responsiveness = ((level.tanh() + 1.0) / 2.0).clamp(0.0, 1.0);
     }
@@ -100,8 +102,12 @@ impl Action for SetResponsiveness {
 
 struct SetOscillatorPeriod;
 impl Action for SetOscillatorPeriod {
-    fn id(&self) -> &str { "set_oscillator_period" }
-    fn name(&self) -> &str { "set oscillator period" }
+    fn id(&self) -> &str {
+        "set_oscillator_period"
+    }
+    fn name(&self) -> &str {
+        "set oscillator period"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         let f01 = (level.tanh() + 1.0) / 2.0;
         ctx.agent.osc_period = (1.5 + (7.0 * f01).exp()) as u32 + 1;
@@ -110,8 +116,12 @@ impl Action for SetOscillatorPeriod {
 
 struct SetLongprobeDist;
 impl Action for SetLongprobeDist {
-    fn id(&self) -> &str { "set_longprobe_dist" }
-    fn name(&self) -> &str { "set longprobe dist" }
+    fn id(&self) -> &str {
+        "set_longprobe_dist"
+    }
+    fn name(&self) -> &str {
+        "set longprobe dist"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         let f01 = (level.tanh() + 1.0) / 2.0;
         ctx.agent.long_probe_dist = (1.0 + f01 * 32.0) as u32;
@@ -122,8 +132,12 @@ impl Action for SetLongprobeDist {
 
 struct EmitSignal0;
 impl Action for EmitSignal0 {
-    fn id(&self) -> &str { "emit_signal0" }
-    fn name(&self) -> &str { "emit signal 0" }
+    fn id(&self) -> &str {
+        "emit_signal0"
+    }
+    fn name(&self) -> &str {
+        "emit signal 0"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         if prob2bool(level, ctx.rng) {
             ctx.signals.increment(0, ctx.agent.loc, ctx.world.grid);
@@ -133,8 +147,12 @@ impl Action for EmitSignal0 {
 
 struct EmitSignal1;
 impl Action for EmitSignal1 {
-    fn id(&self) -> &str { "emit_signal1" }
-    fn name(&self) -> &str { "emit signal 1" }
+    fn id(&self) -> &str {
+        "emit_signal1"
+    }
+    fn name(&self) -> &str {
+        "emit signal 1"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         if prob2bool(level, ctx.rng) {
             ctx.signals.increment(1, ctx.agent.loc, ctx.world.grid);
@@ -144,8 +162,12 @@ impl Action for EmitSignal1 {
 
 struct EmitSignal2;
 impl Action for EmitSignal2 {
-    fn id(&self) -> &str { "emit_signal2" }
-    fn name(&self) -> &str { "emit signal 2" }
+    fn id(&self) -> &str {
+        "emit_signal2"
+    }
+    fn name(&self) -> &str {
+        "emit signal 2"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         if prob2bool(level, ctx.rng) {
             ctx.signals.increment(2, ctx.agent.loc, ctx.world.grid);
@@ -157,11 +179,19 @@ impl Action for EmitSignal2 {
 
 struct KillForward;
 impl Action for KillForward {
-    fn id(&self) -> &str { "kill_forward" }
-    fn name(&self) -> &str { "kill forward" }
+    fn id(&self) -> &str {
+        "kill_forward"
+    }
+    fn name(&self) -> &str {
+        "kill forward"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
-        if !ctx.config_kill_enable { return; }
-        if !prob2bool(level, ctx.rng) { return; }
+        if !ctx.config_kill_enable {
+            return;
+        }
+        if !prob2bool(level, ctx.rng) {
+            return;
+        }
         let step = ctx.agent.last_move_dir.as_normalized_coord();
         let target = Coord::new(ctx.agent.loc.x + step.x, ctx.agent.loc.y + step.y);
         if ctx.world.grid.is_occupied_at(target) {
@@ -177,43 +207,78 @@ macro_rules! simple_move {
     ($name:ident, $id:expr, $label:expr, $dir_expr:expr) => {
         struct $name;
         impl Action for $name {
-            fn id(&self) -> &str { $id }
-            fn name(&self) -> &str { $label }
+            fn id(&self) -> &str {
+                $id
+            }
+            fn name(&self) -> &str {
+                $label
+            }
             fn execute(&self, level: f32, ctx: &mut ActionContext) {
                 let dir: Dir = $dir_expr(ctx);
-                if prob2bool(level, ctx.rng) { try_move(ctx, dir); }
+                if prob2bool(level, ctx.rng) {
+                    try_move(ctx, dir);
+                }
             }
         }
     };
 }
 
-simple_move!(MoveEast,    "move_east",    "move east",    |_ctx: &ActionContext| Dir(crate::types::Compass::E));
-simple_move!(MoveWest,    "move_west",    "move west",    |_ctx: &ActionContext| Dir(crate::types::Compass::W));
-simple_move!(MoveNorth,   "move_north",   "move north",   |_ctx: &ActionContext| Dir(crate::types::Compass::N));
-simple_move!(MoveSouth,   "move_south",   "move south",   |_ctx: &ActionContext| Dir(crate::types::Compass::S));
-simple_move!(MoveForward, "move_forward", "move forward", |ctx: &ActionContext| ctx.agent.last_move_dir);
-simple_move!(MoveReverse, "move_reverse", "move reverse", |ctx: &ActionContext| ctx.agent.last_move_dir.rotate180());
-simple_move!(MoveLeft,    "move_left",    "move left",    |ctx: &ActionContext| ctx.agent.last_move_dir.rotate90ccw());
-simple_move!(MoveRight,   "move_right",   "move right",   |ctx: &ActionContext| ctx.agent.last_move_dir.rotate90cw());
+simple_move!(MoveEast, "move_east", "move east", |_ctx: &ActionContext| Dir(
+    crate::types::Compass::E
+));
+simple_move!(MoveWest, "move_west", "move west", |_ctx: &ActionContext| Dir(
+    crate::types::Compass::W
+));
+simple_move!(MoveNorth, "move_north", "move north", |_ctx: &ActionContext| Dir(
+    crate::types::Compass::N
+));
+simple_move!(MoveSouth, "move_south", "move south", |_ctx: &ActionContext| Dir(
+    crate::types::Compass::S
+));
+simple_move!(MoveForward, "move_forward", "move forward", |ctx: &ActionContext| ctx
+    .agent
+    .last_move_dir);
+simple_move!(MoveReverse, "move_reverse", "move reverse", |ctx: &ActionContext| ctx
+    .agent
+    .last_move_dir
+    .rotate180());
+simple_move!(MoveLeft, "move_left", "move left", |ctx: &ActionContext| ctx
+    .agent
+    .last_move_dir
+    .rotate90ccw());
+simple_move!(MoveRight, "move_right", "move right", |ctx: &ActionContext| ctx
+    .agent
+    .last_move_dir
+    .rotate90cw());
 
 struct MoveRL;
 impl Action for MoveRL {
-    fn id(&self) -> &str { "move_rl" }
-    fn name(&self) -> &str { "move RL" }
+    fn id(&self) -> &str {
+        "move_rl"
+    }
+    fn name(&self) -> &str {
+        "move RL"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         let dir = if level >= 0.0 {
             ctx.agent.last_move_dir.rotate90cw()
         } else {
             ctx.agent.last_move_dir.rotate90ccw()
         };
-        if prob2bool(level, ctx.rng) { try_move(ctx, dir); }
+        if prob2bool(level, ctx.rng) {
+            try_move(ctx, dir);
+        }
     }
 }
 
 struct MoveRandom;
 impl Action for MoveRandom {
-    fn id(&self) -> &str { "move_random" }
-    fn name(&self) -> &str { "move random" }
+    fn id(&self) -> &str {
+        "move_random"
+    }
+    fn name(&self) -> &str {
+        "move random"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         if prob2bool(level, ctx.rng) {
             let dir = Dir::random8(ctx.rng);
@@ -226,24 +291,38 @@ impl Action for MoveRandom {
 /// This mirrors the C++ combined-move logic.
 struct MoveX;
 impl Action for MoveX {
-    fn id(&self) -> &str { "move_x" }
-    fn name(&self) -> &str { "move X" }
+    fn id(&self) -> &str {
+        "move_x"
+    }
+    fn name(&self) -> &str {
+        "move X"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         // Standalone MoveX: treat as pure east/west
         let v = level.tanh();
-        let dir = if v >= 0.0 { Dir(crate::types::Compass::E) } else { Dir(crate::types::Compass::W) };
-        if ctx.rng.gen_bool(v.abs()) { try_move(ctx, dir); }
+        let dir =
+            if v >= 0.0 { Dir(crate::types::Compass::E) } else { Dir(crate::types::Compass::W) };
+        if ctx.rng.gen_bool(v.abs()) {
+            try_move(ctx, dir);
+        }
     }
 }
 
 struct MoveY;
 impl Action for MoveY {
-    fn id(&self) -> &str { "move_y" }
-    fn name(&self) -> &str { "move Y" }
+    fn id(&self) -> &str {
+        "move_y"
+    }
+    fn name(&self) -> &str {
+        "move Y"
+    }
     fn execute(&self, level: f32, ctx: &mut ActionContext) {
         let v = level.tanh();
-        let dir = if v >= 0.0 { Dir(crate::types::Compass::N) } else { Dir(crate::types::Compass::S) };
-        if ctx.rng.gen_bool(v.abs()) { try_move(ctx, dir); }
+        let dir =
+            if v >= 0.0 { Dir(crate::types::Compass::N) } else { Dir(crate::types::Compass::S) };
+        if ctx.rng.gen_bool(v.abs()) {
+            try_move(ctx, dir);
+        }
     }
 }
 
@@ -253,8 +332,12 @@ macro_rules! write_memory {
     ($name:ident, $id:literal, $label:literal, $reg:literal) => {
         struct $name;
         impl Action for $name {
-            fn id(&self)   -> &str { $id }
-            fn name(&self) -> &str { $label }
+            fn id(&self) -> &str {
+                $id
+            }
+            fn name(&self) -> &str {
+                $label
+            }
             fn execute(&self, level: f32, ctx: &mut ActionContext) {
                 ctx.agent.memory[$reg] = (level.tanh() + 1.0) / 2.0;
             }

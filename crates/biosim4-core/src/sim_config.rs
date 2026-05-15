@@ -69,7 +69,7 @@ pub struct SimConfig {
     // Analysis / output
     pub genome_analysis_stride: u32,
     pub display_sample_genomes: u32,
-    pub genome_comparison_method: u8,  // 0=jaro-winkler, 1=hamming-bits, 2=hamming-bytes
+    pub genome_comparison_method: u8, // 0=jaro-winkler, 1=hamming-bits, 2=hamming-bytes
     pub save_video: bool,
     pub video_stride: u32,
 }
@@ -124,10 +124,10 @@ impl SimConfig {
     pub fn patch_json(&mut self, patch: &str) -> Result<(), serde_json::Error> {
         let v: serde_json::Value = serde_json::from_str(patch)?;
         let mut current = serde_json::to_value(&*self)?;
-        if let (serde_json::Value::Object(cur), serde_json::Value::Object(p)) =
-            (&mut current, v)
-        {
-            for (k, val) in p { cur.insert(k, val); }
+        if let (serde_json::Value::Object(cur), serde_json::Value::Object(p)) = (&mut current, v) {
+            for (k, val) in p {
+                cur.insert(k, val);
+            }
         }
         *self = serde_json::from_value(current)?;
         Ok(())

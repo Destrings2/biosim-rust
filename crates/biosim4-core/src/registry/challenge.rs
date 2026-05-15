@@ -36,10 +36,10 @@
 //! ```
 
 use crate::agent::Agent;
-use crate::world::World;
 use crate::grid::Grid;
 use crate::population::Population;
 use crate::signals_layer::Signals;
+use crate::world::World;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -71,7 +71,9 @@ pub struct WorldMut<'a> {
 pub trait Challenge: Send + Sync {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
-    fn description(&self) -> &str { self.name() }
+    fn description(&self) -> &str {
+        self.name()
+    }
 
     /// JSON Schema (draft-07 object) describing configurable params.
     fn params_schema(&self) -> Value;
@@ -89,7 +91,9 @@ pub trait Challenge: Send + Sync {
     fn on_generation_start(&mut self, _ctx: &mut WorldMut) {}
 
     /// Return any visual overlays for this challenge. Default: empty.
-    fn overlays(&self, _world: &World) -> Vec<ChallengeOverlay> { Vec::new() }
+    fn overlays(&self, _world: &World) -> Vec<ChallengeOverlay> {
+        Vec::new()
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -97,7 +101,10 @@ pub enum ChallengeComposition {
     #[default]
     Any,
     All,
-    WeightedSum { weights: Vec<f32>, threshold: f32 },
+    WeightedSum {
+        weights: Vec<f32>,
+        threshold: f32,
+    },
 }
 
 /// Frontend-facing challenge configuration.
@@ -155,7 +162,9 @@ impl ChallengeRegistry {
         // Rebuild `active` since indices have shifted.
         self.active.retain(|&i| i != pos);
         for i in self.active.iter_mut() {
-            if *i > pos { *i -= 1; }
+            if *i > pos {
+                *i -= 1;
+            }
         }
         true
     }
@@ -165,7 +174,10 @@ impl ChallengeRegistry {
         self.composition = cfg.composition;
         self.active.clear();
         for id in &cfg.active {
-            let pos = self.challenges.iter().position(|c| c.id() == id)
+            let pos = self
+                .challenges
+                .iter()
+                .position(|c| c.id() == id)
                 .ok_or_else(|| format!("Unknown challenge id: {id}"))?;
             if let Some(params) = cfg.params.get(id) {
                 self.challenges[pos].configure(params.clone())?;
@@ -177,7 +189,10 @@ impl ChallengeRegistry {
 
     /// Set a single challenge active by id, with optional params.
     pub fn set_single(&mut self, id: &str, params: Option<Value>) -> Result<(), String> {
-        let pos = self.challenges.iter().position(|c| c.id() == id)
+        let pos = self
+            .challenges
+            .iter()
+            .position(|c| c.id() == id)
             .ok_or_else(|| format!("Unknown challenge id: {id}"))?;
         if let Some(p) = params {
             self.challenges[pos].configure(p)?;
@@ -191,9 +206,8 @@ impl ChallengeRegistry {
         if self.active.is_empty() {
             return (true, 1.0); // no challenge = everyone survives
         }
-        let results: Vec<(bool, f32)> = self.active.iter()
-            .map(|&i| self.challenges[i].evaluate(agent, world))
-            .collect();
+        let results: Vec<(bool, f32)> =
+            self.active.iter().map(|&i| self.challenges[i].evaluate(agent, world)).collect();
 
         match &self.composition {
             ChallengeComposition::Any => {
@@ -207,10 +221,9 @@ impl ChallengeRegistry {
                 (passed, score)
             }
             ChallengeComposition::WeightedSum { weights, threshold } => {
-                let score: f32 = results.iter().zip(weights.iter())
-                    .map(|((_, s), w)| s * w)
-                    .sum::<f32>()
-                    / weights.iter().sum::<f32>().max(1e-6);
+                let score: f32 =
+                    results.iter().zip(weights.iter()).map(|((_, s), w)| s * w).sum::<f32>()
+                        / weights.iter().sum::<f32>().max(1e-6);
                 (score >= *threshold, score)
             }
         }
@@ -239,18 +252,24 @@ impl ChallengeRegistry {
 
     /// Return JSON schema list for all registered challenges.
     pub fn schema_list(&self) -> Value {
-        let list: Vec<Value> = self.challenges.iter().map(|c| {
-            serde_json::json!({
-                "id": c.id(),
-                "name": c.name(),
-                "description": c.description(),
-                "schema": c.params_schema(),
+        let list: Vec<Value> = self
+            .challenges
+            .iter()
+            .map(|c| {
+                serde_json::json!({
+                    "id": c.id(),
+                    "name": c.name(),
+                    "description": c.description(),
+                    "schema": c.params_schema(),
+                })
             })
-        }).collect();
+            .collect();
         Value::Array(list)
     }
 }
 
 impl Default for ChallengeRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

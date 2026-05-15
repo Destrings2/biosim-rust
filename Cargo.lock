@@ -1372,6 +1372,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_egui",
+ "biosim4-challenges",
  "biosim4-core",
  "rayon",
  "serde",
@@ -1379,9 +1380,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "biosim4-challenges"
+version = "0.1.0"
+dependencies = [
+ "biosim4-core",
+ "serde_json",
+]
+
+[[package]]
 name = "biosim4-core"
 version = "0.1.0"
 dependencies = [
+ "biosim4-challenges",
  "rand 0.8.6",
  "rayon",
  "serde",
@@ -1392,6 +1402,7 @@ dependencies = [
 name = "biosim4-native"
 version = "0.1.0"
 dependencies = [
+ "biosim4-challenges",
  "biosim4-core",
  "clap",
  "indicatif",

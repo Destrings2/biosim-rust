@@ -48,8 +48,8 @@ fn barrier_three_floaters(grid: &mut Grid) {
     let sx = grid.size_x as i16;
     let sy = grid.size_y as i16;
     let centers = [
-        Coord::new(sx / 4,     sy / 2),
-        Coord::new(sx / 2,     sy / 4),
+        Coord::new(sx / 4, sy / 2),
+        Coord::new(sx / 2, sy / 4),
         Coord::new(3 * sx / 4, 3 * sy / 4),
     ];
     for center in centers {

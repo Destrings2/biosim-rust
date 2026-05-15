@@ -5,11 +5,12 @@
 //! feed-forward). Most callers import from this module directly.
 
 pub mod gene;
-pub mod ops;
 pub mod neural_net;
+pub mod ops;
 
 pub use gene::Gene;
-pub use ops::{Genome, ReproductionParams, make_random_genome, make_random_gene,
-              apply_point_mutations, random_insert_deletion, generate_child_genome,
-              genome_similarity, genetic_diversity};
-pub use neural_net::{NeuralNet, Neuron, WiringConfig, feed_forward};
+pub use neural_net::{feed_forward, NeuralNet, Neuron, WiringConfig};
+pub use ops::{
+    apply_point_mutations, generate_child_genome, genetic_diversity, genome_similarity,
+    make_random_gene, make_random_genome, random_insert_deletion, Genome, ReproductionParams,
+};

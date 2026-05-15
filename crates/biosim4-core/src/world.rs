@@ -40,6 +40,16 @@ impl<'a> World<'a> {
     ) -> Self {
         let size_x = grid.size_x;
         let size_y = grid.size_y;
-        Self { grid, signals, food, population, size_x, size_y, steps_per_generation, generation, step }
+        Self {
+            grid,
+            signals,
+            food,
+            population,
+            size_x,
+            size_y,
+            steps_per_generation,
+            generation,
+            step,
+        }
     }
 }

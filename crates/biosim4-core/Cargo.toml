@@ -13,5 +13,11 @@ serde_json = { workspace = true }
 rand = { workspace = true }
 rayon = { version = "1.8", optional = true }
 
+[dev-dependencies]
+# Tests and examples that exercise the simulation pipeline need built-in
+# challenges. Core itself does not depend on this crate (so adding a challenge
+# does not trigger a core rebuild) — only dev builds pull it in.
+biosim4-challenges = { path = "../biosim4-challenges" }
+
 [lints]
 workspace = true

@@ -130,10 +130,7 @@ fn diffusion_reduces_magnitude_over_time() {
     // All cells must now be 0 (neighbors were at 1, then 0 after two fades).
     for x in 0..10i16 {
         for y in 0..10i16 {
-            assert_eq!(
-                s.get(0, Coord::new(x, y)), 0,
-                "cell ({x},{y}) should be 0 after 2 fades"
-            );
+            assert_eq!(s.get(0, Coord::new(x, y)), 0, "cell ({x},{y}) should be 0 after 2 fades");
         }
     }
 }

@@ -3,16 +3,19 @@
 //! deterministic-seed reproducibility) that unit tests can't.
 
 use biosim4_core::{
+    agent::Agent,
+    genome::{
+        make_random_genome,
+        neural_net::{create_wiring, WiringConfig},
+    },
+    grid::Grid,
+    population::Population,
+    registry::ChallengeConfig,
+    rng::Rng,
     sim_config::SimConfig,
     sim_state::SimulationState,
     sim_step::step_generation,
     spawn::spawn_new_generation,
-    registry::ChallengeConfig,
-    population::Population,
-    agent::Agent,
-    genome::{make_random_genome, neural_net::{create_wiring, WiringConfig}},
-    grid::Grid,
-    rng::Rng,
     types::Coord,
 };
 
@@ -34,10 +37,7 @@ fn new_simulation_state_has_full_population() {
     let state = SimulationState::new(small_config());
     assert_eq!(state.generation, 0);
     assert_eq!(state.sim_step, 0);
-    assert_eq!(
-        state.population.alive_count(), 30,
-        "generation 0 should be fully populated"
-    );
+    assert_eq!(state.population.alive_count(), 30, "generation 0 should be fully populated");
 }
 
 #[test]
@@ -68,8 +68,11 @@ fn spawn_new_generation_resets_population_and_increments_counter() {
     let gen0 = state.generation;
     let _ = spawn_new_generation(&mut state);
     assert_eq!(state.generation, gen0 + 1, "generation should increment");
-    assert_eq!(state.population.alive_count() as u32, state.config.population,
-               "next generation should be fully populated");
+    assert_eq!(
+        state.population.alive_count() as u32,
+        state.config.population,
+        "next generation should be fully populated"
+    );
     // All agents should have age 0 again
     for a in state.population.iter_alive() {
         assert_eq!(a.age, 0, "fresh generation agents should have age=0");
@@ -100,6 +103,7 @@ fn challenge_filters_survivors() {
     cfg.population = 50;
     cfg.steps_per_generation = 20;
     let mut state = SimulationState::new(cfg);
+    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
 
     let cc = ChallengeConfig {
         active: vec!["right_half".into()],
@@ -118,6 +122,7 @@ fn challenge_filters_survivors() {
 #[test]
 fn run_three_full_generations_without_panic() {
     let mut state = SimulationState::new(small_config());
+    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
     let cc = ChallengeConfig {
         active: vec!["circle".into()],
         composition: biosim4_core::registry::ChallengeComposition::Any,
@@ -135,6 +140,7 @@ fn run_three_full_generations_without_panic() {
 #[test]
 fn set_challenge_via_json_works_end_to_end() {
     let mut state = SimulationState::new(small_config());
+    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
     let json = r#"{
         "active": ["right_half"],
         "composition": "Any",

@@ -36,10 +36,7 @@ pub struct GridRenderPlugin;
 impl Plugin for GridRenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_grid_sprite)
-            .add_systems(Update, (
-                resize_or_update_texture,
-                draw_challenge_overlays,
-            ));
+            .add_systems(Update, (resize_or_update_texture, draw_challenge_overlays));
     }
 }
 
@@ -134,7 +131,9 @@ fn encode_into(sim: &Sim, buf: &mut [u8]) {
     let sx = sim.state.config.size_x as usize;
     let sy = sim.state.config.size_y as usize;
     let needed = sx * sy * 4;
-    if buf.len() != needed { return; }
+    if buf.len() != needed {
+        return;
+    }
 
     for y in 0..sy {
         // Flip Y so the visual row 0 is the world top.
@@ -163,7 +162,7 @@ fn encode_into(sim: &Sim, buf: &mut [u8]) {
                 id => sim.state.population.get(id).map(|a| a.color).unwrap_or([0, 0, 0]),
             };
             let off = row_base + x * 4;
-            buf[off]     = rgb[0];
+            buf[off] = rgb[0];
             buf[off + 1] = rgb[1];
             buf[off + 2] = rgb[2];
             buf[off + 3] = 255;
@@ -174,32 +173,31 @@ fn encode_into(sim: &Sim, buf: &mut [u8]) {
 /// Project a world-space point onto a grid cell index. The grid sprite is
 /// centered at (0, 0) in world space with size `grid_w*pixel × grid_h*pixel`.
 /// Returns `None` if the point is outside the grid bounds.
-pub fn sprite_to_cell(
-    p: Vec2,
-    grid_w: u32, grid_h: u32, pixel: f32,
-) -> Option<(u16, u16)> {
+pub fn sprite_to_cell(p: Vec2, grid_w: u32, grid_h: u32, pixel: f32) -> Option<(u16, u16)> {
     let half_w = grid_w as f32 * pixel * 0.5;
     let half_h = grid_h as f32 * pixel * 0.5;
     let lx = (p.x + half_w) / pixel;
     let ly = (p.y + half_h) / pixel;
-    if lx < 0.0 || ly < 0.0 { return None; }
+    if lx < 0.0 || ly < 0.0 {
+        return None;
+    }
     let xi = lx.floor() as i32;
     let yi = ly.floor() as i32;
-    if xi < 0 || yi < 0 || xi >= grid_w as i32 || yi >= grid_h as i32 { return None; }
+    if xi < 0 || yi < 0 || xi >= grid_w as i32 || yi >= grid_h as i32 {
+        return None;
+    }
     Some((xi as u16, yi as u16))
 }
 
 /// Draw challenge overlay shapes (the visual hint for where survivors are
 /// supposed to end up). Gizmo lines anti-alias for free, so the circles read
 /// nicely at any zoom.
-fn draw_challenge_overlays(
-    sim: Res<Sim>,
-    controls: Res<SimControls>,
-    mut gizmos: Gizmos,
-) {
+fn draw_challenge_overlays(sim: Res<Sim>, controls: Res<SimControls>, mut gizmos: Gizmos) {
     let world = sim.state.world();
     let overlays = sim.state.challenges.get_overlays(&world);
-    if overlays.is_empty() { return; }
+    if overlays.is_empty() {
+        return;
+    }
     let sx = sim.state.config.size_x as f32;
     let sy = sim.state.config.size_y as f32;
     let px = controls.pixel_scale;
@@ -210,19 +208,12 @@ fn draw_challenge_overlays(
     // normalized 0..1 — they get baked by each challenge's `overlays()` impl
     // before we ever see them. Convert one biosim unit to one world pixel by
     // multiplying by `px` and re-centering.
-    let to_world = |bx: f32, by: f32| -> Vec2 {
-        Vec2::new(bx * px - half_w, by * px - half_h)
-    };
+    let to_world = |bx: f32, by: f32| -> Vec2 { Vec2::new(bx * px - half_w, by * px - half_h) };
     let to_color = |c: [u8; 4]| -> Color {
         // Alpha from challenge overlays is small (often 40/255) — bump it
         // up so the outline reads on a dark canvas.
         let a = (c[3] as f32 / 255.0).clamp(0.0, 1.0).max(0.4);
-        Color::srgba(
-            c[0] as f32 / 255.0,
-            c[1] as f32 / 255.0,
-            c[2] as f32 / 255.0,
-            a,
-        )
+        Color::srgba(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, a)
     };
 
     // sx/sy are used to suppress a "could be unused" warning when no overlay

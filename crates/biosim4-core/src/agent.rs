@@ -22,10 +22,10 @@
 //! `AgentSnapshot` is a lightweight serialization DTO for embedders that
 //! need to ship per-agent state across an FFI / network boundary.
 
-use std::collections::HashMap;
 use crate::genome::{Genome, NeuralNet};
 use crate::types::{Coord, Dir};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub type AgentId = u32;
 pub const INVALID_AGENT: AgentId = 0;
@@ -104,16 +104,22 @@ impl Agent {
         }
     }
 
-    pub fn get_prop(&self, key: &str) -> Option<&PropValue> { self.props.get(key) }
-    pub fn set_prop(&mut self, key: &str, val: PropValue) { self.props.insert(key.to_string(), val); }
+    pub fn get_prop(&self, key: &str) -> Option<&PropValue> {
+        self.props.get(key)
+    }
+    pub fn set_prop(&mut self, key: &str, val: PropValue) {
+        self.props.insert(key.to_string(), val);
+    }
 }
 
 /// Derive a deterministic RGB color from the first bytes of the genome.
 fn genome_color(genome: &Genome) -> [u8; 3] {
-    if genome.is_empty() { return [128, 128, 128]; }
+    if genome.is_empty() {
+        return [128, 128, 128];
+    }
     let raw = genome[0].0;
     let r = ((raw >> 16) & 0xFF) as u8;
-    let g = ((raw >> 8)  & 0xFF) as u8;
+    let g = ((raw >> 8) & 0xFF) as u8;
     let b = (raw & 0xFF) as u8;
     // Ensure minimum brightness (avoid black agents on black background)
     let lum = (r as u16 + g as u16 + b as u16) / 3;
@@ -131,7 +137,7 @@ pub struct AgentSnapshot {
     pub id: AgentId,
     pub x: i16,
     pub y: i16,
-    pub heading: u8,   // Compass ordinal
+    pub heading: u8, // Compass ordinal
     pub color: [u8; 3],
     pub age: u32,
     pub alive: bool,

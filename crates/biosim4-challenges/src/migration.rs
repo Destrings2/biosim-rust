@@ -4,9 +4,9 @@
 //! normalized by grid diagonal. Passes if distance exceeds a configurable
 //! threshold.
 
-use crate::agent::Agent;
-use crate::registry::challenge::Challenge;
-use crate::world::World;
+use biosim4_core::agent::Agent;
+use biosim4_core::registry::challenge::Challenge;
+use biosim4_core::world::World;
 use serde_json::{json, Value};
 
 /// Survive by migrating at least `min_distance` (normalized 0-1 of the
@@ -16,12 +16,18 @@ pub struct MigrateDistanceChallenge {
 }
 
 impl Default for MigrateDistanceChallenge {
-    fn default() -> Self { Self { min_distance: 0.30 } }
+    fn default() -> Self {
+        Self { min_distance: 0.30 }
+    }
 }
 
 impl Challenge for MigrateDistanceChallenge {
-    fn id(&self) -> &str { "migrate_distance" }
-    fn name(&self) -> &str { "Migrate Distance" }
+    fn id(&self) -> &str {
+        "migrate_distance"
+    }
+    fn name(&self) -> &str {
+        "Migrate Distance"
+    }
     fn description(&self) -> &str {
         "Travel at least `min_distance` (normalized 0-1) from your birth location."
     }
@@ -34,7 +40,9 @@ impl Challenge for MigrateDistanceChallenge {
         })
     }
     fn configure(&mut self, p: Value) -> Result<(), String> {
-        if let Some(v) = p.get("min_distance") { self.min_distance = v.as_f64().ok_or("min_distance")? as f32; }
+        if let Some(v) = p.get("min_distance") {
+            self.min_distance = v.as_f64().ok_or("min_distance")? as f32;
+        }
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {

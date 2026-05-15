@@ -24,10 +24,10 @@
 //! The invariant: within any generation, a given `enabled_idx` always maps to
 //! the same sensor. Across generation boundaries, the mapping may change.
 
-use std::collections::HashSet;
 use crate::agent::Agent;
 use crate::rng::Rng;
 use crate::world::World;
+use std::collections::HashSet;
 
 /// Context passed to every sensor during evaluation.
 pub struct SensorContext<'a> {
@@ -118,15 +118,13 @@ impl SensorRegistry {
     }
 
     fn rebuild_disabled_mask(&mut self) {
-        self.disabled_mask = self.sensors
-            .iter()
-            .map(|s| self.disabled.contains(s.id()))
-            .collect();
+        self.disabled_mask = self.sensors.iter().map(|s| self.disabled.contains(s.id())).collect();
     }
 
     fn rebuild_state(&mut self) {
         self.rebuild_disabled_mask();
-        self.active_map = self.sensors
+        self.active_map = self
+            .sensors
             .iter()
             .enumerate()
             .filter(|(_, s)| !self.disabled.contains(s.id()))
@@ -137,12 +135,16 @@ impl SensorRegistry {
     // ── Counts ────────────────────────────────────────────────────────────
 
     /// Total number of registered sensors (independent of enable/disable state).
-    pub fn count(&self) -> u16 { self.sensors.len() as u16 }
+    pub fn count(&self) -> u16 {
+        self.sensors.len() as u16
+    }
 
     /// Number of *active* (committed-enabled) sensors.
     /// Use this as `sensor_count` in `WiringConfig` so new nnets only have
     /// genes that reference actually-enabled sensors.
-    pub fn enabled_count(&self) -> u16 { self.active_map.len() as u16 }
+    pub fn enabled_count(&self) -> u16 {
+        self.active_map.len() as u16
+    }
 
     // ── Evaluation ────────────────────────────────────────────────────────
 
@@ -179,5 +181,7 @@ impl SensorRegistry {
 }
 
 impl Default for SensorRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/biosim4-core",
+    "crates/biosim4-challenges",
     "crates/biosim4-native",
     "crates/biosim4-bevy",
 ]

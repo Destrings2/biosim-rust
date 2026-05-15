@@ -65,13 +65,13 @@ fn rotate_center_stays_center() {
 
 #[test]
 fn as_normalized_coord_for_each_compass() {
-    assert_eq!(Dir(Compass::E).as_normalized_coord(),  Coord::new( 1,  0));
-    assert_eq!(Dir(Compass::W).as_normalized_coord(),  Coord::new(-1,  0));
-    assert_eq!(Dir(Compass::N).as_normalized_coord(),  Coord::new( 0,  1));
-    assert_eq!(Dir(Compass::S).as_normalized_coord(),  Coord::new( 0, -1));
-    assert_eq!(Dir(Compass::NE).as_normalized_coord(), Coord::new( 1,  1));
-    assert_eq!(Dir(Compass::NW).as_normalized_coord(), Coord::new(-1,  1));
-    assert_eq!(Dir(Compass::SE).as_normalized_coord(), Coord::new( 1, -1));
+    assert_eq!(Dir(Compass::E).as_normalized_coord(), Coord::new(1, 0));
+    assert_eq!(Dir(Compass::W).as_normalized_coord(), Coord::new(-1, 0));
+    assert_eq!(Dir(Compass::N).as_normalized_coord(), Coord::new(0, 1));
+    assert_eq!(Dir(Compass::S).as_normalized_coord(), Coord::new(0, -1));
+    assert_eq!(Dir(Compass::NE).as_normalized_coord(), Coord::new(1, 1));
+    assert_eq!(Dir(Compass::NW).as_normalized_coord(), Coord::new(-1, 1));
+    assert_eq!(Dir(Compass::SE).as_normalized_coord(), Coord::new(1, -1));
     assert_eq!(Dir(Compass::SW).as_normalized_coord(), Coord::new(-1, -1));
     assert_eq!(Dir(Compass::CENTER).as_normalized_coord(), Coord::new(0, 0));
 }
@@ -84,14 +84,14 @@ fn coord_as_dir_zero_is_center() {
 #[test]
 fn coord_as_dir_all_eight_octants() {
     // Pure cardinal
-    assert_eq!(Coord::new(10, 0).as_dir(),  Dir(Compass::E));
+    assert_eq!(Coord::new(10, 0).as_dir(), Dir(Compass::E));
     assert_eq!(Coord::new(-10, 0).as_dir(), Dir(Compass::W));
-    assert_eq!(Coord::new(0, 10).as_dir(),  Dir(Compass::N));
+    assert_eq!(Coord::new(0, 10).as_dir(), Dir(Compass::N));
     assert_eq!(Coord::new(0, -10).as_dir(), Dir(Compass::S));
     // Pure diagonal
-    assert_eq!(Coord::new(7, 7).as_dir(),   Dir(Compass::NE));
-    assert_eq!(Coord::new(-7, 7).as_dir(),  Dir(Compass::NW));
-    assert_eq!(Coord::new(7, -7).as_dir(),  Dir(Compass::SE));
+    assert_eq!(Coord::new(7, 7).as_dir(), Dir(Compass::NE));
+    assert_eq!(Coord::new(-7, 7).as_dir(), Dir(Compass::NW));
+    assert_eq!(Coord::new(7, -7).as_dir(), Dir(Compass::SE));
     assert_eq!(Coord::new(-7, -7).as_dir(), Dir(Compass::SW));
 }
 

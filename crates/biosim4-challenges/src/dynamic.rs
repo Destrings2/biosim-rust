@@ -2,9 +2,9 @@
 //! changes during the generation. Tests the population's ability to evolve
 //! responsive (rather than static) behaviour.
 
-use crate::agent::Agent;
-use crate::registry::challenge::{Challenge, ChallengeOverlay, WorldMut};
-use crate::world::World;
+use biosim4_core::agent::Agent;
+use biosim4_core::registry::challenge::{Challenge, ChallengeOverlay, WorldMut};
+use biosim4_core::world::World;
 use serde_json::{json, Value};
 
 // ── Sun Tracker ─────────────────────────────────────────────────────────
@@ -15,10 +15,10 @@ use serde_json::{json, Value};
 /// generation; agents survive iff they end inside the sun AND their warmth
 /// reached `min_warmth`.
 pub struct SunTrackerChallenge {
-    pub radius: f32,         // sun-disc radius (normalized to max(size_x, size_y))
-    pub orbit_radius: f32,   // distance from centre (normalized)
-    pub revolutions: f32,    // full orbits per generation
-    pub min_warmth: u32,     // required tracking ticks (out of 32)
+    pub radius: f32,       // sun-disc radius (normalized to max(size_x, size_y))
+    pub orbit_radius: f32, // distance from centre (normalized)
+    pub revolutions: f32,  // full orbits per generation
+    pub min_warmth: u32,   // required tracking ticks (out of 32)
 }
 
 impl Default for SunTrackerChallenge {
@@ -29,18 +29,28 @@ impl Default for SunTrackerChallenge {
     }
 }
 
-fn sun_pos_at(c: &SunTrackerChallenge, step: u32, steps_per_gen: u32, size_x: u16, size_y: u16) -> (f32, f32) {
+fn sun_pos_at(
+    c: &SunTrackerChallenge,
+    step: u32,
+    steps_per_gen: u32,
+    size_x: u16,
+    size_y: u16,
+) -> (f32, f32) {
     let cx = (size_x - 1) as f32 * 0.5;
     let cy = (size_y - 1) as f32 * 0.5;
-    let r  = c.orbit_radius * size_x.max(size_y) as f32;
+    let r = c.orbit_radius * size_x.max(size_y) as f32;
     let phase = c.revolutions * (step as f32) / steps_per_gen.max(1) as f32;
     let angle = 2.0 * std::f32::consts::PI * phase;
     (cx + r * angle.cos(), cy + r * angle.sin())
 }
 
 impl Challenge for SunTrackerChallenge {
-    fn id(&self) -> &str { "sun_tracker" }
-    fn name(&self) -> &str { "Sun Tracker" }
+    fn id(&self) -> &str {
+        "sun_tracker"
+    }
+    fn name(&self) -> &str {
+        "Sun Tracker"
+    }
     fn description(&self) -> &str {
         "A sun disc orbits the centre. Survive by being inside it at the final step AND tracking it for at least `min_warmth`/32 sampled ticks."
     }
@@ -56,16 +66,25 @@ impl Challenge for SunTrackerChallenge {
         })
     }
     fn configure(&mut self, p: Value) -> Result<(), String> {
-        if let Some(v) = p.get("radius")        { self.radius = v.as_f64().ok_or("radius")? as f32; }
-        if let Some(v) = p.get("orbit_radius")  { self.orbit_radius = v.as_f64().ok_or("orbit_radius")? as f32; }
-        if let Some(v) = p.get("revolutions")   { self.revolutions = v.as_f64().ok_or("revolutions")? as f32; }
-        if let Some(v) = p.get("min_warmth")    { self.min_warmth = v.as_f64().ok_or("min_warmth")? as u32; }
+        if let Some(v) = p.get("radius") {
+            self.radius = v.as_f64().ok_or("radius")? as f32;
+        }
+        if let Some(v) = p.get("orbit_radius") {
+            self.orbit_radius = v.as_f64().ok_or("orbit_radius")? as f32;
+        }
+        if let Some(v) = p.get("revolutions") {
+            self.revolutions = v.as_f64().ok_or("revolutions")? as f32;
+        }
+        if let Some(v) = p.get("min_warmth") {
+            self.min_warmth = v.as_f64().ok_or("min_warmth")? as u32;
+        }
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
         // Sun's final-step position
         let final_step = world.steps_per_generation.saturating_sub(1);
-        let (sx, sy) = sun_pos_at(self, final_step, world.steps_per_generation, world.size_x, world.size_y);
+        let (sx, sy) =
+            sun_pos_at(self, final_step, world.steps_per_generation, world.size_x, world.size_y);
         let dx = agent.loc.x as f32 - sx;
         let dy = agent.loc.y as f32 - sy;
         let dist = (dx * dx + dy * dy).sqrt();
@@ -86,10 +105,17 @@ impl Challenge for SunTrackerChallenge {
     fn on_sim_step(&mut self, ctx: &mut WorldMut) {
         // Sample warmth roughly 32 times across the generation
         let stride = (ctx.config.steps_per_generation / 32).max(1);
-        if !ctx.step.is_multiple_of(stride) { return; }
+        if !ctx.step.is_multiple_of(stride) {
+            return;
+        }
 
-        let (sx, sy) = sun_pos_at(self, ctx.step, ctx.config.steps_per_generation,
-                                   ctx.config.size_x, ctx.config.size_y);
+        let (sx, sy) = sun_pos_at(
+            self,
+            ctx.step,
+            ctx.config.steps_per_generation,
+            ctx.config.size_x,
+            ctx.config.size_y,
+        );
         let r = self.radius * ctx.config.size_x.max(ctx.config.size_y) as f32;
         let r2 = r * r;
         for a in ctx.population.iter_alive_mut() {
@@ -104,7 +130,8 @@ impl Challenge for SunTrackerChallenge {
         }
     }
     fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
-        let (sx, sy) = sun_pos_at(self, world.step, world.steps_per_generation, world.size_x, world.size_y);
+        let (sx, sy) =
+            sun_pos_at(self, world.step, world.steps_per_generation, world.size_x, world.size_y);
         let r = self.radius * world.size_x.max(world.size_y) as f32;
         vec![ChallengeOverlay::Circle {
             cx: sx,
@@ -124,12 +151,18 @@ pub struct DiasporaChallenge {
 }
 
 impl Default for DiasporaChallenge {
-    fn default() -> Self { Self { min_distance: 8.0 } }
+    fn default() -> Self {
+        Self { min_distance: 8.0 }
+    }
 }
 
 impl Challenge for DiasporaChallenge {
-    fn id(&self) -> &str { "diaspora" }
-    fn name(&self) -> &str { "Diaspora (anti-flock)" }
+    fn id(&self) -> &str {
+        "diaspora"
+    }
+    fn name(&self) -> &str {
+        "Diaspora (anti-flock)"
+    }
     fn description(&self) -> &str {
         "Survive iff your nearest alive neighbour is at least `min_distance` cells away."
     }
@@ -142,18 +175,24 @@ impl Challenge for DiasporaChallenge {
         })
     }
     fn configure(&mut self, p: Value) -> Result<(), String> {
-        if let Some(v) = p.get("min_distance") { self.min_distance = v.as_f64().ok_or("min_distance")? as f32; }
+        if let Some(v) = p.get("min_distance") {
+            self.min_distance = v.as_f64().ok_or("min_distance")? as f32;
+        }
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
         let me = agent.loc;
         let mut nearest_sq = f32::INFINITY;
         for other in world.population.iter_alive() {
-            if other.id == agent.id { continue; }
+            if other.id == agent.id {
+                continue;
+            }
             let dx = (other.loc.x - me.x) as f32;
             let dy = (other.loc.y - me.y) as f32;
             let d2 = dx * dx + dy * dy;
-            if d2 < nearest_sq { nearest_sq = d2; }
+            if d2 < nearest_sq {
+                nearest_sq = d2;
+            }
         }
         let nearest = nearest_sq.sqrt();
         let pass = nearest >= self.min_distance;
@@ -183,8 +222,12 @@ impl Default for SurvivorChallenge {
 }
 
 impl Challenge for SurvivorChallenge {
-    fn id(&self) -> &str { "survivor" }
-    fn name(&self) -> &str { "Survivor (shifting safe zone)" }
+    fn id(&self) -> &str {
+        "survivor"
+    }
+    fn name(&self) -> &str {
+        "Survivor (shifting safe zone)"
+    }
     fn description(&self) -> &str {
         "Each step every agent has a small kill probability unless inside the safe zone. The safe zone teleports every `period` steps. Survivors at gen-end pass."
     }
@@ -199,9 +242,15 @@ impl Challenge for SurvivorChallenge {
         })
     }
     fn configure(&mut self, p: Value) -> Result<(), String> {
-        if let Some(v) = p.get("safe_radius") { self.safe_radius = v.as_f64().ok_or("safe_radius")? as f32; }
-        if let Some(v) = p.get("period")      { self.period      = v.as_f64().ok_or("period")? as u32; }
-        if let Some(v) = p.get("stress")      { self.stress      = v.as_f64().ok_or("stress")? as f32; }
+        if let Some(v) = p.get("safe_radius") {
+            self.safe_radius = v.as_f64().ok_or("safe_radius")? as f32;
+        }
+        if let Some(v) = p.get("period") {
+            self.period = v.as_f64().ok_or("period")? as u32;
+        }
+        if let Some(v) = p.get("stress") {
+            self.stress = v.as_f64().ok_or("stress")? as f32;
+        }
         Ok(())
     }
     fn evaluate(&self, _agent: &Agent, _world: &World) -> (bool, f32) {
@@ -222,24 +271,34 @@ impl Challenge for SurvivorChallenge {
         if self.period > 0 && ctx.step > 0 && ctx.step.is_multiple_of(self.period) {
             let sx = ctx.config.size_x as u32;
             let sy = ctx.config.size_y as u32;
-            self.centre = (
-                ctx.rng.gen_range_u32(0, sx) as f32,
-                ctx.rng.gen_range_u32(0, sy) as f32,
-            );
+            self.centre =
+                (ctx.rng.gen_range_u32(0, sx) as f32, ctx.rng.gen_range_u32(0, sy) as f32);
         }
         let r = self.safe_radius * ctx.config.size_x.max(ctx.config.size_y) as f32;
         let r2 = r * r;
         let (cx, cy) = self.centre;
         let stress = self.stress;
 
-        let victims: Vec<u32> = ctx.population.iter_alive().filter_map(|a| {
-            let dx = a.loc.x as f32 - cx;
-            let dy = a.loc.y as f32 - cy;
-            let in_safe = dx * dx + dy * dy <= r2;
-            if in_safe { return None; }
-            if ctx.rng.gen_bool(stress) { Some(a.id) } else { None }
-        }).collect();
-        for id in victims { ctx.population.queue_for_death(id); }
+        let victims: Vec<u32> = ctx
+            .population
+            .iter_alive()
+            .filter_map(|a| {
+                let dx = a.loc.x as f32 - cx;
+                let dy = a.loc.y as f32 - cy;
+                let in_safe = dx * dx + dy * dy <= r2;
+                if in_safe {
+                    return None;
+                }
+                if ctx.rng.gen_bool(stress) {
+                    Some(a.id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for id in victims {
+            ctx.population.queue_for_death(id);
+        }
     }
     fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
         let r = self.safe_radius * world.size_x.max(world.size_y) as f32;

@@ -17,23 +17,23 @@
 //!
 //! All built-in challenges are registered by `register_builtin_challenges`.
 
-mod spatial;
-mod migration;
-mod social;
-mod sequential;
-mod radioactive;
 mod altruism;
 mod dynamic;
+mod migration;
+mod radioactive;
+mod sequential;
+mod social;
+mod spatial;
 
-pub use spatial::*;
-pub use migration::*;
-pub use social::*;
-pub use sequential::*;
-pub use radioactive::*;
 pub use altruism::*;
 pub use dynamic::*;
+pub use migration::*;
+pub use radioactive::*;
+pub use sequential::*;
+pub use social::*;
+pub use spatial::*;
 
-use crate::registry::ChallengeRegistry;
+use biosim4_core::registry::ChallengeRegistry;
 
 pub fn register_builtin_challenges(registry: &mut ChallengeRegistry) {
     // Spatial

@@ -289,9 +289,7 @@ fn actions_panel(
         .filter(|(_, l)| l.abs() > EPS)
         .collect();
     entries.sort_by(|(_, a), (_, b)| {
-        b.abs()
-            .partial_cmp(&a.abs())
-            .unwrap_or(std::cmp::Ordering::Equal)
+        b.abs().partial_cmp(&a.abs()).unwrap_or(std::cmp::Ordering::Equal)
     });
 
     section_label(ui, &format!("ACTIONS · {} DRIVEN", entries.len()));
@@ -299,11 +297,7 @@ fn actions_panel(
     // Normalise the bar lengths against the strongest output in this frame
     // so even modest weights have a readable bar. Floor at 0.25 so a single
     // dominant action doesn't compress everything else to invisibility.
-    let max_abs = entries
-        .iter()
-        .map(|(_, w)| w.abs())
-        .fold(0.0_f32, f32::max)
-        .max(0.25);
+    let max_abs = entries.iter().map(|(_, w)| w.abs()).fold(0.0_f32, f32::max).max(0.25);
 
     egui::Frame::default()
         .fill(theme::BG_2)
@@ -328,11 +322,7 @@ fn action_row(ui: &mut egui::Ui, name: &str, weight: f32, max_abs: f32) {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(name).size(11.0).color(theme::TEXT_2));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let value_color = if weight >= 0.0 {
-                    theme::ACCENT
-                } else {
-                    theme::BAD
-                };
+                let value_color = if weight >= 0.0 { theme::ACCENT } else { theme::BAD };
                 ui.label(
                     egui::RichText::new(format!("{:+.2}", weight))
                         .monospace()
@@ -352,11 +342,7 @@ fn action_row(ui: &mut egui::Ui, name: &str, weight: f32, max_abs: f32) {
         let center_x = rect.center().x;
         let half_w = (rect.width() * 0.5 - 1.0).max(0.0);
         let bar_w = half_w * mag;
-        let color = if weight >= 0.0 {
-            theme::ACCENT
-        } else {
-            theme::BAD
-        };
+        let color = if weight >= 0.0 { theme::ACCENT } else { theme::BAD };
         let bar_rect = if weight >= 0.0 {
             egui::Rect::from_min_size(
                 egui::pos2(center_x, rect.top()),
@@ -371,10 +357,7 @@ fn action_row(ui: &mut egui::Ui, name: &str, weight: f32, max_abs: f32) {
         painter.rect_filled(bar_rect, 1.5, color);
         // Thin midline so users can see the zero point even when no bar is drawn.
         painter.line_segment(
-            [
-                egui::pos2(center_x, rect.top()),
-                egui::pos2(center_x, rect.bottom()),
-            ],
+            [egui::pos2(center_x, rect.top()), egui::pos2(center_x, rect.bottom())],
             egui::Stroke::new(1.0, theme::LINE_2),
         );
     });
@@ -385,12 +368,7 @@ fn minimap(ui: &mut egui::Ui, sim: &Sim, x: i16, y: i16, color: [u8; 3]) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
     let painter = ui.painter();
     painter.rect_filled(rect, 4.0, theme::BG);
-    painter.rect_stroke(
-        rect,
-        4.0,
-        egui::Stroke::new(1.0, theme::LINE),
-        egui::StrokeKind::Outside,
-    );
+    painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Outside);
     let sx = sim.state.config.size_x as f32;
     let sy = sim.state.config.size_y as f32;
     let nx = x as f32 / sx;
@@ -400,21 +378,15 @@ fn minimap(ui: &mut egui::Ui, sim: &Sim, x: i16, y: i16, color: [u8; 3]) {
         rect.top() + 2.0 + ny * (rect.height() - 4.0),
     );
     painter.circle_filled(dot, 3.0, theme::rgb(color));
-    painter.circle_stroke(
-        dot,
-        5.0,
-        egui::Stroke::new(1.0, theme::rgb(color).gamma_multiply(0.4)),
-    );
+    painter.circle_stroke(dot, 5.0, egui::Stroke::new(1.0, theme::rgb(color).gamma_multiply(0.4)));
 }
 
 fn net_section(ui: &mut egui::Ui, sim: &Sim, agent: &biosim4_core::agent::Agent) {
     // Pull persistent inspector state (layout mode + force positions) out of
     // egui memory keyed by agent id so each agent gets its own settled layout.
     let state_id = egui::Id::new(("inspector_state", agent.id));
-    let mut state: InspectorState = ui
-        .ctx()
-        .data_mut(|d| d.get_temp::<InspectorState>(state_id))
-        .unwrap_or_default();
+    let mut state: InspectorState =
+        ui.ctx().data_mut(|d| d.get_temp::<InspectorState>(state_id)).unwrap_or_default();
 
     // Reset the viewport pan when the user switches to a new agent so the
     // graph reappears centered in the canvas.
@@ -432,12 +404,7 @@ fn net_section(ui: &mut egui::Ui, sim: &Sim, agent: &biosim4_core::agent::Agent)
             // Reset pan + (in force mode) re-seed positions. Always offered
             // since pan can take you off-screen in either layout mode.
             let reset = ui
-                .button(
-                    egui::RichText::new("⟲  RECENTER")
-                        .size(10.5)
-                        .color(theme::TEXT_2)
-                        .strong(),
-                )
+                .button(egui::RichText::new("⟲  RECENTER").size(10.5).color(theme::TEXT_2).strong())
                 .on_hover_text("Reset pan and (in FORCE mode) re-seed node positions")
                 .clicked();
             if reset {
@@ -454,10 +421,8 @@ fn net_section(ui: &mut egui::Ui, sim: &Sim, agent: &biosim4_core::agent::Agent)
     // ── Canvas (click-and-drag sensing so we can pan the contents)
     let canvas_h = (ui.available_height() - 6.0).max(260.0);
     let canvas_w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(canvas_w, canvas_h),
-        egui::Sense::click_and_drag(),
-    );
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(canvas_w, canvas_h), egui::Sense::click_and_drag());
 
     if resp.dragged() {
         state.pan += resp.drag_delta();
@@ -471,12 +436,7 @@ fn net_section(ui: &mut egui::Ui, sim: &Sim, agent: &biosim4_core::agent::Agent)
 
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 6.0, theme::BG);
-    painter.rect_stroke(
-        rect,
-        6.0,
-        egui::Stroke::new(1.0, theme::LINE),
-        egui::StrokeKind::Outside,
-    );
+    painter.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Outside);
 
     // Collect distinct node indices used by the network.
     let (sensors, neurons, actions) = collect_used_ids(&agent.nnet);
@@ -489,9 +449,7 @@ fn net_section(ui: &mut egui::Ui, sim: &Sim, agent: &biosim4_core::agent::Agent)
     // the underlying physics state stays in absolute screen space.
     match state.mode {
         LayoutMode::Layered => {
-            draw_layered(
-                ui, &painter, rect, pan, sim, agent, &sensors, &neurons, &actions,
-            );
+            draw_layered(ui, &painter, rect, pan, sim, agent, &sensors, &neurons, &actions);
         }
         LayoutMode::Force => {
             draw_force(
@@ -544,15 +502,8 @@ fn mode_button(ui: &mut egui::Ui, current: &mut LayoutMode, mode: LayoutMode, la
             .color(if active { theme::ACCENT } else { theme::TEXT_2 })
             .strong(),
     )
-    .fill(if active {
-        theme::ACCENT_SOFT
-    } else {
-        egui::Color32::TRANSPARENT
-    })
-    .stroke(egui::Stroke::new(
-        1.0,
-        if active { theme::ACCENT } else { theme::LINE },
-    ))
+    .fill(if active { theme::ACCENT_SOFT } else { egui::Color32::TRANSPARENT })
+    .stroke(egui::Stroke::new(1.0, if active { theme::ACCENT } else { theme::LINE }))
     .corner_radius(egui::CornerRadius::same(4))
     .min_size(egui::vec2(72.0, 22.0));
     if ui.add(btn).clicked() {
@@ -643,9 +594,7 @@ fn draw_layered(
         let step = (h / (n.max(1) as f32)).min(40.0);
         let total = step * (n as f32 - 1.0).max(0.0);
         let start = inner.center().y - total * 0.5;
-        (0..n)
-            .map(|i| egui::pos2(xs, start + i as f32 * step) + pan)
-            .collect()
+        (0..n).map(|i| egui::pos2(xs, start + i as f32 * step) + pan).collect()
     };
     let sensor_pos = column_positions(sensor_x, sensors.len());
     let neuron_pos = column_positions(neuron_x, neurons.len());
@@ -731,8 +680,7 @@ fn draw_force(
     // restart from 1 each generation so the same ID can have a different genome),
     // or this is the first render.
     let expected_node_count = sensors.len() + actions.len() + neurons.len();
-    let needs_rebuild = state.agent_id != agent.id
-        || state.nodes.len() != expected_node_count;
+    let needs_rebuild = state.agent_id != agent.id || state.nodes.len() != expected_node_count;
     if needs_rebuild {
         state.agent_id = agent.id;
         state.nodes = build_initial_nodes(inner, gutter, sensors, neurons, actions);
@@ -830,24 +778,16 @@ fn draw_force(
 
     // Visualise settling state in the bottom-left.
     let badge = if state.settled_frames > 20 {
-        egui::RichText::new("● settled")
-            .size(9.5)
-            .color(theme::ACCENT)
+        egui::RichText::new("● settled").size(9.5).color(theme::ACCENT)
     } else {
-        egui::RichText::new(format!("◌ relaxing  ·  v = {:.2}", max_v))
-            .size(9.5)
-            .color(theme::WARN)
+        egui::RichText::new(format!("◌ relaxing  ·  v = {:.2}", max_v)).size(9.5).color(theme::WARN)
     };
     painter.text(
         egui::pos2(rect.left() + pad, rect.top() + 12.0),
         egui::Align2::LEFT_TOP,
         badge.text().to_owned(),
         egui::FontId::monospace(9.5),
-        if state.settled_frames > 20 {
-            theme::ACCENT
-        } else {
-            theme::WARN
-        },
+        if state.settled_frames > 20 { theme::ACCENT } else { theme::WARN },
     );
 }
 
@@ -862,10 +802,7 @@ fn build_initial_nodes(
 
     // Pinned columns — inset by `gutter` from each edge so labels have room.
     for (i, &idx) in sensors.iter().enumerate() {
-        let y = lerp_y(
-            inner,
-            i as f32 / (sensors.len().max(1) as f32 - 1.0).max(1.0),
-        );
+        let y = lerp_y(inner, i as f32 / (sensors.len().max(1) as f32 - 1.0).max(1.0));
         nodes.push(NodeView {
             pos: egui::vec2(inner.left() + gutter, y),
             vel: egui::Vec2::ZERO,
@@ -875,10 +812,7 @@ fn build_initial_nodes(
         });
     }
     for (i, &idx) in actions.iter().enumerate() {
-        let y = lerp_y(
-            inner,
-            i as f32 / (actions.len().max(1) as f32 - 1.0).max(1.0),
-        );
+        let y = lerp_y(inner, i as f32 / (actions.len().max(1) as f32 - 1.0).max(1.0));
         nodes.push(NodeView {
             pos: egui::vec2(inner.right() - gutter, y),
             vel: egui::Vec2::ZERO,
@@ -921,11 +855,7 @@ fn pin_column(
     let mut k = 0usize;
     for n in nodes.iter_mut() {
         if n.kind == kind {
-            let t = if count <= 1 {
-                0.5
-            } else {
-                k as f32 / (count as f32 - 1.0)
-            };
+            let t = if count <= 1 { 0.5 } else { k as f32 / (count as f32 - 1.0) };
             let y = y_top + 20.0 + t * (y_bot - y_top - 40.0).max(0.0);
             n.pos = egui::vec2(x, y);
             n.vel = egui::Vec2::ZERO;
@@ -1018,14 +948,8 @@ fn step_forces(nodes: &mut [NodeView], edges: &[(usize, usize, f32)], bounds: eg
         node.pos += node.vel;
         // Keep neurons inside the inner rect.
         let margin = 12.0;
-        node.pos.x = node
-            .pos
-            .x
-            .clamp(bounds.left() + margin, bounds.right() - margin);
-        node.pos.y = node
-            .pos
-            .y
-            .clamp(bounds.top() + margin, bounds.bottom() - margin);
+        node.pos.x = node.pos.x.clamp(bounds.left() + margin, bounds.right() - margin);
+        node.pos.y = node.pos.y.clamp(bounds.top() + margin, bounds.bottom() - margin);
     }
 }
 
@@ -1064,37 +988,21 @@ fn draw_edges(
         let src_idx = gene.source_num() as u16;
         let snk_idx = gene.sink_num() as u16;
         let from = if gene.source_type() == SOURCE_SENSOR {
-            sensors
-                .iter()
-                .position(|&i| i == src_idx)
-                .map(|i| sensor_pos[i])
+            sensors.iter().position(|&i| i == src_idx).map(|i| sensor_pos[i])
         } else {
-            neurons
-                .iter()
-                .position(|&i| i == src_idx)
-                .map(|i| neuron_pos[i])
+            neurons.iter().position(|&i| i == src_idx).map(|i| neuron_pos[i])
         };
         let to = if gene.sink_type() == SINK_ACTION {
-            actions
-                .iter()
-                .position(|&i| i == snk_idx)
-                .map(|i| action_pos[i])
+            actions.iter().position(|&i| i == snk_idx).map(|i| action_pos[i])
         } else {
-            neurons
-                .iter()
-                .position(|&i| i == snk_idx)
-                .map(|i| neuron_pos[i])
+            neurons.iter().position(|&i| i == snk_idx).map(|i| neuron_pos[i])
         };
         let (Some(a), Some(b)) = (from, to) else {
             continue;
         };
 
         let alpha = (abs_w / 4.0).clamp(0.15, 1.0);
-        let color = if weight >= 0.0 {
-            theme::ACCENT
-        } else {
-            theme::BAD
-        };
+        let color = if weight >= 0.0 { theme::ACCENT } else { theme::BAD };
         let stroke_color = color.gamma_multiply(alpha);
         let thickness = (abs_w * 0.4 + 0.7).min(2.8);
 
@@ -1176,11 +1084,8 @@ fn draw_nodes(
     // Neurons (middle / floating)
     for (i, &idx) in neurons.iter().enumerate() {
         let p = neuron_pos[i];
-        let (out, driven) = nnet
-            .neurons
-            .get(idx as usize)
-            .map(|n| (n.output, n.driven))
-            .unwrap_or((0.0, false));
+        let (out, driven) =
+            nnet.neurons.get(idx as usize).map(|n| (n.output, n.driven)).unwrap_or((0.0, false));
         let intensity = out.abs().min(1.0);
         let fill = if driven {
             theme::ACCENT.gamma_multiply((intensity * 0.9 + 0.2).clamp(0.25, 1.0))
@@ -1238,39 +1143,21 @@ fn column_divider(ui: &mut egui::Ui) {
     let painter = ui.painter();
     let avail = ui.available_rect_before_wrap();
     painter.line_segment(
-        [
-            egui::pos2(avail.left(), avail.top()),
-            egui::pos2(avail.left(), avail.bottom()),
-        ],
+        [egui::pos2(avail.left(), avail.top()), egui::pos2(avail.left(), avail.bottom())],
         egui::Stroke::new(1.0, theme::LINE),
     );
     ui.add_space(4.0);
 }
 
 fn section_label(ui: &mut egui::Ui, text: &str) {
-    ui.label(
-        egui::RichText::new(text)
-            .size(10.0)
-            .color(theme::MUTED)
-            .strong(),
-    );
+    ui.label(egui::RichText::new(text).size(10.0).color(theme::MUTED).strong());
 }
 
 fn kv(ui: &mut egui::Ui, key: &str, value: String) {
     ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(key)
-                .size(10.5)
-                .color(theme::MUTED)
-                .strong(),
-        );
+        ui.label(egui::RichText::new(key).size(10.5).color(theme::MUTED).strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(
-                egui::RichText::new(value)
-                    .monospace()
-                    .size(11.0)
-                    .color(theme::TEXT),
-            );
+            ui.label(egui::RichText::new(value).monospace().size(11.0).color(theme::TEXT));
         });
     });
 }
