@@ -88,11 +88,31 @@ pub fn draw_agent_inspector(
     mut sim: ResMut<Sim>,
     mut controls: ResMut<SimControls>,
 ) {
-    let Some(agent_id) = controls.selected_agent else {
+    let Some(raw) = controls.selected_agent else {
         return;
     };
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
+    // `selected_agent` carries the raw grid value. Programmables are flagged
+    // with bit 31 — render their own panel instead of the neural inspector.
+    match biosim4_core::grid::cell_kind(raw) {
+        biosim4_core::grid::CellKind::Programmable(prog_id) => {
+            draw_programmable_inspector(ctx, &sim, &mut controls, prog_id);
+            return;
+        }
+        biosim4_core::grid::CellKind::Empty
+        | biosim4_core::grid::CellKind::Barrier
+        | biosim4_core::grid::CellKind::KillBarrier => {
+            // Shouldn't be reachable — `selected_agent` only gets set from
+            // an Agent/Programmable click — but if a future tool starts
+            // stashing non-entity values here, fail soft.
+            controls.selected_agent = None;
+            return;
+        }
+        biosim4_core::grid::CellKind::Agent(_) => {}
+    }
+
+    let agent_id = raw;
     // Recompute the selected agent's Phase 1 against the current world so
     // we have action levels to display. Done up front, before the agent
     // borrow below, to avoid aliasing `&mut sim.state` with `&Agent`.
@@ -167,6 +187,85 @@ pub fn draw_agent_inspector(
                     },
                 );
             });
+        });
+
+    if !open {
+        controls.selected_agent = None;
+    }
+}
+
+/// Inspector window for a challenge-owned [`Programmable`] entity. Smaller
+/// and more informational than the agent inspector: programmables have no
+/// genome / neural net / action levels to surface, only their program id,
+/// position, and a few state slots.
+fn draw_programmable_inspector(
+    ctx: &egui::Context,
+    sim: &Sim,
+    controls: &mut SimControls,
+    prog_id: u32,
+) {
+    let entity = sim.state.programmable.get(prog_id);
+    let mut open = true;
+    egui::Window::new(format!("PROGRAMMABLE  #{prog_id}"))
+        .open(&mut open)
+        .resizable(false)
+        .default_width(300.0)
+        .frame(
+            egui::Frame::default()
+                .fill(theme::PANEL)
+                .stroke(egui::Stroke::new(1.0, theme::LINE))
+                .corner_radius(egui::CornerRadius::same(6))
+                .shadow(theme::float_shadow())
+                .inner_margin(egui::Margin::same(14)),
+        )
+        .show(ctx, |ui| {
+            let Some(e) = entity else {
+                ui.label(egui::RichText::new("Programmable not found.").color(theme::BAD));
+                return;
+            };
+            if !e.alive {
+                ui.label(egui::RichText::new("Programmable is no longer alive.").color(theme::BAD));
+                return;
+            }
+
+            // Color swatch — the renderer reads this verbatim, so the
+            // inspector showing it makes the visual identity obvious.
+            let (swatch, _) = ui
+                .allocate_exact_size(egui::vec2(ui.available_width(), 36.0), egui::Sense::hover());
+            let painter = ui.painter();
+            painter.rect_filled(swatch, 4.0, theme::rgb(e.color));
+            painter.rect_stroke(
+                swatch,
+                egui::CornerRadius::same(4),
+                egui::Stroke::new(1.0, theme::LINE),
+                egui::StrokeKind::Inside,
+            );
+            ui.add_space(8.0);
+
+            // Program name comes from the trait. Looking up the box every
+            // frame is cheap — programs are a small Vec on the pool.
+            let prog_name = sim.state.programmable.program_name(e.program).unwrap_or("<unknown>");
+            ui.label(
+                egui::RichText::new("Challenge-owned, non-evolved entity.")
+                    .size(11.0)
+                    .color(theme::TEXT_2)
+                    .italics(),
+            );
+            ui.add_space(6.0);
+            kv(ui, "Program", prog_name.to_string());
+            kv(ui, "Owner tag", format!("{:#06x}", e.owner));
+            kv(ui, "Location", format!("({}, {})", e.loc.x, e.loc.y));
+            kv(ui, "Heading", format!("{:?}", e.heading));
+            kv(ui, "Color", format!("rgb({}, {}, {})", e.color[0], e.color[1], e.color[2]));
+
+            // State slots — programs use these for cooldowns, target ids,
+            // patrol indices, etc. Always 8 f32 slots.
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("STATE").size(10.0).color(theme::MUTED).strong());
+            ui.separator();
+            for (i, v) in e.state.iter().enumerate() {
+                kv(ui, &format!("state[{i}]"), format!("{v:.3}"));
+            }
         });
 
     if !open {

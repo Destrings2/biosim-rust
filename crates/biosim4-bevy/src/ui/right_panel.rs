@@ -108,6 +108,7 @@ pub fn draw_right_panel(
                                         &controls,
                                         &mut queue,
                                         &mut local_state,
+                                        &mut ui_state,
                                     ),
                                 }
                             });
@@ -555,6 +556,7 @@ fn render_param_field(
                     obj.insert(key.to_string(), serde_json::Value::String(v));
                 }
             }
+            "array" => render_array_field(ui, key, prop, obj),
             _ => {
                 ui.label(
                     egui::RichText::new(format!("({ty})")).size(10.0).color(theme::MUTED).italics(),
@@ -562,6 +564,98 @@ fn render_param_field(
             }
         });
     });
+}
+
+/// Editor for a JSON-Schema `type: "array"` property.
+///
+/// Special-cases a 3-element `u8` array as an RGB color picker — that's the
+/// shape the wanderers / future predator challenges use for `color`, and
+/// `egui::Ui::color_edit_button_srgb` is a much better affordance than
+/// three drag fields. For other arrays (e.g. waypoint lists) it falls back
+/// to a fixed-length row of typed editors driven by `items.type`.
+fn render_array_field(
+    ui: &mut egui::Ui,
+    key: &str,
+    prop: &serde_json::Value,
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    let items = prop.get("items");
+    let item_type = items.and_then(|i| i.get("type")).and_then(|v| v.as_str()).unwrap_or("integer");
+    let min_items = prop.get("minItems").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let max_items = prop.get("maxItems").and_then(|v| v.as_u64()).unwrap_or(8) as usize;
+    let item_max =
+        items.and_then(|i| i.get("maximum")).and_then(|v| v.as_i64()).unwrap_or(i64::MAX);
+
+    // Pull current value (or schema default) into a mutable Vec we mutate
+    // in place before writing back.
+    let mut arr: Vec<serde_json::Value> = obj
+        .get(key)
+        .and_then(|v| v.as_array())
+        .cloned()
+        .or_else(|| prop.get("default").and_then(|v| v.as_array()).cloned())
+        .unwrap_or_default();
+
+    // RGB color shortcut: 3-element integer array with each item in 0..=255.
+    let is_rgb = item_type == "integer" && item_max == 255 && min_items == 3 && max_items == 3;
+
+    let mut changed = false;
+    if is_rgb {
+        let mut rgb: [u8; 3] = [
+            arr.first().and_then(|v| v.as_u64()).unwrap_or(0).min(255) as u8,
+            arr.get(1).and_then(|v| v.as_u64()).unwrap_or(0).min(255) as u8,
+            arr.get(2).and_then(|v| v.as_u64()).unwrap_or(0).min(255) as u8,
+        ];
+        if ui.color_edit_button_srgb(&mut rgb).changed() {
+            arr = vec![
+                serde_json::Value::Number(rgb[0].into()),
+                serde_json::Value::Number(rgb[1].into()),
+                serde_json::Value::Number(rgb[2].into()),
+            ];
+            changed = true;
+        }
+    } else {
+        // Generic fixed-length array. Keep length pinned to minItems; longer
+        // sequences (waypoint lists, etc.) would need add/remove affordances
+        // that aren't worth building until a challenge actually wants them.
+        let target_len = arr.len().clamp(min_items.max(1), max_items.max(min_items));
+        while arr.len() < target_len {
+            arr.push(serde_json::Value::Number(0.into()));
+        }
+        ui.horizontal(|ui| {
+            for slot in arr.iter_mut().take(target_len) {
+                match item_type {
+                    "integer" => {
+                        let mut v = slot.as_i64().unwrap_or(0);
+                        if ui.add(egui::DragValue::new(&mut v).range(0..=item_max)).changed() {
+                            *slot = serde_json::Value::Number(v.into());
+                            changed = true;
+                        }
+                    }
+                    "number" => {
+                        let mut v = slot.as_f64().unwrap_or(0.0);
+                        if ui.add(egui::DragValue::new(&mut v).speed(0.1)).changed() {
+                            if let Some(n) = serde_json::Number::from_f64(v) {
+                                *slot = serde_json::Value::Number(n);
+                                changed = true;
+                            }
+                        }
+                    }
+                    _ => {
+                        ui.label(
+                            egui::RichText::new(format!("[{item_type}]"))
+                                .size(10.0)
+                                .color(theme::MUTED)
+                                .italics(),
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    if changed {
+        obj.insert(key.to_string(), serde_json::Value::Array(arr));
+    }
 }
 
 // ── Breeds ──────────────────────────────────────────────────────────────────
@@ -814,6 +908,7 @@ fn config_tab(
     controls: &SimControls,
     queue: &mut SimCommandQueue,
     local: &mut RightPanelLocal,
+    ui_state: &mut UiState,
 ) {
     use crate::ui::widgets;
 
@@ -1109,6 +1204,13 @@ fn config_tab(
     });
     if apply {
         queue.items.push(SimCommand::Recreate(cfg_snapshot));
+        if !needs_reset {
+            // The Recreate handler patches `sim.state.config` in place;
+            // mutation-rate / breed / barrier-type changes are read at
+            // the next gen rollover, so surface that to the user.
+            ui_state.toast =
+                Some(crate::ui::Toast::new("Config patched. Takes effect next generation."));
+        }
     }
     if discard {
         local.edit_config = Some(sim.state.config.clone());

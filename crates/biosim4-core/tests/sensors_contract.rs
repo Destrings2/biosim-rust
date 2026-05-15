@@ -16,6 +16,7 @@ use biosim4_core::{
     genome::ops::make_random_genome,
     grid::Grid,
     population::Population,
+    programmable::ProgrammablePool,
     registry::{SensorContext, SensorRegistry},
     rng::Rng,
     signals_layer::Signals,
@@ -30,6 +31,7 @@ fn build_world<'a>(
     signals: &'a Signals,
     food: &'a FoodLayer,
     population: &'a Population,
+    programmable: &'a ProgrammablePool,
     cfg: &SimConfig,
 ) -> World<'a> {
     World {
@@ -37,6 +39,7 @@ fn build_world<'a>(
         signals,
         food,
         population,
+        programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -57,7 +60,7 @@ fn make_test_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> A
 fn registry_has_all_builtin_sensors() {
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
-    assert_eq!(reg.count(), 40, "expected 40 built-in sensors");
+    assert_eq!(reg.count(), 41, "expected 41 built-in sensors");
 }
 
 #[test]
@@ -98,7 +101,8 @@ fn every_sensor_returns_in_unit_interval() {
     let _ = &ids; // suppress unused warning if loop branches change
 
     let food = FoodLayer::new(cfg.size_x, cfg.size_y);
-    let world = build_world(&grid, &signals, &food, &population, &cfg);
+    let programmable = ProgrammablePool::new();
+    let world = build_world(&grid, &signals, &food, &population, &programmable, &cfg);
 
     let agent_ref = population.get(1).unwrap();
     let mut sensor_rng = Rng::seeded(7);
@@ -133,7 +137,8 @@ fn loc_x_sensor_at_extremes() {
     population.spawn(right);
 
     let food = FoodLayer::new(cfg.size_x, cfg.size_y);
-    let world = build_world(&grid, &signals, &food, &population, &cfg);
+    let programmable = ProgrammablePool::new();
+    let world = build_world(&grid, &signals, &food, &population, &programmable, &cfg);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
@@ -177,7 +182,8 @@ fn boundary_dist_at_corner_is_zero_at_center_is_one() {
     population.spawn(center);
 
     let food = FoodLayer::new(cfg.size_x, cfg.size_y);
-    let world = build_world(&grid, &signals, &food, &population, &cfg);
+    let programmable = ProgrammablePool::new();
+    let world = build_world(&grid, &signals, &food, &population, &programmable, &cfg);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
@@ -225,7 +231,8 @@ fn osc1_oscillates_with_step() {
     population.spawn(agent);
 
     let food = FoodLayer::new(cfg.size_x, cfg.size_y);
-    let world = build_world(&grid, &signals, &food, &population, &cfg);
+    let programmable = ProgrammablePool::new();
+    let world = build_world(&grid, &signals, &food, &population, &programmable, &cfg);
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
     let osc_idx = (0..reg.count()).find(|&i| reg.id(i) == "osc1").unwrap();
@@ -265,7 +272,8 @@ fn random_sensor_produces_varied_output() {
     population.spawn(agent);
 
     let food = FoodLayer::new(cfg.size_x, cfg.size_y);
-    let world = build_world(&grid, &signals, &food, &population, &cfg);
+    let programmable = ProgrammablePool::new();
+    let world = build_world(&grid, &signals, &food, &population, &programmable, &cfg);
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
     let r_idx = (0..reg.count()).find(|&i| reg.id(i) == "random").unwrap();

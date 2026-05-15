@@ -110,9 +110,41 @@ pub fn inspect_action_levels(state: &mut SimulationState, agent_id: AgentId) -> 
 pub fn step_one(state: &mut SimulationState, step: u32) {
     state.sim_step = step;
     run_challenge_step_hooks(state);
+
+    // Sensors fired in the parallel peep loop may query the programmable
+    // pool's spatial index. Rebuild it here, once, sequentially — so the
+    // par_iter section only ever reads it. The refresh is a no-op when no
+    // mutation has happened since the last call (pool stays cold for
+    // peep-only runs).
+    state.programmable.refresh_spatial_index(state.config.size_x, state.config.size_y);
+
     let queues = step_all_agents(state);
     state.population.drain_death_queue_from(&mut state.grid, queues.deaths);
     state.population.drain_move_queue_from(&mut state.grid, queues.moves);
+
+    // Programmable (challenge-owned, non-evolved) entities step after peeps
+    // so each program's `ctx.world` sees the freshly-applied peep moves.
+    // The merge inside `step_all` may queue peep deaths (`kill_peep_at`);
+    // drain those before fading signals.
+    //
+    // Gated at the call site (not just inside `step_all`) so the common
+    // "no programmable challenge active" path skips even the function-
+    // call stack frame — the bench measured a ~2% loss when peep-only
+    // runs still paid for an empty `step_all` plus an empty post-drain.
+    if !state.programmable.alive_ids().is_empty() {
+        let steps_per_gen = state.config.steps_per_generation;
+        state.programmable.step_all(
+            &mut state.grid,
+            &mut state.signals,
+            &mut state.population,
+            &state.food,
+            state.sim_step,
+            state.generation,
+            steps_per_gen,
+        );
+        state.population.drain_death_queue(&mut state.grid);
+    }
+
     fade_signals(state);
     if state.config.enable_energy {
         state.food.regenerate(state.config.food_regen_rate, &state.grid);
@@ -143,6 +175,7 @@ fn run_challenge_step_hooks(state: &mut SimulationState) {
         grid: &mut state.grid,
         signals: &mut state.signals,
         population: &mut state.population,
+        programmable: &mut state.programmable,
         rng: &mut state.rng,
         config: &state.config,
         step: state.sim_step,
@@ -444,12 +477,14 @@ unsafe fn phase1_one_agent(
     let signals_ptr = &state.signals as *const _;
     let food_ptr = &state.food as *const _;
     let pop_ptr = &state.population as *const _;
+    let programmable_ptr = &state.programmable as *const _;
 
     let world = World {
         grid: unsafe { &*grid_ptr },
         signals: unsafe { &*signals_ptr },
         food: unsafe { &*food_ptr },
         population: unsafe { &*pop_ptr },
+        programmable: unsafe { &*programmable_ptr },
         size_x: args.size_x,
         size_y: args.size_y,
         steps_per_generation: args.steps_per_gen,
@@ -496,12 +531,14 @@ unsafe fn phase2_one_agent(
     let signals_ptr = &state.signals as *const _;
     let food_ptr = &state.food as *const _;
     let pop_ptr = &state.population as *const _;
+    let programmable_ptr = &state.programmable as *const _;
 
     let world = World {
         grid: unsafe { &*grid_ptr },
         signals: unsafe { &*signals_ptr },
         food: unsafe { &*food_ptr },
         population: unsafe { &*pop_ptr },
+        programmable: unsafe { &*programmable_ptr },
         size_x: args.size_x,
         size_y: args.size_y,
         steps_per_generation: args.steps_per_gen,

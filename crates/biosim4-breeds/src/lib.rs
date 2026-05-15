@@ -361,6 +361,12 @@ const ALL_SENSOR_IDS: &[&str] = &[
     "food_here",
     "food_fwd",
     "food_lr",
+    // `nearest_alien_dist` is registered but intentionally excluded from
+    // the default breed. Wiring it costs one extra NN input per peep per
+    // step, every run, even when no challenge spawns programmables. Breeds
+    // that want peeps to perceive programmables (predator-prey, etc.) list
+    // it explicitly. See `FEATURE_GATED_SENSOR_IDS` for the canonical list
+    // of sensors gated this way.
 ];
 
 const ALL_ACTION_IDS: &[&str] = &[

@@ -12,6 +12,7 @@ use biosim4_core::{
     genome::ops::make_random_genome,
     grid::Grid,
     population::Population,
+    programmable::ProgrammablePool,
     registry::{SensorContext, SensorRegistry},
     rng::Rng,
     signals_layer::Signals,
@@ -34,6 +35,7 @@ fn world<'a>(
     signals: &'a Signals,
     food: &'a FoodLayer,
     population: &'a Population,
+    programmable: &'a ProgrammablePool,
     cfg: &SimConfig,
 ) -> World<'a> {
     World {
@@ -41,6 +43,7 @@ fn world<'a>(
         signals,
         food,
         population,
+        programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -71,7 +74,8 @@ fn signal0_responds_to_local_signal() {
     let idx = sensor_idx(&reg, "signal0");
 
     let mut srng = Rng::seeded(0);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let baseline = reg.evaluate(
         idx,
         &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
@@ -82,7 +86,8 @@ fn signal0_responds_to_local_signal() {
         signals.increment(0, Coord::new(16, 16), &grid);
     }
 
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let after = reg.evaluate(
         idx,
         &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },
@@ -115,7 +120,8 @@ fn signal_sensors_each_layer_isolated() {
         signals.increment(1, Coord::new(8, 8), &grid);
     }
 
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let mut srng = Rng::seeded(0);
     let agent_ref = pop.get(1).unwrap();
 
@@ -158,7 +164,8 @@ fn memory_sensors_read_agent_memory() {
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let mut srng = Rng::seeded(0);
     let agent_ref = pop.get(1).unwrap();
 
@@ -196,7 +203,8 @@ fn energy_level_clamped_to_unit_interval() {
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let mut srng = Rng::seeded(0);
     let idx = sensor_idx(&reg, "energy_level");
 
@@ -233,7 +241,8 @@ fn food_here_reads_local_cell() {
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let mut srng = Rng::seeded(0);
     let v = reg.evaluate(
         sensor_idx(&reg, "food_here"),
@@ -259,7 +268,8 @@ fn food_fwd_increases_with_food_ahead() {
     register_builtin_sensors(&mut reg);
     let idx = sensor_idx(&reg, "food_fwd");
 
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let mut srng = Rng::seeded(0);
     let baseline = reg.evaluate(
         idx,
@@ -271,7 +281,8 @@ fn food_fwd_increases_with_food_ahead() {
         food.set(Coord::new(16 + dx, 16), 1.0);
     }
 
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let after = reg.evaluate(
         idx,
         &mut SensorContext { agent: pop.get(1).unwrap(), world: &w, sim_step: 0, rng: &mut srng },

@@ -4,7 +4,7 @@
 //! grid texture has been refreshed, so the UI never reads partial state.
 
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext};
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext};
 
 use crate::theme;
 
@@ -30,6 +30,30 @@ pub struct UiState {
     pub theme_installed: bool,
     pub show_telemetry: bool,
     pub show_picker: bool,
+    /// Transient banner shown for [`TOAST_VISIBLE_SECS`] after an APPLY
+    /// click that didn't reset the sim — surfaces the "this lands next
+    /// generation" rule without an interrupting modal.
+    pub toast: Option<Toast>,
+}
+
+/// Lifespan of an apply-confirmation toast in seconds. Long enough to
+/// catch the eye, short enough to disappear before the next interaction.
+pub const TOAST_VISIBLE_SECS: f32 = 3.5;
+
+#[derive(Clone)]
+pub struct Toast {
+    pub message: String,
+    pub shown_at: std::time::Instant,
+}
+
+impl Toast {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self { message: message.into(), shown_at: std::time::Instant::now() }
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.shown_at.elapsed().as_secs_f32() < TOAST_VISIBLE_SECS
+    }
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -113,12 +137,62 @@ impl Plugin for UiPlugin {
                     playback::draw_playback_bar.run_if(ff_off),
                     telemetry::draw_telemetry_overlay,
                     inspector::draw_agent_inspector.run_if(ff_off),
+                    // Toast sits above panels but below the FF modal so a
+                    // mid-FF kickoff confirmation doesn't get buried.
+                    draw_toast.run_if(ff_off),
                     // Modal lives last so it sits above everything else.
                     fast_forward::draw_fast_forward_modal,
                 )
                     .chain(),
             );
     }
+}
+
+/// Paints the [`UiState::toast`] banner near the bottom of the canvas
+/// while it's still within its visible window, then clears it once
+/// expired so the next APPLY can replace it without flicker.
+fn draw_toast(mut ui_state: ResMut<UiState>, mut contexts: EguiContexts) {
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+    let visible = ui_state.toast.as_ref().is_some_and(|t| t.is_visible());
+    if !visible {
+        if ui_state.toast.is_some() {
+            ui_state.toast = None;
+        }
+        return;
+    }
+    let message = ui_state.toast.as_ref().unwrap().message.clone();
+
+    egui::Area::new(egui::Id::new("apply_toast"))
+        .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(-(RIGHT_PANEL_WIDTH * 0.5), -36.0))
+        .order(egui::Order::Foreground)
+        .interactable(false)
+        .show(ctx, |ui| {
+            egui::Frame::default()
+                .fill(theme::PANEL)
+                .stroke(egui::Stroke::new(1.0, theme::ACCENT))
+                .corner_radius(egui::CornerRadius::same(6))
+                .shadow(theme::float_shadow())
+                .inner_margin(egui::Margin::symmetric(14, 10))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // Accent dot keyed to the row's vertical center.
+                        // `allocate_exact_size` gives the icon its own
+                        // pixel-precise rect, avoiding the painter-coord
+                        // gymnastics that bit me on the first pass.
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                        theme::paint_icon(ui.painter(), rect, theme::Icon::Dot, theme::ACCENT);
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new(&message).size(11.5).color(theme::TEXT).strong(),
+                        );
+                    });
+                });
+        });
+
+    // Request a repaint while the toast is animating so the fade-out
+    // expiry triggers without waiting for the next user input.
+    ctx.request_repaint();
 }
 
 fn install_theme_once(mut ui: ResMut<UiState>, mut contexts: EguiContexts) {

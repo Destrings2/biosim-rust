@@ -51,6 +51,11 @@ fn default_breed_mirrors_launch_state() {
     // ids at every generation boundary. The `default` breed must match
     // that mask — otherwise applying it would silently re-enable sensors
     // the underlying config can't actually feed.
+    //
+    // `nearest_alien_dist` is also excluded from the default breed (it
+    // costs one extra NN input per peep per step, and the default config
+    // doesn't activate any programmable-spawning challenge). Breeds for
+    // predator-prey runs opt into it explicitly.
     const GATED_SENSORS: &[&str] = &[
         "signal1",
         "signal1_fwd",
@@ -62,6 +67,7 @@ fn default_breed_mirrors_launch_state() {
         "food_here",
         "food_fwd",
         "food_lr",
+        "nearest_alien_dist",
     ];
     const GATED_ACTIONS: &[&str] = &["emit_signal1", "emit_signal2"];
 

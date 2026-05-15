@@ -48,6 +48,7 @@ pub mod food_layer;
 pub mod genome;
 pub mod grid;
 pub mod population;
+pub mod programmable;
 pub mod registry;
 pub mod rng;
 pub mod signals_layer;

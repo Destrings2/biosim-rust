@@ -31,6 +31,7 @@ use crate::food_layer::FoodLayer;
 use crate::genome::neural_net::WiringConfig;
 use crate::grid::Grid;
 use crate::population::Population;
+use crate::programmable::ProgrammablePool;
 use crate::registry::action::ActionRegistry;
 use crate::registry::challenge::{ChallengeConfig, ChallengeRegistry};
 use crate::registry::sensor::SensorRegistry;
@@ -74,6 +75,9 @@ pub struct SimulationState {
     pub signals: Signals,
     pub food: FoodLayer,
     pub population: Population,
+    /// Non-evolved, challenge-owned entities that live in the world.
+    /// See [`crate::programmable`].
+    pub programmable: ProgrammablePool,
     pub generation: u32,
     pub sim_step: u32,
     pub sensors: SensorRegistry,
@@ -174,6 +178,7 @@ impl SimulationState {
             signals,
             food,
             population,
+            programmable: ProgrammablePool::new(),
             generation: 0,
             sim_step: 0,
             sensors,
@@ -220,6 +225,7 @@ impl SimulationState {
             signals: &self.signals,
             food: &self.food,
             population: &self.population,
+            programmable: &self.programmable,
             size_x: self.config.size_x,
             size_y: self.config.size_y,
             steps_per_generation: self.config.steps_per_generation,

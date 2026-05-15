@@ -29,6 +29,11 @@ pub enum CellKind {
     Barrier,
     KillBarrier,
     Agent(u32),
+    /// Holds the raw grid value (`programmable_id | PROGRAMMABLE_FLAG`),
+    /// not the decoded id — callers pass it straight back to
+    /// `SimCommand::Kill`/`Inspect` etc., and decoding happens at the
+    /// final use site.
+    Programmable(u32),
     OutOfBounds,
 }
 
@@ -73,11 +78,16 @@ fn track_hover(
         Some((x, y)) => {
             hovered.cell = Some((x, y));
             let loc = biosim4_core::types::Coord::new(x as i16, y as i16);
-            hovered.kind = match sim.state.grid.at(loc) {
-                biosim4_core::grid::EMPTY => CellKind::Empty,
-                biosim4_core::grid::BARRIER => CellKind::Barrier,
-                biosim4_core::grid::KILL_BARRIER => CellKind::KillBarrier,
-                id => CellKind::Agent(id),
+            let raw = sim.state.grid.at(loc);
+            hovered.kind = match biosim4_core::grid::cell_kind(raw) {
+                biosim4_core::grid::CellKind::Empty => CellKind::Empty,
+                biosim4_core::grid::CellKind::Barrier => CellKind::Barrier,
+                biosim4_core::grid::CellKind::KillBarrier => CellKind::KillBarrier,
+                // Decoded id is in `agent_id`; we re-encode-by-keeping
+                // the raw cell value so downstream sites have a single
+                // discriminator (the bit-31 flag).
+                biosim4_core::grid::CellKind::Agent(_) => CellKind::Agent(raw),
+                biosim4_core::grid::CellKind::Programmable(_) => CellKind::Programmable(raw),
             };
         }
         None => {
@@ -110,11 +120,14 @@ fn handle_tool_input(
     match controls.tool {
         Tool::Inspect => {
             if left_pressed {
-                if let CellKind::Agent(id) = hovered.kind {
-                    controls.selected_agent = Some(id);
-                } else {
-                    controls.selected_agent = None;
-                }
+                // `selected_agent` stores the raw grid value (peeps =
+                // bit 31 clear, programmables = bit 31 set) so the
+                // inspector can dispatch on the encoding rather than
+                // carry a sibling enum through `SimControls`.
+                controls.selected_agent = match hovered.kind {
+                    CellKind::Agent(raw) | CellKind::Programmable(raw) => Some(raw),
+                    _ => None,
+                };
             }
         }
         Tool::Barrier => {

@@ -14,6 +14,7 @@ use biosim4_core::{
     genome::ops::make_random_genome,
     grid::Grid,
     population::Population,
+    programmable::ProgrammablePool,
     registry::challenge::ChallengeOverlay,
     registry::{ChallengeConfig, ChallengeRegistry},
     rng::Rng,
@@ -28,6 +29,7 @@ fn world<'a>(
     signals: &'a Signals,
     food: &'a FoodLayer,
     population: &'a Population,
+    programmable: &'a ProgrammablePool,
     cfg: &SimConfig,
 ) -> World<'a> {
     World {
@@ -35,6 +37,7 @@ fn world<'a>(
         signals,
         food,
         population,
+        programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -66,7 +69,8 @@ fn make_world(cfg: &SimConfig) -> (Grid, Signals, FoodLayer, Population) {
 fn region_challenges_emit_overlays_and_regionless_do_not() {
     let cfg = SimConfig { size_x: 128, size_y: 128, ..SimConfig::default() };
     let (grid, signals, food, pop) = make_world(&cfg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
 
     // Region-based challenges with non-empty default overlays.
     let with_overlay = [
@@ -126,7 +130,8 @@ fn region_challenges_emit_overlays_and_regionless_do_not() {
 fn near_barrier_overlay_appears_only_when_barriers_exist() {
     let cfg = SimConfig { size_x: 64, size_y: 64, ..SimConfig::default() };
     let (grid, signals, food, pop) = make_world(&cfg);
-    let w_empty = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w_empty = world(&grid, &signals, &food, &pop, &programmable, &cfg);
 
     let mut reg = ChallengeRegistry::new();
     register_builtin_challenges(&mut reg);
@@ -139,7 +144,7 @@ fn near_barrier_overlay_appears_only_when_barriers_exist() {
     // Place a barrier center and verify a circle appears.
     let mut grid2 = Grid::new(cfg.size_x, cfg.size_y);
     grid2.barrier_centers.push(Coord::new(32, 32));
-    let w_with = world(&grid2, &signals, &food, &pop, &cfg);
+    let w_with = world(&grid2, &signals, &food, &pop, &programmable, &cfg);
     let overlays = reg.get_overlays(&w_with);
     assert!(
         !overlays.is_empty(),
@@ -155,7 +160,8 @@ fn near_barrier_overlay_appears_only_when_barriers_exist() {
 fn sun_tracker_overlay_present_and_inside_world() {
     let cfg = SimConfig { size_x: 64, size_y: 64, ..SimConfig::default() };
     let (grid, signals, food, pop) = make_world(&cfg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
 
     let mut reg = ChallengeRegistry::new();
     register_builtin_challenges(&mut reg);
@@ -178,7 +184,8 @@ fn sun_tracker_overlay_present_and_inside_world() {
 fn overlay_coordinates_fit_world_bounds() {
     let cfg = SimConfig { size_x: 64, size_y: 64, ..SimConfig::default() };
     let (grid, signals, food, pop) = make_world(&cfg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
     let sx = cfg.size_x as f32;
     let sy = cfg.size_y as f32;
 
@@ -233,7 +240,8 @@ fn overlay_coordinates_fit_world_bounds() {
 fn aggregate_overlays_includes_every_active_contribution() {
     let cfg = SimConfig { size_x: 32, size_y: 32, ..SimConfig::default() };
     let (grid, signals, food, pop) = make_world(&cfg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
 
     // Active = three spatial challenges; each is known to emit ≥1 overlay.
     let mut reg = ChallengeRegistry::new();
@@ -259,7 +267,8 @@ fn circle_overlay_respects_configured_params() {
     // match the configured normalized values multiplied by world dims.
     let cfg = SimConfig { size_x: 100, size_y: 100, ..SimConfig::default() };
     let (grid, signals, food, pop) = make_world(&cfg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
 
     let mut reg = ChallengeRegistry::new();
     register_builtin_challenges(&mut reg);
@@ -287,7 +296,8 @@ fn circle_overlay_respects_configured_params() {
 fn no_active_challenges_produces_no_overlays() {
     let cfg = SimConfig { size_x: 32, size_y: 32, ..SimConfig::default() };
     let (grid, signals, food, pop) = make_world(&cfg);
-    let w = world(&grid, &signals, &food, &pop, &cfg);
+    let programmable = ProgrammablePool::new();
+    let w = world(&grid, &signals, &food, &pop, &programmable, &cfg);
 
     let reg = ChallengeRegistry::new();
     let overlays = reg.get_overlays(&w);

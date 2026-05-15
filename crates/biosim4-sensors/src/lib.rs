@@ -51,6 +51,13 @@
 //! **Challenge state (4):** `challenge_bit_0..3` — read the low four bits of
 //! `agent.challenge_bits`. The meaning is challenge-defined (e.g. `tag` uses
 //! bit 0 for "am I it?"; `quarantine` uses bit 0 for "am I infected?").
+//!
+//! **Programmable entities (1):** `nearest_alien_dist` — normalized distance
+//! to the nearest live entry in [`World::programmable`]. Returns `1.0` when
+//! the pool is empty (i.e. no challenge has placed any non-evolved entities
+//! this generation). The label is deliberately generic — "alien" rather
+//! than "predator" — because the pool is generic: any challenge can
+//! register its own kind of non-evolved entity. See [`biosim4_core::programmable`].
 
 pub mod helpers;
 
@@ -99,6 +106,7 @@ pub fn register_builtin_sensors(registry: &mut SensorRegistry) {
     registry.register(Box::new(FoodHere));
     registry.register(Box::new(FoodFwd));
     registry.register(Box::new(FoodLR));
+    registry.register(Box::new(NearestAlienDist));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -705,5 +713,39 @@ impl Sensor for FoodLR {
         lr_average(ctx.agent.last_move_dir, |d| {
             ctx.world.food.get_density_fwd(ctx.agent.loc, d, r, ctx.world.grid)
         })
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Programmable-entity sensors
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Distance to the nearest entry in [`World::programmable`], normalized to
+/// `[0, 1]` by the grid diagonal. Returns `1.0` when the pool is empty so
+/// peeps wired to this input read it as "no alien in sight" by default.
+struct NearestAlienDist;
+impl Sensor for NearestAlienDist {
+    fn id(&self) -> &str {
+        "nearest_alien_dist"
+    }
+    fn name(&self) -> &str {
+        "nearest alien dist"
+    }
+    fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+        // Query through the pool's spatial index instead of walking
+        // `alive_ids` here. The index is rebuilt once per step in
+        // `sim_step::step_one` before the parallel peep section, so this
+        // call is a read-only bucket scan — O(ring-buckets-visited)
+        // rather than O(N_alive).
+        let Some(best_sq) = ctx.world.programmable.nearest_alien_dist_sq(ctx.agent.loc) else {
+            return 1.0;
+        };
+        // Normalize by grid diagonal so the value stays in [0, 1]. Using
+        // size_x / size_y from world avoids hardcoding any constant — works
+        // whatever grid the caller configured.
+        let sx = ctx.world.size_x as f32;
+        let sy = ctx.world.size_y as f32;
+        let diag = (sx * sx + sy * sy).sqrt().max(1.0);
+        ((best_sq as f32).sqrt() / diag).clamp(0.0, 1.0)
     }
 }

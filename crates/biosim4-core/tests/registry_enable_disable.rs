@@ -28,6 +28,7 @@ use biosim4_core::{
     },
     grid::Grid,
     population::Population,
+    programmable::ProgrammablePool,
     registry::{
         action::{ActionContext, ActionRegistry},
         sensor::{SensorContext, SensorRegistry},
@@ -75,6 +76,7 @@ fn build_world<'a>(
     signals: &'a Signals,
     food: &'a FoodLayer,
     population: &'a Population,
+    programmable: &'a ProgrammablePool,
     cfg: &SimConfig,
 ) -> World<'a> {
     World {
@@ -82,6 +84,7 @@ fn build_world<'a>(
         signals,
         food,
         population,
+        programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -108,6 +111,7 @@ fn with_action_ctx<R>(
     let mut death_q: Vec<AgentId> = Vec::new();
 
     let food = FoodLayer::new(cfg.size_x, cfg.size_y);
+    let programmable = ProgrammablePool::new();
     let grid_ptr: *const Grid = grid;
     let signals_const_ptr: *const Signals = signals;
     let signals_mut_ptr: *mut Signals = signals;
@@ -119,6 +123,7 @@ fn with_action_ctx<R>(
         signals: unsafe { &*signals_const_ptr },
         food: &food,
         population: unsafe { &*pop_ptr },
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -287,7 +292,8 @@ fn disabled_sensor_returns_zero_before_commit() {
     let agent = make_test_agent(population.next_id(), Coord::new(8, 8), &cfg, &mut rng);
     population.spawn(agent);
     let food = FoodLayer::new(cfg.size_x, cfg.size_y);
-    let world = build_world(&grid, &signals, &food, &population, &cfg);
+    let programmable = ProgrammablePool::new();
+    let world = build_world(&grid, &signals, &food, &population, &programmable, &cfg);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
@@ -550,7 +556,8 @@ fn remaining_sensors_still_return_unit_interval_when_some_are_disabled() {
     population.spawn(agent);
 
     let food = FoodLayer::new(cfg.size_x, cfg.size_y);
-    let world = build_world(&grid, &signals, &food, &population, &cfg);
+    let programmable = ProgrammablePool::new();
+    let world = build_world(&grid, &signals, &food, &population, &programmable, &cfg);
 
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);

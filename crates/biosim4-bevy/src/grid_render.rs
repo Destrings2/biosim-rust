@@ -14,7 +14,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use biosim4_core::grid::{BARRIER, EMPTY, KILL_BARRIER};
+use biosim4_core::grid::{cell_kind, CellKind};
 use biosim4_core::registry::challenge::ChallengeOverlay;
 use biosim4_core::types::Coord;
 
@@ -148,8 +148,8 @@ fn encode_into(sim: &Sim, buf: &mut [u8]) {
         for x in 0..sx {
             let coord = Coord::new(x as i16, world_y as i16);
             let cell = sim.state.grid.at(coord);
-            let rgb = match cell {
-                EMPTY => {
+            let rgb = match cell_kind(cell) {
+                CellKind::Empty => {
                     let food = sim.state.food.get(coord);
                     if food > 0.01 {
                         [0, (food * 120.0) as u8, 0]
@@ -157,15 +157,23 @@ fn encode_into(sim: &Sim, buf: &mut [u8]) {
                         [0, 0, 0]
                     }
                 }
-                BARRIER => [80, 80, 80],
+                CellKind::Barrier => [80, 80, 80],
                 // Kill barrier — saturated red with a subtle pulse using a
                 // checker pattern so it reads as "hazard" even at small
                 // pixel scale.
-                KILL_BARRIER => {
+                CellKind::KillBarrier => {
                     let checker = ((x as i16 + world_y as i16) & 1) as u8;
                     [200 - checker * 20, 30, 30]
                 }
-                id => sim.state.population.get(id).map(|a| a.color).unwrap_or([0, 0, 0]),
+                CellKind::Agent(id) => {
+                    sim.state.population.get(id).map(|a| a.color).unwrap_or([0, 0, 0])
+                }
+                // Challenge-owned programmable entity — render its
+                // self-reported color. Falls back to a neutral magenta so a
+                // missing entity (shouldn't happen) is visually obvious.
+                CellKind::Programmable(id) => {
+                    sim.state.programmable.get(id).map(|e| e.color).unwrap_or([200, 0, 200])
+                }
             };
             let off = row_base + x * 4;
             buf[off] = rgb[0];

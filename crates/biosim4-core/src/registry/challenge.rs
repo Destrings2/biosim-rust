@@ -63,12 +63,14 @@ pub enum ChallengeOverlay {
 }
 
 /// Mutable world reference for on_sim_step / on_generation_start side effects.
-/// Challenges can iterate alive agents, mutate their `challenge_bits`, and
-/// queue deaths via `population.queue_for_death(...)`.
+/// Challenges can iterate alive agents, mutate their `challenge_bits`, queue
+/// deaths via `population.queue_for_death(...)`, and spawn / despawn
+/// programmable entities via `programmable.spawn(...)` etc.
 pub struct WorldMut<'a> {
     pub grid: &'a mut Grid,
     pub signals: &'a mut Signals,
     pub population: &'a mut Population,
+    pub programmable: &'a mut crate::programmable::ProgrammablePool,
     pub rng: &'a mut crate::rng::Rng,
     pub step: u32,
     pub generation: u32,

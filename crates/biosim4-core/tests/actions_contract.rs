@@ -12,6 +12,7 @@ use biosim4_core::{
     genome::ops::make_random_genome,
     grid::Grid,
     population::Population,
+    programmable::ProgrammablePool,
     registry::{ActionContext, ActionRegistry},
     rng::Rng,
     signals_layer::Signals,
@@ -57,11 +58,13 @@ fn with_action_ctx<R>(
     // (via World) and one mutable view of signals/agent (via ActionContext). The action
     // implementations only read from world.population and only mutate via the queues
     // and ctx.agent / ctx.signals — they don't write back through the world reference.
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: unsafe { &*grid_ptr },
         signals: unsafe { &*signals_const_ptr },
         food: &food,
         population: unsafe { &*pop_ptr },
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -400,11 +403,13 @@ fn with_kill_ctx<R>(
     let pop_ptr: *const Population = population;
     let agent_ptr: *mut Agent = population.get_mut(agent_id).expect("agent exists");
 
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: unsafe { &*grid_ptr },
         signals: unsafe { &*signals_const_ptr },
         food: &food,
         population: unsafe { &*pop_ptr },
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,

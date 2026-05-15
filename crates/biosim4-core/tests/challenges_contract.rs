@@ -10,6 +10,7 @@ use biosim4_core::{
     genome::ops::make_random_genome,
     grid::Grid,
     population::Population,
+    programmable::ProgrammablePool,
     registry::{ChallengeComposition, ChallengeConfig, ChallengeRegistry},
     rng::Rng,
     signals_layer::Signals,
@@ -91,11 +92,13 @@ fn schema_list_entries_have_required_fields() {
 fn empty_active_set_passes_everyone() {
     let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
     let (grid, signals, food, pop) = world_with_agent(Coord::new(0, 0), &cfg);
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: &grid,
         signals: &signals,
         food: &food,
         population: &pop,
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -115,11 +118,13 @@ fn right_half_pass_left_fails() {
 
     // Agent on the right
     let (grid, signals, food, pop) = world_with_agent(Coord::new(12, 8), &cfg);
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: &grid,
         signals: &signals,
         food: &food,
         population: &pop,
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -135,11 +140,13 @@ fn right_half_pass_left_fails() {
 
     // Agent on the left should fail
     let (grid, signals, food, pop) = world_with_agent(Coord::new(2, 8), &cfg);
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: &grid,
         signals: &signals,
         food: &food,
         population: &pop,
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -158,11 +165,13 @@ fn right_half_pass_left_fails() {
 fn circle_challenge_configure_changes_evaluation() {
     let cfg = SimConfig { size_x: 17, size_y: 17, ..SimConfig::default() }; // mid = 8
     let (grid, signals, food, pop) = world_with_agent(Coord::new(8, 8), &cfg);
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: &grid,
         signals: &signals,
         food: &food,
         population: &pop,
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -208,11 +217,13 @@ fn apply_config_with_any_composition_passes_if_any_active_passes() {
     let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
     // Agent on left half (so right_half fails) but in left_eighth → at least one passes
     let (grid, signals, food, pop) = world_with_agent(Coord::new(1, 8), &cfg);
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: &grid,
         signals: &signals,
         food: &food,
         population: &pop,
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -235,11 +246,13 @@ fn apply_config_with_any_composition_passes_if_any_active_passes() {
 fn apply_config_with_all_composition_fails_if_any_active_fails() {
     let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
     let (grid, signals, food, pop) = world_with_agent(Coord::new(1, 8), &cfg);
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: &grid,
         signals: &signals,
         food: &food,
         population: &pop,
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,
@@ -294,11 +307,13 @@ fn evaluate_score_always_in_unit_interval() {
             }
 
             let (grid, signals, food, pop) = world_with_agent(p, &cfg);
+            let programmable = ProgrammablePool::new();
             let world = World {
                 grid: &grid,
                 signals: &signals,
                 food: &food,
                 population: &pop,
+                programmable: &programmable,
                 size_x: cfg.size_x,
                 size_y: cfg.size_y,
                 steps_per_generation: cfg.steps_per_generation,
@@ -328,11 +343,13 @@ fn weighted_sum_composition_evaluates_correctly() {
     // Agent at x=12 is in the right half (passes right_half, score=1.0)
     // but NOT in the left eighth (fails left_eighth, score=0.0).
     let (grid, signals, food, pop) = world_with_agent(Coord::new(12, 8), &cfg);
+    let programmable = ProgrammablePool::new();
     let world = World {
         grid: &grid,
         signals: &signals,
         food: &food,
         population: &pop,
+        programmable: &programmable,
         size_x: cfg.size_x,
         size_y: cfg.size_y,
         steps_per_generation: cfg.steps_per_generation,

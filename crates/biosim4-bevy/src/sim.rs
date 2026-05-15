@@ -683,16 +683,29 @@ fn kill_at(sim: &mut Sim, x: u16, y: u16) {
         return;
     }
     let loc = biosim4_core::types::Coord::new(x as i16, y as i16);
-    let id = sim.state.grid.at(loc);
-    if id == biosim4_core::grid::EMPTY || id == biosim4_core::grid::BARRIER {
-        return;
+    let raw = sim.state.grid.at(loc);
+    match biosim4_core::grid::cell_kind(raw) {
+        biosim4_core::grid::CellKind::Agent(id) => {
+            // Mark agent dead first so the pop_mut borrow doesn't conflict
+            // with the death-queue drain below.
+            if let Some(a) = sim.state.population.get_mut(id) {
+                a.alive = false;
+            }
+            sim.state.grid.set(loc, biosim4_core::grid::EMPTY);
+            sim.state.population.queue_for_death(id);
+            sim.state.population.drain_death_queue(&mut sim.state.grid);
+        }
+        biosim4_core::grid::CellKind::Programmable(prog_id) => {
+            // Without this branch the previous code wrote `EMPTY` to the
+            // grid but left the programmable alive in the pool, so its
+            // next `step_all` move re-encoded the cell — the entity
+            // "disappeared for one frame and popped back".
+            sim.state.programmable.despawn(&mut sim.state.grid, prog_id);
+        }
+        biosim4_core::grid::CellKind::Empty
+        | biosim4_core::grid::CellKind::Barrier
+        | biosim4_core::grid::CellKind::KillBarrier => {}
     }
-    if let Some(a) = sim.state.population.get_mut(id) {
-        a.alive = false;
-    }
-    sim.state.grid.set(loc, biosim4_core::grid::EMPTY);
-    sim.state.population.queue_for_death(id);
-    sim.state.population.drain_death_queue(&mut sim.state.grid);
 }
 
 fn reproduce_at(sim: &mut Sim, x: u16, y: u16) {

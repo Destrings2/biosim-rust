@@ -64,6 +64,7 @@ fn apply_feature_enables(state: &mut SimulationState) {
 /// Populate generation 0 with agents carrying random genomes, placed randomly.
 pub fn initialize_generation_0(state: &mut SimulationState) {
     state.population.clear();
+    state.programmable.clear(&mut state.grid);
     state.grid.zero_fill();
     crate::barriers::create_barrier(&mut state.grid, state.config.barrier_type);
     state.reapply_user_barriers();
@@ -177,9 +178,15 @@ fn generate_new_genomes(
 }
 
 /// Clear the world for a new generation: empty the grid, restamp barriers,
-/// reset signals, regenerate food (if enabled).
+/// reset signals, regenerate food (if enabled), wipe the programmable pool.
 fn reset_world(state: &mut SimulationState) {
     state.population.clear();
+    // Clear programmables before zero-filling so their grid cells are
+    // released in one consistent step. The pool's clear walks alive_ids
+    // and sets EMPTY at each loc; since zero_fill follows, the two are
+    // equivalent here — but doing the pool clear up front keeps the
+    // pool's internal state in sync regardless of grid contents.
+    state.programmable.clear(&mut state.grid);
     state.grid.zero_fill();
     crate::barriers::create_barrier(&mut state.grid, state.config.barrier_type);
     state.reapply_user_barriers();
@@ -232,11 +239,14 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
         state.grid.set(loc, assigned_id);
     }
 
-    // Run on_generation_start hooks.
+    // Run on_generation_start hooks. The programmable pool was already
+    // wiped inside `reset_world`; challenges that own programmables
+    // re-spawn them here.
     let mut world_mut = WorldMut {
         grid: &mut state.grid,
         signals: &mut state.signals,
         population: &mut state.population,
+        programmable: &mut state.programmable,
         rng: &mut state.rng,
         config: &state.config,
         step: 0,
