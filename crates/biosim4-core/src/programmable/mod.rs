@@ -42,6 +42,7 @@
 
 mod spatial;
 pub use spatial::SpatialIndex;
+pub mod library;
 
 use std::collections::HashMap;
 
@@ -170,11 +171,13 @@ pub trait Program: Send + Sync {
     /// - Write the requested side effects into `out`.
     fn step(&self, this: &mut Programmable, ctx: &mut ProgramContext, out: &mut ProgramOutput);
 
-    /// Hook fired once when the entity is spawned (sequential, not in the
-    /// parallel section). Override to set up initial `state`.
-    fn on_spawn(&self, _this: &mut Programmable, _ctx: &mut ProgramContext) {}
+    /// Called once when the entity is spawned. Override to initialise `this.state`.
+    ///
+    /// Runs sequentially at gen-start before any `World` snapshot exists,
+    /// so only the entity and a local rng are available.
+    fn on_spawn(&self, _this: &mut Programmable, _rng: &mut Rng) {}
 
-    /// Hook fired once when the entity is despawned (sequential).
+    /// Called once when the entity is despawned (sequential).
     fn on_despawn(&self, _this: &mut Programmable, _ctx: &mut ProgramContext) {}
 }
 
@@ -315,10 +318,16 @@ impl ProgrammablePool {
         self.agents.push(Some(entity));
         self.alive_ids.push(id);
         self.spatial_dirty = true;
-        // on_spawn fires sequentially with full mutable access to `this`.
-        // The context's `world`/`siblings` are pre-step snapshots that
-        // we don't bother building here since spawn happens at
-        // gen-start, before any step has run.
+
+        // on_spawn runs sequentially — no parallel-safety concerns.
+        // A scratch Rng is sufficient here; no World snapshot exists at gen-start.
+        let prog_idx = program as usize;
+        if let Some(entity) = self.agents[id as usize].as_mut() {
+            let mut scratch_rng = Rng::from_entropy();
+            let prog = &*self.programs[prog_idx];
+            prog.on_spawn(entity, &mut scratch_rng);
+        }
+
         id.into()
     }
 
@@ -540,10 +549,27 @@ impl ProgrammablePool {
             }
 
             // 4. Kill peep at coord.
+            //
+            // When `kill_peep_at` and `move_to` target the same cell (the
+            // predator-eats-and-steps case), apply the kill inline and
+            // free the grid cell so step 5 below sees it as empty.
+            // Otherwise the death stays queued for the end-of-step drain.
+            //
+            // The `queue_for_death` push runs unconditionally so
+            // `alive_ids` gets pruned during the next `drain_death_queue`;
+            // `apply_deaths` skips the already-dead inline kills, but
+            // still walks the retain pass that updates the cache.
             if let Some(coord) = out.kill_peep_at {
                 if grid.is_in_bounds(coord) {
-                    let cell = grid.at(coord);
-                    if let grid::CellKind::Agent(agent_id) = grid::cell_kind(cell) {
+                    if let grid::CellKind::Agent(agent_id) = grid::cell_kind(grid.at(coord)) {
+                        if out.move_to == Some(coord) {
+                            if let Some(peep) = population.get_mut(agent_id) {
+                                if peep.alive {
+                                    peep.alive = false;
+                                    grid.set(coord, grid::EMPTY);
+                                }
+                            }
+                        }
                         population.queue_for_death(agent_id);
                     }
                 }
@@ -567,15 +593,8 @@ impl ProgrammablePool {
                     let dir = (dest - from).as_dir();
                     entity.heading = dir;
                 } else {
-                    // Cell holds another occupant. If it's a peep and the
-                    // program already requested kill_peep_at(dest), the
-                    // peep's death is queued — but its grid cell isn't
-                    // freed until the death queue drains, so we can't
-                    // actually move this step. Leave the entity put.
-                    // Future programs that want guaranteed step-onto-kill
-                    // can chain (kill_peep_at + move_to) and accept the
-                    // one-step lag, or open a "predator move" path that
-                    // bundles both into the merge.
+                    // Occupied by something other than the just-killed peep;
+                    // leave the entity in place.
                 }
             }
 

@@ -31,6 +31,7 @@ mod social;
 mod spatial;
 mod tag;
 mod wanderers;
+mod predators;
 
 pub use altruism::*;
 pub use dynamic::*;
@@ -42,6 +43,7 @@ pub use social::*;
 pub use spatial::*;
 pub use tag::*;
 pub use wanderers::*;
+pub use predators::*;
 
 use biosim4_core::registry::ChallengeRegistry;
 
@@ -106,6 +108,7 @@ pub fn register_builtin_challenges(registry: &mut ChallengeRegistry) {
     // Tag / contagion
     registry.register(Box::new(TagChallenge::default()));
     registry.register(Box::new(QuarantineChallenge::default()));
-    // Programmable-agent demo (smoke test for ProgrammablePool).
+    // Demonstrates programmable agents and tests ProgrammablePool.
     registry.register(Box::new(WanderersChallenge::default()));
+    registry.register(Box::new(PredatorsChallenge::default()));
 }
