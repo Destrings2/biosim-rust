@@ -21,12 +21,12 @@ fn new_signals_layer_starts_at_zero() {
 }
 
 #[test]
-fn increment_center_gets_plus_2_neighbors_get_plus_1() {
+fn increment_center_gets_plus_3_neighbors_get_plus_1() {
     let grid = Grid::new(10, 10);
     let s = Signals::new(1, 10, 10);
     let center = Coord::new(5, 5);
     s.increment(0, center, &grid);
-    assert_eq!(s.get(0, center), 2, "center should get +2");
+    assert_eq!(s.get(0, center), 3, "center receives +1 (neighborhood) +2 (explicit) = +3");
     // 4 cardinal neighbors get +1
     assert_eq!(s.get(0, Coord::new(4, 5)), 1);
     assert_eq!(s.get(0, Coord::new(6, 5)), 1);
@@ -43,10 +43,11 @@ fn fade_decreases_all_values_by_one_with_floor() {
     let mut s = Signals::new(1, 10, 10);
     s.increment(0, Coord::new(5, 5), &grid);
     s.fade(0);
-    assert_eq!(s.get(0, Coord::new(5, 5)), 1, "center after fade should be 2-1=1");
+    assert_eq!(s.get(0, Coord::new(5, 5)), 2, "center after fade should be 3-1=2");
     assert_eq!(s.get(0, Coord::new(4, 5)), 0, "neighbor after fade should be 1-1=0");
     s.fade(0);
-    assert_eq!(s.get(0, Coord::new(5, 5)), 0, "center after second fade should saturate at 0");
+    s.fade(0);
+    assert_eq!(s.get(0, Coord::new(5, 5)), 0, "center after three fades should saturate at 0");
 }
 
 #[test]
@@ -67,8 +68,8 @@ fn increment_at_corner_does_not_panic() {
     let s = Signals::new(1, 10, 10);
     s.increment(0, Coord::new(0, 0), &grid);
     s.increment(0, Coord::new(9, 9), &grid);
-    assert_eq!(s.get(0, Coord::new(0, 0)), 2);
-    assert_eq!(s.get(0, Coord::new(9, 9)), 2);
+    assert_eq!(s.get(0, Coord::new(0, 0)), 3);
+    assert_eq!(s.get(0, Coord::new(9, 9)), 3);
 }
 
 #[test]
@@ -110,27 +111,27 @@ fn zero_fill_clears_all_layers() {
 #[test]
 fn diffusion_reduces_magnitude_over_time() {
     // After an increment, repeated fades must bring all cells monotonically
-    // toward zero.  After enough fades every cell must be 0.
+    // toward zero. The center starts at 3 and neighbors at 1, so three
+    // fades zero everything.
     let grid = Grid::new(10, 10);
     let mut s = Signals::new(1, 10, 10);
     let center = Coord::new(5, 5);
     s.increment(0, center, &grid);
 
-    let initial_center = s.get(0, center);
-    assert_eq!(initial_center, 2, "center should start at 2");
+    assert_eq!(s.get(0, center), 3, "center should start at 3");
 
-    // First fade: center goes from 2 → 1.
+    s.fade(0);
+    assert_eq!(s.get(0, center), 2);
     s.fade(0);
     assert_eq!(s.get(0, center), 1);
-
-    // Second fade: center goes from 1 → 0.
     s.fade(0);
     assert_eq!(s.get(0, center), 0);
 
-    // All cells must now be 0 (neighbors were at 1, then 0 after two fades).
+    // All cells must now be 0 (neighbors were at 1 and floored at 0 after
+    // the first fade; the center reached 0 on the third).
     for x in 0..10i16 {
         for y in 0..10i16 {
-            assert_eq!(s.get(0, Coord::new(x, y)), 0, "cell ({x},{y}) should be 0 after 2 fades");
+            assert_eq!(s.get(0, Coord::new(x, y)), 0, "cell ({x},{y}) should be 0 after 3 fades");
         }
     }
 }

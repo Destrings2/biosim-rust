@@ -4,8 +4,8 @@
 //! These cover the second architectural pillar — pluggable actions. The most
 //! likely class of bugs is a directional action queueing the wrong neighbor cell.
 
+use biosim4_actions::{level_to_prob, prob2bool, register_builtin_actions, response_curve};
 use biosim4_core::{
-    actions::{prob2bool, register_builtin_actions, response_curve},
     agent::{Agent, AgentId},
     food_layer::FoodLayer,
     genome::neural_net::{create_wiring, WiringConfig},
@@ -77,6 +77,12 @@ fn with_action_ctx<R>(
         signals: unsafe { &mut *signals_mut_ptr },
         rng,
         config_kill_enable: false,
+        responsiveness_adjusted: biosim4_core::registry::action::response_curve(
+            unsafe { &*agent_ptr }.responsiveness,
+            cfg.responsiveness_curve_k_factor,
+        ),
+        move_x_urge: 0.0,
+        move_y_urge: 0.0,
     };
 
     f(&mut ctx)
@@ -123,6 +129,19 @@ fn registry_has_known_action_ids() {
     }
 }
 
+/// Helper: run a single motor action then resolve the combined-urge
+/// movement. Caller is responsible for setting `responsiveness = 1.0` on
+/// the agent if it wants the gate fully open.
+fn run_motor_and_resolve(
+    reg: &ActionRegistry,
+    action_idx: u16,
+    level: f32,
+    ctx: &mut ActionContext,
+) {
+    reg.execute(action_idx, level, ctx);
+    biosim4_core::registry::action::resolve_movement(ctx);
+}
+
 #[test]
 fn move_east_with_high_level_queues_move_to_x_plus_1() {
     let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
@@ -134,6 +153,7 @@ fn move_east_with_high_level_queues_move_to_x_plus_1() {
     let agent = make_test_agent(population.next_id(), Coord::new(5, 5), &cfg, &mut rng);
     let id = population.spawn(agent);
     grid.set(Coord::new(5, 5), id);
+    population.get_mut(id).unwrap().responsiveness = 1.0;
 
     let mut reg = ActionRegistry::new();
     register_builtin_actions(&mut reg);
@@ -142,9 +162,7 @@ fn move_east_with_high_level_queues_move_to_x_plus_1() {
     let mut arng = Rng::seeded(99);
     let queued: Vec<(AgentId, Coord)> =
         with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
-            for _ in 0..20 {
-                reg.execute(east_idx, 5.0, ctx);
-            }
+            run_motor_and_resolve(&reg, east_idx, 10.0, ctx);
             ctx.move_queue.clone()
         });
 
@@ -167,6 +185,7 @@ fn move_west_queues_move_to_x_minus_1() {
     let agent = make_test_agent(population.next_id(), Coord::new(5, 5), &cfg, &mut rng);
     let id = population.spawn(agent);
     grid.set(Coord::new(5, 5), id);
+    population.get_mut(id).unwrap().responsiveness = 1.0;
 
     let mut reg = ActionRegistry::new();
     register_builtin_actions(&mut reg);
@@ -174,11 +193,10 @@ fn move_west_queues_move_to_x_minus_1() {
     let mut arng = Rng::seeded(123);
     let queued: Vec<(AgentId, Coord)> =
         with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
-            for _ in 0..20 {
-                reg.execute(idx, 5.0, ctx);
-            }
+            run_motor_and_resolve(&reg, idx, 10.0, ctx);
             ctx.move_queue.clone()
         });
+    assert!(!queued.is_empty(), "move_west should queue at least one move");
     for (_, t) in &queued {
         assert_eq!(t.x, 4, "west move should be x-1");
         assert_eq!(t.y, 5);
@@ -196,6 +214,7 @@ fn move_north_queues_move_to_y_plus_1() {
     let agent = make_test_agent(population.next_id(), Coord::new(5, 5), &cfg, &mut rng);
     let id = population.spawn(agent);
     grid.set(Coord::new(5, 5), id);
+    population.get_mut(id).unwrap().responsiveness = 1.0;
 
     let mut reg = ActionRegistry::new();
     register_builtin_actions(&mut reg);
@@ -203,11 +222,10 @@ fn move_north_queues_move_to_y_plus_1() {
     let mut arng = Rng::seeded(123);
     let queued: Vec<(AgentId, Coord)> =
         with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
-            for _ in 0..20 {
-                reg.execute(idx, 5.0, ctx);
-            }
+            run_motor_and_resolve(&reg, idx, 10.0, ctx);
             ctx.move_queue.clone()
         });
+    assert!(!queued.is_empty(), "move_north should queue at least one move");
     for (_, t) in &queued {
         assert_eq!(t.x, 5);
         assert_eq!(t.y, 6, "north move should be y+1");
@@ -225,6 +243,7 @@ fn move_blocked_by_grid_boundary_does_not_queue() {
     let agent = make_test_agent(population.next_id(), Coord::new(15, 5), &cfg, &mut rng);
     let id = population.spawn(agent);
     grid.set(Coord::new(15, 5), id);
+    population.get_mut(id).unwrap().responsiveness = 1.0;
 
     let mut reg = ActionRegistry::new();
     register_builtin_actions(&mut reg);
@@ -232,9 +251,7 @@ fn move_blocked_by_grid_boundary_does_not_queue() {
     let mut arng = Rng::seeded(0);
     let queued: Vec<(AgentId, Coord)> =
         with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
-            for _ in 0..50 {
-                reg.execute(east_idx, 10.0, ctx);
-            }
+            run_motor_and_resolve(&reg, east_idx, 10.0, ctx);
             ctx.move_queue.clone()
         });
     assert!(queued.is_empty(), "move_east at right edge must not queue any moves");
@@ -254,6 +271,7 @@ fn move_blocked_by_occupied_cell_does_not_queue() {
     let agent_b = make_test_agent(population.next_id(), Coord::new(6, 5), &cfg, &mut rng);
     let id_b = population.spawn(agent_b);
     grid.set(Coord::new(6, 5), id_b);
+    population.get_mut(id_a).unwrap().responsiveness = 1.0;
 
     let mut reg = ActionRegistry::new();
     register_builtin_actions(&mut reg);
@@ -261,12 +279,10 @@ fn move_blocked_by_occupied_cell_does_not_queue() {
     let mut arng = Rng::seeded(0);
     let queued: Vec<(AgentId, Coord)> =
         with_action_ctx(&cfg, &grid, &mut signals, &mut population, id_a, &mut arng, |ctx| {
-            for _ in 0..50 {
-                reg.execute(east_idx, 10.0, ctx);
-            }
+            run_motor_and_resolve(&reg, east_idx, 10.0, ctx);
             ctx.move_queue.clone()
         });
-    // try_move() filters by is_empty_at — should not queue
+    // resolve_movement filters by is_empty_at — should not queue.
     assert!(queued.is_empty(), "move into occupied cell must not queue, got {:?}", queued);
 }
 
@@ -322,19 +338,30 @@ fn set_oscillator_period_produces_positive_period() {
 }
 
 #[test]
-fn prob2bool_zero_level_is_almost_never_true() {
+fn prob2bool_zero_prob_never_fires() {
     let mut rng = Rng::seeded(0);
     let n = 1000;
     let true_count = (0..n).filter(|_| prob2bool(0.0, &mut rng)).count();
-    assert!(true_count < 50, "p2b(0) firing too often: {}/{}", true_count, n);
+    assert_eq!(true_count, 0, "p2b(0.0) must never fire");
 }
 
 #[test]
-fn prob2bool_high_level_is_almost_always_true() {
+fn prob2bool_one_prob_always_fires() {
     let mut rng = Rng::seeded(0);
     let n = 1000;
-    let true_count = (0..n).filter(|_| prob2bool(10.0, &mut rng)).count();
-    assert!(true_count > 950, "p2b(10) firing too rarely: {}/{}", true_count, n);
+    let true_count = (0..n).filter(|_| prob2bool(1.0, &mut rng)).count();
+    assert_eq!(true_count, n, "p2b(1.0) must always fire");
+}
+
+#[test]
+fn level_to_prob_zero_level_is_zero() {
+    assert_eq!(level_to_prob(0.0), 0.0);
+}
+
+#[test]
+fn level_to_prob_high_level_saturates_near_one() {
+    assert!(level_to_prob(10.0) > 0.999);
+    assert!(level_to_prob(-10.0) > 0.999); // |tanh| folds negatives
 }
 
 #[test]
@@ -393,6 +420,12 @@ fn with_kill_ctx<R>(
         signals: unsafe { &mut *signals_mut_ptr },
         rng,
         config_kill_enable: true, // ← enabled
+        responsiveness_adjusted: biosim4_core::registry::action::response_curve(
+            unsafe { &*agent_ptr }.responsiveness,
+            cfg.responsiveness_curve_k_factor,
+        ),
+        move_x_urge: 0.0,
+        move_y_urge: 0.0,
     };
 
     f(&mut ctx)
@@ -449,11 +482,16 @@ fn kill_forward_enabled_queues_victim_when_adjacent() {
     let mut population = Population::new(2);
     let mut rng = Rng::seeded(31);
 
-    // Killer at (7,7) facing east
+    // Killer at (7,7) facing east. Max responsiveness so the gate is fully
+    // open and a high-level activation collapses to a deterministic fire.
     let killer = make_test_agent(population.next_id(), Coord::new(7, 7), &cfg, &mut rng);
     let id_killer = population.spawn(killer);
     grid.set(Coord::new(7, 7), id_killer);
-    population.get_mut(id_killer).unwrap().last_move_dir = Dir(Compass::E);
+    {
+        let k = population.get_mut(id_killer).unwrap();
+        k.last_move_dir = Dir(Compass::E);
+        k.responsiveness = 1.0;
+    }
 
     // Victim at (8,7) — one step east of killer
     let victim = make_test_agent(population.next_id(), Coord::new(8, 7), &cfg, &mut rng);
@@ -498,7 +536,13 @@ fn kill_forward_drain_marks_victim_dead_and_clears_grid() {
     let killer = make_test_agent(population.next_id(), killer_loc, &cfg, &mut rng);
     let id_killer = population.spawn(killer);
     grid.set(killer_loc, id_killer);
-    population.get_mut(id_killer).unwrap().last_move_dir = Dir(Compass::E);
+    // Max responsiveness so the gate is fully open and a high-level
+    // activation fires deterministically.
+    {
+        let k = population.get_mut(id_killer).unwrap();
+        k.last_move_dir = Dir(Compass::E);
+        k.responsiveness = 1.0;
+    }
 
     let victim = make_test_agent(population.next_id(), victim_loc, &cfg, &mut rng);
     let id_victim = population.spawn(victim);

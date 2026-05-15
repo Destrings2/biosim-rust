@@ -119,11 +119,16 @@ pub fn step_one(state: &mut SimulationState, step: u32) {
     }
 }
 
-/// Move/death lists produced by `step_all_agents` for direct application
-/// by the drain routines (skips a round-trip extend through
-/// `population.{move,death}_queue`).
+/// Move and death lists produced by one simulation step.
+///
+/// `step_all_agents` returns these lists so they can be passed directly to
+/// [`drain_move_queue_from`](crate::population::Population::drain_move_queue_from)
+/// and [`drain_death_queue_from`](crate::population::Population::drain_death_queue_from),
+/// avoiding a redundant extend through the population's internal queues.
 pub struct StepQueues {
+    /// Pending (agent_id, destination) moves to apply after all agents step.
     pub moves: Vec<(AgentId, Coord)>,
+    /// Agents to kill after all agents step.
     pub deaths: Vec<AgentId>,
 }
 
@@ -180,6 +185,7 @@ struct StepArgs {
     kill_enable: bool,
     energy_enabled: bool,
     energy_cost: f32,
+    responsiveness_curve_k: f32,
 }
 
 impl StepArgs {
@@ -195,6 +201,7 @@ impl StepArgs {
             kill_enable: state.config.kill_enable,
             energy_enabled: state.config.enable_energy,
             energy_cost: state.config.energy_per_step_cost,
+            responsiveness_curve_k: state.config.responsiveness_curve_k_factor,
         }
     }
 }
@@ -503,6 +510,15 @@ unsafe fn phase2_one_agent(
     };
 
     let agent: &mut crate::agent::Agent = unsafe { &mut *agent_ptr };
+
+    // Resolve set_responsiveness once per agent so the main dispatch loop
+    // can cheaply skip it. None when the action is registered-but-disabled
+    // or absent entirely.
+    let set_resp_idx = state.actions.enabled_index("set_responsiveness");
+
+    // `responsiveness_adjusted` is a placeholder here — overwritten below
+    // before any motor action observes it. The movement urge accumulators
+    // start fresh at zero for every agent step.
     let mut ctx = ActionContext {
         agent,
         world: &world,
@@ -511,11 +527,34 @@ unsafe fn phase2_one_agent(
         signals: &state.signals,
         rng,
         config_kill_enable: args.kill_enable,
+        responsiveness_adjusted: 0.0,
+        move_x_urge: 0.0,
+        move_y_urge: 0.0,
     };
 
+    // Run set_responsiveness first so any update to agent.responsiveness is
+    // visible to every gated motor action in the same step.
+    if let Some(idx) = set_resp_idx {
+        let level = action_levels[idx as usize];
+        state.actions.execute(idx, level, &mut ctx);
+    }
+
+    // Snapshot the (possibly just-updated) responsiveness once per agent so
+    // every motor action this step shares the same scale factor.
+    ctx.responsiveness_adjusted = crate::registry::action::response_curve(
+        ctx.agent.responsiveness,
+        args.responsiveness_curve_k,
+    );
+
     for (action_idx, &level) in action_levels.iter().enumerate() {
+        if Some(action_idx as u16) == set_resp_idx {
+            continue;
+        }
         state.actions.execute(action_idx as u16, level, &mut ctx);
     }
+
+    // Combine accumulated movement urges into at most one queued grid step.
+    crate::registry::action::resolve_movement(&mut ctx);
 
     if let Some(agent) = state.population.get_mut(id) {
         agent.age += 1;

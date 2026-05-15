@@ -5,10 +5,10 @@
 //!
 //! # Increment pattern
 //!
-//! `increment(layer, center)` deposits: +2 at `center`, +1 at all 8
-//! neighbors within radius 1.5 (the 4 cardinals; diagonals are at distance
-//! √2 ≈ 1.41, which is ≤ 1.5 so they also receive +1). Values saturate at
-//! 255.
+//! `increment(layer, center)` deposits: **+3 at `center`** (one from the
+//! radius-1.5 neighborhood pass plus an explicit +2 bump) and **+1** at
+//! each of the 8 surrounding cells (the 4 cardinals; diagonals sit at
+//! distance √2 ≈ 1.41 ≤ 1.5 and also receive +1). Values saturate at 255.
 //!
 //! # Fade
 //!
@@ -27,6 +27,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use crate::grid::{visit_neighborhood, Grid};
 use crate::types::Coord;
 
+/// Maximum pheromone value per cell (saturating ceiling for atomic increments).
 pub const SIGNAL_MAX: u8 = 255;
 
 /// Multi-layer pheromone grid. Each cell is an atomic `u8` magnitude
@@ -65,16 +66,30 @@ impl Signals {
         self.layers.len() as u8
     }
 
+    /// Read a single cell's signal level. Returns `0` if `layer` is beyond
+    /// the configured layer count — sensors/actions wired to a layer that
+    /// doesn't exist (e.g. `signal2` while `signal_layers = 1`) should
+    /// degrade silently rather than crash the simulation. The disabled_mask
+    /// path normally prevents this, but breeds and registry toggles can
+    /// re-enable a feature-gated sensor mid-generation; the bounds check
+    /// here is a backstop against that.
     pub fn get(&self, layer: u8, loc: Coord) -> u8 {
-        self.layers[layer as usize][self.idx(loc)].load(Ordering::Relaxed)
+        let Some(l) = self.layers.get(layer as usize) else { return 0 };
+        l[self.idx(loc)].load(Ordering::Relaxed)
     }
 
-    /// Increment center by +2 and all neighbors within radius 1.5 by +1, clamped to SIGNAL_MAX.
+    /// Deposit a pheromone burst centered on `center`. The center cell gains
+    /// **+3** (one from the radius-1.5 neighborhood pass plus an explicit
+    /// +2 bump) and the 8 surrounding cells gain **+1** each. All updates
+    /// saturate at `SIGNAL_MAX`.
     ///
     /// Takes `&self` (not `&mut`): cells are `AtomicU8` so concurrent calls
     /// from different agents on different threads are safe.
+    ///
+    /// No-op if `layer` is beyond the configured layer count — same
+    /// rationale as [`Signals::get`].
     pub fn increment(&self, layer: u8, center: Coord, grid: &Grid) {
-        let l = &self.layers[layer as usize];
+        let Some(l) = self.layers.get(layer as usize) else { return };
         let size_x = self.size_x;
         let add = |loc: Coord, v: u8| {
             if loc.x >= 0
@@ -95,18 +110,19 @@ impl Signals {
             }
         };
 
-        add(center, 2);
+        // Radius-1.5 neighborhood pass: +1 to the center and every cell
+        // within √2 of it (the 4 cardinals and 4 diagonals).
         for dx in -1i16..=1 {
             for dy in -1i16..=1 {
-                if dx == 0 && dy == 0 {
-                    continue;
-                }
                 let d2 = (dx * dx + dy * dy) as f32;
                 if d2 <= 1.5 * 1.5 {
                     add(Coord::new(center.x + dx, center.y + dy), 1);
                 }
             }
         }
+        // Extra `+2` at the deposit site, on top of the `+1` already
+        // contributed by the neighborhood pass — center cell ends at `+3`.
+        add(center, 2);
     }
 
     /// Decrement all values in a layer by 1 (floor 0) to simulate pheromone decay.

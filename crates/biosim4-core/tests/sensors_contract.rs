@@ -18,12 +18,12 @@ use biosim4_core::{
     population::Population,
     registry::{SensorContext, SensorRegistry},
     rng::Rng,
-    sensors::register_builtin_sensors,
     signals_layer::Signals,
     sim_config::SimConfig,
     types::Coord,
     world::World,
 };
+use biosim4_sensors::register_builtin_sensors;
 
 fn build_world<'a>(
     grid: &'a Grid,
@@ -57,7 +57,7 @@ fn make_test_agent(id: AgentId, loc: Coord, cfg: &SimConfig, rng: &mut Rng) -> A
 fn registry_has_all_builtin_sensors() {
     let mut reg = SensorRegistry::new();
     register_builtin_sensors(&mut reg);
-    assert_eq!(reg.count(), 36, "expected 36 built-in sensors");
+    assert_eq!(reg.count(), 40, "expected 40 built-in sensors");
 }
 
 #[test]
@@ -245,12 +245,13 @@ fn osc1_oscillates_with_step() {
         &mut SensorContext { agent: agent_ref, world: &world, sim_step: 16, rng: &mut srng },
     );
 
-    // sin(0) = 0  → 0 * 0.5 + 0.5 = 0.5
-    // sin(π/2) = 1 → 1 * 0.5 + 0.5 = 1.0    (step 8 of period 32)
-    // sin(π)  = 0  → 0 * 0.5 + 0.5 = 0.5    (step 16 of period 32)
-    assert!((v_at_0 - 0.5).abs() < 1e-3, "osc at phase 0 should be 0.5 (got {})", v_at_0);
-    assert!((v_at_8 - 1.0).abs() < 1e-3, "osc at phase π/2 should be 1.0 (got {})", v_at_8);
-    assert!((v_at_16 - 0.5).abs() < 1e-3, "osc at phase π should be 0.5 (got {})", v_at_16);
+    // Waveform is `(1 − cos(2π·phase)) / 2`, so:
+    //   step 0  / period 32 → phase 0    → (1 − cos 0)  / 2 = 0.0
+    //   step 8  / period 32 → phase π/2  → (1 − cos π/2) / 2 = 0.5
+    //   step 16 / period 32 → phase π    → (1 − cos π)  / 2 = 1.0
+    assert!((v_at_0 - 0.0).abs() < 1e-3, "osc at phase 0 should be 0.0 (got {})", v_at_0);
+    assert!((v_at_8 - 0.5).abs() < 1e-3, "osc at phase π/2 should be 0.5 (got {})", v_at_8);
+    assert!((v_at_16 - 1.0).abs() < 1e-3, "osc at phase π should be 1.0 (got {})", v_at_16);
 }
 
 #[test]

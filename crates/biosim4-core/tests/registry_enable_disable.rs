@@ -18,8 +18,8 @@
 //! 8. **All-disabled guard** — disabling every sensor still produces a valid
 //!    (if degenerate) simulation run without panicking.
 
+use biosim4_actions::register_builtin_actions;
 use biosim4_core::{
-    actions::register_builtin_actions,
     agent::{Agent, AgentId},
     food_layer::FoodLayer,
     genome::{
@@ -34,7 +34,6 @@ use biosim4_core::{
         ChallengeComposition, ChallengeConfig,
     },
     rng::Rng,
-    sensors::register_builtin_sensors,
     signals_layer::Signals,
     sim_config::SimConfig,
     sim_state::SimulationState,
@@ -43,6 +42,10 @@ use biosim4_core::{
     types::Coord,
     world::World,
 };
+use biosim4_sensors::register_builtin_sensors;
+
+mod common;
+use common::new_state;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -131,6 +134,12 @@ fn with_action_ctx<R>(
         signals: unsafe { &mut *signals_mut_ptr },
         rng,
         config_kill_enable: false,
+        responsiveness_adjusted: biosim4_core::registry::action::response_curve(
+            unsafe { &*agent_ptr }.responsiveness,
+            cfg.responsiveness_curve_k_factor,
+        ),
+        move_x_urge: 0.0,
+        move_y_urge: 0.0,
     };
 
     f(&mut ctx)
@@ -320,6 +329,7 @@ fn disabled_action_is_not_executed_before_commit() {
     let agent = make_test_agent(population.next_id(), Coord::new(5, 5), &cfg, &mut rng);
     let id = population.spawn(agent);
     grid.set(Coord::new(5, 5), id);
+    population.get_mut(id).unwrap().responsiveness = 1.0;
 
     let mut reg = ActionRegistry::new();
     register_builtin_actions(&mut reg);
@@ -333,26 +343,26 @@ fn disabled_action_is_not_executed_before_commit() {
         })
         .unwrap();
 
-    // Pre-condition: move_east with high level queues a move
+    // Pre-condition: move_east with high level queues a move after resolution.
     let mut arng = Rng::seeded(99);
     let queued_before =
         with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
-            for _ in 0..20 {
-                reg.execute(east_enabled_idx, 10.0, ctx);
-            }
+            reg.execute(east_enabled_idx, 10.0, ctx);
+            biosim4_core::registry::action::resolve_movement(ctx);
             ctx.move_queue.clone()
         });
     assert!(!queued_before.is_empty(), "pre-condition: move_east should queue moves when enabled");
 
-    // Disable move_east (pending — no commit)
+    // Disable move_east (pending — no commit). Its execute is now skipped,
+    // so the urge accumulator stays at zero and resolve_movement queues
+    // nothing.
     reg.set_enabled("move_east", false);
 
     let mut arng2 = Rng::seeded(99);
     let queued_after =
         with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng2, |ctx| {
-            for _ in 0..20 {
-                reg.execute(east_enabled_idx, 10.0, ctx);
-            }
+            reg.execute(east_enabled_idx, 10.0, ctx);
+            biosim4_core::registry::action::resolve_movement(ctx);
             ctx.move_queue.clone()
         });
     assert!(
@@ -366,7 +376,7 @@ fn disabled_action_is_not_executed_before_commit() {
 
 #[test]
 fn wiring_config_sensor_count_uses_enabled_count_after_commit() {
-    let mut state = SimulationState::new(small_cfg());
+    let mut state = new_state(small_cfg());
 
     // Run one generation first so apply_feature_enables fires and establishes
     // the feature-gated baseline (food/energy and signal-layer sensors disabled
@@ -391,7 +401,7 @@ fn wiring_config_sensor_count_uses_enabled_count_after_commit() {
 
 #[test]
 fn wiring_config_action_count_uses_enabled_count_after_commit() {
-    let mut state = SimulationState::new(small_cfg());
+    let mut state = new_state(small_cfg());
 
     // Establish baseline after apply_feature_enables runs for the first time.
     step_generation(&mut state);
@@ -414,7 +424,7 @@ fn wiring_config_action_count_uses_enabled_count_after_commit() {
 
 #[test]
 fn new_generation_agents_wired_against_reduced_genome() {
-    let mut state = SimulationState::new(small_cfg());
+    let mut state = new_state(small_cfg());
 
     // Disable 5 sensors before the second generation
     state.sensors.set_enabled("loc_x", false);
@@ -451,8 +461,7 @@ fn new_generation_agents_wired_against_reduced_genome() {
 
 #[test]
 fn three_generations_with_disabled_sensors_and_actions_no_panic() {
-    let mut state = SimulationState::new(small_cfg());
-    biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+    let mut state = new_state(small_cfg());
 
     // Apply a challenge so there's selection pressure
     let cc = ChallengeConfig {
@@ -486,7 +495,7 @@ fn all_sensors_disabled_simulation_runs_without_panic() {
     // Degenerate case: no sensor input → all outputs ≈ 0 → agents wander randomly
     // (or just stand still). The sim must not panic or overflow.
     let mut state =
-        SimulationState::new(SimConfig { population: 20, steps_per_generation: 20, ..small_cfg() });
+        new_state(SimConfig { population: 20, steps_per_generation: 20, ..small_cfg() });
 
     let sensor_ids: Vec<String> =
         state.sensors.iter().map(|(_, s, _)| s.id().to_string()).collect();
@@ -504,7 +513,7 @@ fn all_sensors_disabled_simulation_runs_without_panic() {
 #[test]
 fn all_actions_disabled_agents_remain_alive() {
     let mut state =
-        SimulationState::new(SimConfig { population: 20, steps_per_generation: 20, ..small_cfg() });
+        new_state(SimConfig { population: 20, steps_per_generation: 20, ..small_cfg() });
 
     let action_ids: Vec<String> =
         state.actions.iter().map(|(_, a, _)| a.id().to_string()).collect();
@@ -581,7 +590,7 @@ fn disable_and_reenable_before_generation_is_deterministic() {
     cfg.num_threads = 1;
 
     let run = |toggle: bool| {
-        let mut state = SimulationState::new(cfg.clone());
+        let mut state = new_state(cfg.clone());
         if toggle {
             state.sensors.set_enabled("loc_x", false);
             state.sensors.set_enabled("loc_x", true); // re-enable before commit

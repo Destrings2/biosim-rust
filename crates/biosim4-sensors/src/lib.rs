@@ -1,4 +1,4 @@
-//! Built-in sensor implementations (21 sensors).
+//! Built-in sensor implementations (40 sensors).
 //!
 //! Every sensor implements [`Sensor`] and returns a value in \[0.0, 1.0\].
 //! The registry enforces the clamp at `evaluate()` time.
@@ -16,28 +16,47 @@
 //! components, normalized to \[0, 1\] (0.5 = stationary/center).
 //!
 //! **Population density (3):** `population` — fraction occupied within
-//! `population_sensor_radius`. `population_fwd` / `population_lr` — forward
-//! vs backward / left vs right half-density comparison.
+//! `population_sensor_radius`. `population_fwd` / `population_lr` —
+//! inverse-distance-weighted signed projection along the heading axis
+//! and the right-perpendicular axis respectively, mapped to `[0, 1]`
+//! with `0.5` as "symmetric / empty".
 //!
-//! **Barrier probes (2):** `barrier_fwd` — proximity of nearest barrier ahead.
-//! `barrier_lr` — left vs right barrier comparison.
+//! **Barrier probes (2):** `barrier_fwd` — bidirectional non-barrier
+//! distance along the heading axis; `0.5` means symmetric proximity,
+//! `>0.5` means more clear space ahead. `barrier_lr` — same shape on the
+//! right-perpendicular axis (left-vs-right asymmetry).
 //!
 //! **Long probes (2):** `longprobe_pop_fwd`, `longprobe_bar_fwd` — distance
 //! along heading to nearest occupied cell or barrier, normalized by
-//! `long_probe_dist`.
+//! `long_probe_dist` so higher = farther (`1.0` when nothing is in
+//! range).
 //!
-//! **Internal (3):** `osc1` — oscillator (sine wave keyed to `age` and
-//! `osc_period`). `age` — `age / steps_per_generation`. `random` — uniform
-//! random in \[0, 1\] via the per-agent forked RNG.
+//! **Internal (3):** `osc1` — oscillator `(1 − cos(2π · phase)) / 2`
+//! keyed to the global step and the agent's `osc_period`. `age` —
+//! `age / steps_per_generation`. `random` — uniform random in \[0, 1\]
+//! via the per-agent forked RNG.
 //!
-//! **Signals (3):** `signal0` — local pheromone density. `signal0_fwd` /
-//! `signal0_lr` — forward vs backward / left vs right density comparison.
+//! **Signals (9):** `signal0..2`, `signal0..2_fwd`, `signal0..2_lr` — three
+//! independent pheromone channels. The base sensor reads average density
+//! in the neighborhood; `*_fwd` and `*_lr` are inverse-distance-weighted
+//! projections of the signal magnitude along the heading axis and the
+//! right-perpendicular axis respectively (same `[0, 1]` mapping with
+//! `0.5` as symmetric).
+//!
+//! **Memory (4):** `memory_0..3` — read back the four float scratch registers
+//! that `write_memory_N` actions write to.
+//!
+//! **Food / energy (4):** `energy_level`, `food_here`, `food_fwd`, `food_lr`.
+//!
+//! **Challenge state (4):** `challenge_bit_0..3` — read the low four bits of
+//! `agent.challenge_bits`. The meaning is challenge-defined (e.g. `tag` uses
+//! bit 0 for "am I it?"; `quarantine` uses bit 0 for "am I infected?").
 
 pub mod helpers;
 
-use crate::genome::genome_similarity;
-use crate::registry::{Sensor, SensorContext, SensorRegistry};
-use crate::sensors::helpers::*;
+use biosim4_core::genome::genome_similarity;
+use biosim4_core::registry::{Sensor, SensorContext, SensorRegistry};
+use helpers::*;
 
 pub fn register_builtin_sensors(registry: &mut SensorRegistry) {
     registry.register(Box::new(LocX));
@@ -72,6 +91,10 @@ pub fn register_builtin_sensors(registry: &mut SensorRegistry) {
     registry.register(Box::new(Memory1));
     registry.register(Box::new(Memory2));
     registry.register(Box::new(Memory3));
+    registry.register(Box::new(ChallengeBit0));
+    registry.register(Box::new(ChallengeBit1));
+    registry.register(Box::new(ChallengeBit2));
+    registry.register(Box::new(ChallengeBit3));
     registry.register(Box::new(EnergyLevel));
     registry.register(Box::new(FoodHere));
     registry.register(Box::new(FoodFwd));
@@ -117,9 +140,12 @@ impl Sensor for BoundaryDistX {
         "boundary dist X"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        let x = ctx.agent.loc.x as f32;
-        let sx = (ctx.world.size_x - 1) as f32;
-        (x.min(sx - x) / (sx / 2.0)).clamp(0.0, 1.0)
+        // Distance from the agent to the nearer of the two east-west walls
+        // (`min(x, size_x − 1 − x)`), normalized by half the grid width.
+        let x = ctx.agent.loc.x as i32;
+        let sx = ctx.world.size_x as i32;
+        let min_dist = x.min((sx - x) - 1).max(0) as f32;
+        (min_dist / (sx as f32 / 2.0)).clamp(0.0, 1.0)
     }
 }
 
@@ -132,9 +158,10 @@ impl Sensor for BoundaryDistY {
         "boundary dist Y"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        let y = ctx.agent.loc.y as f32;
-        let sy = (ctx.world.size_y - 1) as f32;
-        (y.min(sy - y) / (sy / 2.0)).clamp(0.0, 1.0)
+        let y = ctx.agent.loc.y as i32;
+        let sy = ctx.world.size_y as i32;
+        let min_dist = y.min((sy - y) - 1).max(0) as f32;
+        (min_dist / (sy as f32 / 2.0)).clamp(0.0, 1.0)
     }
 }
 
@@ -147,13 +174,18 @@ impl Sensor for BoundaryDist {
         "boundary dist"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        let x = ctx.agent.loc.x as f32;
-        let y = ctx.agent.loc.y as f32;
-        let sx = (ctx.world.size_x - 1) as f32;
-        let sy = (ctx.world.size_y - 1) as f32;
-        let dx = x.min(sx - x);
-        let dy = y.min(sy - y);
-        (dx.min(dy) / (sx.min(sy) / 2.0)).clamp(0.0, 1.0)
+        // Closest distance to any wall, normalized by the *larger* of the
+        // two half-grid spans so a perfectly centered agent reads 1.0 on
+        // a square grid and slightly less than 1.0 on a long rectangle.
+        let x = ctx.agent.loc.x as i32;
+        let y = ctx.agent.loc.y as i32;
+        let sx = ctx.world.size_x as i32;
+        let sy = ctx.world.size_y as i32;
+        let dx = x.min((sx - x) - 1).max(0);
+        let dy = y.min((sy - y) - 1).max(0);
+        let closest = dx.min(dy) as f32;
+        let max_possible = ((sx / 2 - 1).max(sy / 2 - 1)).max(1) as f32;
+        (closest / max_possible).clamp(0.0, 1.0)
     }
 }
 
@@ -204,10 +236,10 @@ impl Sensor for PopulationSensor {
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
         let mut count = 0u32;
         let mut total = 0u32;
-        crate::grid::visit_neighborhood(
+        biosim4_core::grid::visit_neighborhood(
             ctx.world.grid,
             ctx.agent.loc,
-            crate::constants::POPULATION_SENSOR_RADIUS,
+            biosim4_core::constants::POPULATION_SENSOR_RADIUS,
             |loc| {
                 total += 1;
                 if ctx.world.grid.is_occupied_at(loc) {
@@ -234,7 +266,7 @@ impl Sensor for PopulationFwd {
         population_density_along_axis(
             ctx.agent.loc,
             ctx.agent.last_move_dir,
-            crate::constants::POPULATION_SENSOR_RADIUS,
+            biosim4_core::constants::POPULATION_SENSOR_RADIUS,
             ctx.world.grid,
             ctx.world.population,
         )
@@ -250,10 +282,18 @@ impl Sensor for PopulationLR {
         "population LR"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        let r = crate::constants::POPULATION_SENSOR_RADIUS;
-        lr_average(ctx.agent.last_move_dir, |d| {
-            population_density_along_axis(ctx.agent.loc, d, r, ctx.world.grid, ctx.world.population)
-        })
+        // Single bidirectional probe along the right-perpendicular axis.
+        // Because the underlying density function returns a signed
+        // `[0, 1]` reading on the chosen axis, this directly distinguishes
+        // "more population on the right side" (>0.5) from "more on the
+        // left" (<0.5).
+        population_density_along_axis(
+            ctx.agent.loc,
+            ctx.agent.last_move_dir.rotate90cw(),
+            biosim4_core::constants::POPULATION_SENSOR_RADIUS,
+            ctx.world.grid,
+            ctx.world.population,
+        )
     }
 }
 
@@ -266,22 +306,19 @@ impl Sensor for GeneticSimFwd {
         "genetic similarity fwd"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+        // Sample the single cell directly in front; no probe walk.
         let step = ctx.agent.last_move_dir.as_normalized_coord();
-        let grid = ctx.world.grid;
-        let pop = ctx.world.population;
-        for i in 1..=crate::constants::GENETIC_SIM_PROBE_DIST {
-            let target = crate::types::Coord::new(
-                ctx.agent.loc.x + step.x * i,
-                ctx.agent.loc.y + step.y * i,
-            );
-            if !grid.is_in_bounds(target) {
-                break;
-            }
-            if let Some(neighbor) = pop.get_at(grid, target) {
-                return genome_similarity(&ctx.agent.genome, &neighbor.genome, 0);
-            }
+        let target =
+            biosim4_core::types::Coord::new(ctx.agent.loc.x + step.x, ctx.agent.loc.y + step.y);
+        if !ctx.world.grid.is_in_bounds(target) {
+            return 0.0;
         }
-        0.0
+        match ctx.world.population.get_at(ctx.world.grid, target) {
+            Some(neighbor) if neighbor.alive => {
+                genome_similarity(&ctx.agent.genome, &neighbor.genome, 0)
+            }
+            _ => 0.0,
+        }
     }
 }
 
@@ -298,10 +335,10 @@ impl Sensor for BarrierFwd {
         "barrier fwd"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        1.0 - short_probe_barrier_fwd(
+        short_probe_barrier_distance(
             ctx.agent.loc,
             ctx.agent.last_move_dir,
-            crate::constants::SHORT_PROBE_DIST,
+            biosim4_core::constants::SHORT_PROBE_DIST,
             ctx.world.grid,
         )
     }
@@ -316,10 +353,10 @@ impl Sensor for BarrierLR {
         "barrier LR"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        1.0 - short_probe_barrier_lr(
+        short_probe_barrier_distance(
             ctx.agent.loc,
-            ctx.agent.last_move_dir,
-            crate::constants::SHORT_PROBE_DIST,
+            ctx.agent.last_move_dir.rotate90cw(),
+            biosim4_core::constants::SHORT_PROBE_DIST,
             ctx.world.grid,
         )
     }
@@ -342,9 +379,9 @@ impl Sensor for KillBarrierFwd {
         if step.x == 0 && step.y == 0 {
             return 0.0;
         }
-        let max = crate::constants::GENETIC_SIM_PROBE_DIST;
+        let max = biosim4_core::constants::GENETIC_SIM_PROBE_DIST;
         for i in 1..=max {
-            let p = crate::types::Coord::new(
+            let p = biosim4_core::types::Coord::new(
                 ctx.agent.loc.x + step.x * i,
                 ctx.agent.loc.y + step.y * i,
             );
@@ -409,8 +446,14 @@ impl Sensor for Osc1 {
         "oscillator 1"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        let phase = ctx.sim_step % ctx.agent.osc_period;
-        (std::f32::consts::TAU * phase as f32 / ctx.agent.osc_period as f32).sin() * 0.5 + 0.5
+        // `(1 − cos(2π·phase)) / 2`: a unit-amplitude oscillation that
+        // starts at 0 at step 0, peaks at 1 mid-period, and returns to 0
+        // at the period boundary. Each agent shares the same global step
+        // count but has its own `osc_period`, so different agents can
+        // sample the same waveform at independent rates.
+        let phase = (ctx.sim_step % ctx.agent.osc_period) as f32 / ctx.agent.osc_period as f32;
+        let factor = -(std::f32::consts::TAU * phase).cos();
+        ((factor + 1.0) / 2.0).clamp(0.0, 1.0)
     }
 }
 
@@ -458,7 +501,7 @@ macro_rules! signal_sensors {
                 ctx.world.signals.get_density(
                     $layer,
                     ctx.agent.loc,
-                    crate::constants::SIGNAL_SENSOR_RADIUS,
+                    biosim4_core::constants::SIGNAL_SENSOR_RADIUS,
                     ctx.world.grid,
                 )
             }
@@ -476,7 +519,7 @@ macro_rules! signal_sensors {
                     $layer,
                     ctx.agent.loc,
                     ctx.agent.last_move_dir,
-                    crate::constants::SIGNAL_SENSOR_RADIUS,
+                    biosim4_core::constants::SIGNAL_SENSOR_RADIUS,
                     ctx.world.grid,
                     ctx.world.signals,
                 )
@@ -491,17 +534,17 @@ macro_rules! signal_sensors {
                 $namelr
             }
             fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-                let r = crate::constants::SIGNAL_SENSOR_RADIUS;
-                lr_average(ctx.agent.last_move_dir, |d| {
-                    signal_density_along_axis(
-                        $layer,
-                        ctx.agent.loc,
-                        d,
-                        r,
-                        ctx.world.grid,
-                        ctx.world.signals,
-                    )
-                })
+                // Single bidirectional probe on the right-perpendicular
+                // axis; the underlying density function already returns a
+                // signed left-vs-right reading.
+                signal_density_along_axis(
+                    $layer,
+                    ctx.agent.loc,
+                    ctx.agent.last_move_dir.rotate90cw(),
+                    biosim4_core::constants::SIGNAL_SENSOR_RADIUS,
+                    ctx.world.grid,
+                    ctx.world.signals,
+                )
             }
         }
     };
@@ -571,6 +614,37 @@ read_memory!(Memory2, "memory_2", "memory 2", 2);
 read_memory!(Memory3, "memory_3", "memory 3", 3);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Challenge-bit sensors
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Expose the low four bits of `agent.challenge_bits` (a per-agent u32 owned by
+// the active challenge) as 0/1 sensors. The bit meanings are challenge-defined
+// — e.g. `tag` uses bit 0 for "am I it?", `quarantine` uses bit 0 for "am I
+// infected?", `location_sequence` uses bits 0..n for waypoint progress.
+
+macro_rules! read_challenge_bit {
+    ($name:ident, $id:literal, $label:literal, $bit:literal) => {
+        struct $name;
+        impl Sensor for $name {
+            fn id(&self) -> &str {
+                $id
+            }
+            fn name(&self) -> &str {
+                $label
+            }
+            fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
+                ((ctx.agent.challenge_bits >> $bit) & 1) as f32
+            }
+        }
+    };
+}
+
+read_challenge_bit!(ChallengeBit0, "challenge_bit_0", "challenge bit 0", 0);
+read_challenge_bit!(ChallengeBit1, "challenge_bit_1", "challenge bit 1", 1);
+read_challenge_bit!(ChallengeBit2, "challenge_bit_2", "challenge bit 2", 2);
+read_challenge_bit!(ChallengeBit3, "challenge_bit_3", "challenge bit 3", 3);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Energy / food sensors
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -612,7 +686,7 @@ impl Sensor for FoodFwd {
         ctx.world.food.get_density_fwd(
             ctx.agent.loc,
             ctx.agent.last_move_dir,
-            crate::constants::FOOD_SENSOR_RADIUS,
+            biosim4_core::constants::FOOD_SENSOR_RADIUS,
             ctx.world.grid,
         )
     }
@@ -627,7 +701,7 @@ impl Sensor for FoodLR {
         "food LR"
     }
     fn evaluate(&self, ctx: &mut SensorContext) -> f32 {
-        let r = crate::constants::FOOD_SENSOR_RADIUS;
+        let r = biosim4_core::constants::FOOD_SENSOR_RADIUS;
         lr_average(ctx.agent.last_move_dir, |d| {
             ctx.world.food.get_density_fwd(ctx.agent.loc, d, r, ctx.world.grid)
         })
