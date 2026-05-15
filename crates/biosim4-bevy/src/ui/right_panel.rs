@@ -869,31 +869,44 @@ fn config_tab(
     }
 
     // ─── GENETICS ──────────────────────────────────────────────────────────
-    widgets::section_header(
+    let length_tally = if cfg.genome_initial_length_min == cfg.genome_initial_length_max {
+        format!("{} genes · {} neurons", cfg.genome_initial_length_max, cfg.max_number_neurons)
+    } else {
+        format!(
+            "{}–{} genes · {} neurons",
+            cfg.genome_initial_length_min, cfg.genome_initial_length_max, cfg.max_number_neurons,
+        )
+    };
+    widgets::section_header(ui, "GENETICS", Some(&length_tally));
+    // Initial-length bounds drawn independently. Each agent's starting
+    // genome length is sampled from [min, max] — equal bounds give a
+    // fixed-length seed, unequal bounds give variable-length seeds.
+    let prev_min = cfg.genome_initial_length_min;
+    let prev_max = cfg.genome_initial_length_max;
+    widgets::stepper_field(
         ui,
-        "GENETICS",
-        Some(&format!(
-            "{} genes · {} neurons",
-            cfg.genome_initial_length_max, cfg.max_number_neurons,
-        )),
-    );
-    // Drive both initial-length bounds from a single slider — most setups
-    // use a fixed initial length, and the MIN/MAX strip below makes the
-    // resolved range readable at a glance.
-    let mut initial_len = cfg.genome_initial_length_min.max(cfg.genome_initial_length_max);
-    widgets::slider_with_bounds_u16(
-        ui,
-        "Genome length",
-        Some("Initial gene count per agent"),
-        &mut initial_len,
+        "Min length",
+        Some("Lower bound for initial genome"),
+        &mut cfg.genome_initial_length_min,
         1..=512,
-        cfg.genome_initial_length_min,
-        cfg.genome_initial_length_max,
     );
-    if initial_len != cfg.genome_initial_length_min || initial_len != cfg.genome_initial_length_max
+    widgets::stepper_field(
+        ui,
+        "Max length",
+        Some("Upper bound for initial genome"),
+        &mut cfg.genome_initial_length_max,
+        1..=512,
+    );
+    // Auto-push the unedited side so the pair always satisfies min ≤ max.
+    if cfg.genome_initial_length_min != prev_min
+        && cfg.genome_initial_length_min > cfg.genome_initial_length_max
     {
-        cfg.genome_initial_length_min = initial_len;
-        cfg.genome_initial_length_max = initial_len;
+        cfg.genome_initial_length_max = cfg.genome_initial_length_min;
+    }
+    if cfg.genome_initial_length_max != prev_max
+        && cfg.genome_initial_length_max < cfg.genome_initial_length_min
+    {
+        cfg.genome_initial_length_min = cfg.genome_initial_length_max;
     }
     widgets::slider_field_u16(
         ui,

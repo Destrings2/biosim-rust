@@ -191,43 +191,6 @@ pub fn slider_field_f32(
     });
 }
 
-/// Slider with a single value driving the bar, and the *current* min/max of
-/// the underlying pair shown as a "MIN x   MAX y" footer. Used for the
-/// GENETICS / genome length control where both bounds are interesting.
-pub fn slider_with_bounds_u16(
-    ui: &mut egui::Ui,
-    title: &str,
-    hint: Option<&str>,
-    value: &mut u16,
-    range: RangeInclusive<u16>,
-    min_label: u16,
-    max_label: u16,
-) {
-    field_row(ui, title, hint, |ui| {
-        ui.add_sized(
-            egui::vec2(ui.available_width(), BODY_HEIGHT),
-            egui::Slider::new(value, range).show_value(false),
-        );
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new(format!("MIN {min_label}"))
-                    .monospace()
-                    .size(10.0)
-                    .color(theme::MUTED),
-            );
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new(format!("MAX {max_label}"))
-                        .monospace()
-                        .size(10.0)
-                        .color(theme::MUTED),
-                );
-            });
-        });
-    });
-}
-
 // ─── Stepper rows ───────────────────────────────────────────────────────────
 
 /// `[−] value [+]` stepper. `value` and `range` plumb through `DragValue`'s
@@ -449,8 +412,12 @@ fn editable_value_strip<T: Numeric>(
             } else {
                 let label =
                     egui::RichText::new(fmt(*value)).monospace().size(11.5).color(theme::TEXT);
+                // `selectable(false)` is load-bearing: without it, the Label's
+                // built-in text-selection state intercepts clicks (single-click
+                // starts a selection, double-click extends it to a word) and
+                // the outer `double_clicked()` event never fires reliably.
                 let resp = ui
-                    .add(egui::Label::new(label).sense(egui::Sense::click()))
+                    .add(egui::Label::new(label).selectable(false).sense(egui::Sense::click()))
                     .on_hover_text("Double-click to edit");
                 if resp.double_clicked() {
                     let seed = fmt(*value).replace(',', "");
