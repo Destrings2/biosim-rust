@@ -801,6 +801,94 @@ mod tests {
         assert_eq!(grid::cell_kind(cell), grid::CellKind::Programmable(id));
     }
 
+    /// Test program that issues `kill_peep_at` + `move_to` on the same cell
+    /// (the cell one east of itself), modelling a predator that eats and
+    /// steps onto its prey in one tick.
+    struct EatAndStepEast;
+    impl Program for EatAndStepEast {
+        fn id(&self) -> &str {
+            "eat_and_step_east"
+        }
+        fn name(&self) -> &str {
+            "Eat-and-step (test)"
+        }
+        fn step(
+            &self,
+            this: &mut Programmable,
+            _ctx: &mut ProgramContext,
+            out: &mut ProgramOutput,
+        ) {
+            let target = Coord::new(this.loc.x + 1, this.loc.y);
+            out.kill_peep_at = Some(target);
+            out.move_to = Some(target);
+        }
+    }
+
+    #[test]
+    fn step_all_predator_kills_and_steps_in_one_merge() {
+        // Without the inline-kill path, this test would observe the
+        // predator still at (3, 4) and the peep id still at (4, 4): the
+        // merge would queue the peep's death but the move would see an
+        // occupied cell and silently block. The fix applies the kill
+        // before step 5's empty-check so the move resolves atomically.
+        use crate::agent::Agent;
+        use crate::genome::neural_net::{create_wiring, WiringConfig};
+        use crate::genome::ops::make_random_genome;
+        use crate::rng::Rng;
+
+        let grid = Grid::new(8, 8);
+        let (mut grid, mut signals, food, mut population, cfg) = make_world(grid);
+        let mut pool = ProgrammablePool::new();
+
+        // Real `Agent` in the population — the inline-kill path looks the
+        // peep up via `population.get_mut` and only frees the grid cell
+        // when it finds an alive entry, so a placeholder grid id isn't
+        // enough. Wiring stays tiny (4 sensors / 4 actions) because the
+        // agent never actually runs.
+        let mut rng = Rng::seeded(7);
+        let peep_loc = Coord::new(4, 4);
+        let genome = make_random_genome(&cfg, &mut rng);
+        let wiring = create_wiring(
+            &genome,
+            WiringConfig { sensor_count: 4, action_count: 4, max_neurons: 2 },
+        );
+        let peep_id = population.spawn(Agent::new(population.next_id(), peep_loc, genome, wiring));
+        grid.set(peep_loc, peep_id);
+
+        let prog = pool.register_program(Box::new(EatAndStepEast));
+        let predator_id = pool.spawn(&mut grid, prog, 0, Coord::new(3, 4), [200, 0, 0]).unwrap();
+        pool.step_all(
+            &mut grid,
+            &mut signals,
+            &mut population,
+            &food,
+            0,
+            0,
+            cfg.steps_per_generation,
+        );
+
+        // Predator's old cell is now empty.
+        assert_eq!(grid.at(Coord::new(3, 4)), grid::EMPTY);
+        // The peep's cell now holds the predator.
+        assert_eq!(
+            grid::cell_kind(grid.at(peep_loc)),
+            grid::CellKind::Programmable(predator_id),
+            "predator should occupy the just-eaten peep's cell"
+        );
+        assert_eq!(pool.get(predator_id).unwrap().loc, peep_loc);
+        // The peep died inline; the end-of-step `drain_death_queue` call
+        // in sim_step prunes `alive_ids`, but the inline `peep.alive =
+        // false` is already visible here.
+        assert!(
+            !population.get(peep_id).unwrap().alive,
+            "peep should be marked dead by the inline kill"
+        );
+        assert!(
+            population.death_queue.contains(&peep_id),
+            "peep id must be queued so the end-of-step drain prunes alive_ids"
+        );
+    }
+
     #[test]
     fn step_all_die_clears_grid_and_alive_ids() {
         let grid = Grid::new(8, 8);
