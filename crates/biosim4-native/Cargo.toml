@@ -3,6 +3,7 @@ name = "biosim4-native"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 description = "Headless CLI runner for biosim4-rs"
 
 [dependencies]

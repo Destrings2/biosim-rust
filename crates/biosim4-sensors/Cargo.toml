@@ -3,6 +3,7 @@ name = "biosim4-sensors"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 description = "Built-in sensor implementations for biosim4-core"
 
 [dependencies]
