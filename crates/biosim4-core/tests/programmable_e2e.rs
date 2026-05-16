@@ -155,18 +155,19 @@ fn longprobe_alien_fwd_drops_when_programmable_lands_in_line_of_sight() {
     let sensor_idx = sensor_idx.expect("longprobe_alien_fwd registered and enabled");
 
     // Empty pool: probe walks until it hits the grid edge (or a peep) and
-    // returns 1.0.
-    let world = state.world();
-    let mut rng = biosim4_core::rng::Rng::seeded(0);
-    let mut ctx = SensorContext {
-        agent: state.population.get(agent_id).unwrap(),
-        world: &world,
-        sim_step: 0,
-        rng: &mut rng,
+    // returns 1.0. The block scope releases the `world` borrow before we
+    // mutate `state.programmable` below.
+    let empty_reading = {
+        let world = state.world();
+        let mut rng = biosim4_core::rng::Rng::seeded(0);
+        let mut ctx = SensorContext {
+            agent: state.population.get(agent_id).unwrap(),
+            world: &world,
+            sim_step: 0,
+            rng: &mut rng,
+        };
+        state.sensors.evaluate(sensor_idx, &mut ctx)
     };
-    let empty_reading = state.sensors.evaluate(sensor_idx, &mut ctx);
-    drop(ctx);
-    drop(world);
     assert!((empty_reading - 1.0).abs() < 1e-6, "empty pool: sensor returns 1.0");
 
     // Place an alien directly east of the peep. The cell must be empty
@@ -186,15 +187,17 @@ fn longprobe_alien_fwd_drops_when_programmable_lands_in_line_of_sight() {
         .spawn(&mut state.grid, prog, 0, neighbour, [255, 0, 0])
         .expect("spawn into empty cell");
 
-    let world = state.world();
-    let mut rng = biosim4_core::rng::Rng::seeded(0);
-    let mut ctx = SensorContext {
-        agent: state.population.get(agent_id).unwrap(),
-        world: &world,
-        sim_step: 0,
-        rng: &mut rng,
+    let close_reading = {
+        let world = state.world();
+        let mut rng = biosim4_core::rng::Rng::seeded(0);
+        let mut ctx = SensorContext {
+            agent: state.population.get(agent_id).unwrap(),
+            world: &world,
+            sim_step: 0,
+            rng: &mut rng,
+        };
+        state.sensors.evaluate(sensor_idx, &mut ctx)
     };
-    let close_reading = state.sensors.evaluate(sensor_idx, &mut ctx);
     // Alien at +1 east, probe_dist = 16 → reading = 0/16 = 0.0.
     assert!(
         close_reading < empty_reading,

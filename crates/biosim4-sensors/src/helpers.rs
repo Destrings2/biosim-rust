@@ -125,17 +125,15 @@ pub fn short_probe_barrier_distance(loc: Coord, dir: Dir, probe_dist: u32, grid:
 /// within `probe_dist` empty cells.
 pub fn long_probe_population_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid) -> f32 {
     let step = dir.as_normalized_coord();
-    let mut count: u32 = 0;
-    for _ in 0..probe_dist {
-        let target =
-            Coord::new(loc.x + step.x * (count as i16 + 1), loc.y + step.y * (count as i16 + 1));
+    for count in 0..probe_dist {
+        let i = count as i16 + 1;
+        let target = Coord::new(loc.x + step.x * i, loc.y + step.y * i);
         if !grid.is_in_bounds(target) || grid.is_blocking_at(target) {
             return 1.0;
         }
         if grid.is_occupied_at(target) {
             return count as f32 / probe_dist as f32;
         }
-        count += 1;
     }
     1.0
 }
@@ -161,20 +159,17 @@ pub fn long_probe_alien_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid) 
     if step.x == 0 && step.y == 0 {
         return 1.0;
     }
-    let mut count: u32 = 0;
-    for _ in 0..probe_dist {
-        let target =
-            Coord::new(loc.x + step.x * (count as i16 + 1), loc.y + step.y * (count as i16 + 1));
+    for count in 0..probe_dist {
+        let i = count as i16 + 1;
+        let target = Coord::new(loc.x + step.x * i, loc.y + step.y * i);
         if !grid.is_in_bounds(target) || grid.is_blocking_at(target) {
             return 1.0;
         }
-        let cell = grid.at(target);
-        match cell_kind(cell) {
+        match cell_kind(grid.at(target)) {
             CellKind::Programmable(_) => return count as f32 / probe_dist as f32,
             CellKind::Agent(_) => return 1.0,
             _ => {}
         }
-        count += 1;
     }
     1.0
 }
@@ -190,17 +185,15 @@ pub fn long_probe_alien_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid) 
 /// `kill_barrier_fwd` to single out hazards.
 pub fn long_probe_barrier_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid) -> f32 {
     let step = dir.as_normalized_coord();
-    let mut count: u32 = 0;
-    for _ in 0..probe_dist {
-        let target =
-            Coord::new(loc.x + step.x * (count as i16 + 1), loc.y + step.y * (count as i16 + 1));
+    for count in 0..probe_dist {
+        let i = count as i16 + 1;
+        let target = Coord::new(loc.x + step.x * i, loc.y + step.y * i);
         if !grid.is_in_bounds(target) {
             return 1.0;
         }
         if grid.is_blocking_at(target) {
             return count as f32 / probe_dist as f32;
         }
-        count += 1;
     }
     1.0
 }

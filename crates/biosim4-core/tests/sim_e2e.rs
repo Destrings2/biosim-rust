@@ -13,7 +13,6 @@ use biosim4_core::{
     registry::ChallengeConfig,
     rng::Rng,
     sim_config::SimConfig,
-    sim_state::SimulationState,
     sim_step::step_generation,
     spawn::spawn_new_generation,
     types::Coord,

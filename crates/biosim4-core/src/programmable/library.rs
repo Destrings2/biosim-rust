@@ -211,8 +211,8 @@ mod tests {
         let pool = ProgrammablePool::new();
         let world = World::new(&grid, &signals, &food, &population, &pool, 1, 0, 0);
         let mut rng = Rng::seeded(1);
-        let mut ctx = ProgramContext { world: &world, sim_step: 0, generation: 0, rng: &mut rng };
-        sensors::nearest_peep_in_los(&mut ctx, center, max_range)
+        let ctx = ProgramContext { world: &world, sim_step: 0, generation: 0, rng: &mut rng };
+        sensors::nearest_peep_in_los(&ctx, center, max_range)
     }
 
     #[test]
@@ -258,8 +258,8 @@ mod tests {
         let pool = ProgrammablePool::new();
         let world = World::new(&grid, &signals, &food, &population, &pool, 1, 0, 0);
         let mut rng = Rng::seeded(1);
-        let mut ctx = ProgramContext { world: &world, sim_step: 0, generation: 0, rng: &mut rng };
-        let result = sensors::nearest_peep_in_los(&mut ctx, Coord::new(10, 10), 10);
+        let ctx = ProgramContext { world: &world, sim_step: 0, generation: 0, rng: &mut rng };
+        let result = sensors::nearest_peep_in_los(&ctx, Coord::new(10, 10), 10);
         assert_eq!(result, None);
     }
 

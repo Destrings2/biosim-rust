@@ -135,7 +135,7 @@ fn build_node_map(remapped: &[Gene]) -> HashMap<u8, NodeInfo> {
         }
         if !g.is_action_sink() {
             let e = nodes.entry(g.sink_num()).or_default();
-            if !(!g.is_sensor_source() && g.source_num() == g.sink_num()) {
+            if g.is_sensor_source() || g.source_num() != g.sink_num() {
                 e.num_other_inputs += 1;
             }
         }
