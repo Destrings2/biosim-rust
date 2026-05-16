@@ -3,6 +3,7 @@ name = "biosim4-breeds"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 description = "Built-in breed presets (curated sensor/action/challenge bundles) for biosim4-core"
 
 [dependencies]
