@@ -38,26 +38,33 @@ fn main() {
 
     let mut step_time = std::time::Duration::ZERO;
     let mut spawn_time = std::time::Duration::ZERO;
+    let mut per_gen_step_ms: Vec<f32> = Vec::with_capacity(gens as usize);
     let start = Instant::now();
     for _ in 0..gens {
         let t = Instant::now();
         step_generation(&mut state);
-        step_time += t.elapsed();
+        let dt = t.elapsed();
+        step_time += dt;
+        per_gen_step_ms.push(dt.as_secs_f32() * 1000.0);
         let t = Instant::now();
         let _ = spawn_new_generation(&mut state);
         spawn_time += t.elapsed();
     }
     let elapsed = start.elapsed();
+    let first_5 = per_gen_step_ms.iter().take(5).sum::<f32>() / 5.0;
+    let last_5 = per_gen_step_ms.iter().rev().take(5).sum::<f32>() / 5.0;
 
     let total_steps = (gens as u64) * (cfg.steps_per_generation as u64);
     let steps_per_sec = total_steps as f64 / elapsed.as_secs_f64();
     println!(
-        "threads={threads}  pop={pop}  grid={x}x{y}  gens={gens}  elapsed={elapsed:?}  step={st:?}  spawn={sp:?}  steps/sec={sps:.0}",
+        "threads={threads}  pop={pop}  grid={x}x{y}  gens={gens}  elapsed={elapsed:?}  step={st:?}  spawn={sp:?}  steps/sec={sps:.0}  step_first5={f5:.1}ms  step_last5={l5:.1}ms",
         pop = cfg.population,
         x = cfg.size_x,
         y = cfg.size_y,
         st = step_time,
         sp = spawn_time,
         sps = steps_per_sec,
+        f5 = first_5,
+        l5 = last_5,
     );
 }

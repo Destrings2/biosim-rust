@@ -112,6 +112,12 @@ pub struct Agent {
     /// Extensible key-value property bag for custom extensions.
     /// Use [`get_prop`](Self::get_prop) and [`set_prop`](Self::set_prop) to access entries.
     pub props: HashMap<String, PropValue>,
+
+    /// Per-individual mutation rate. The bit-flip operator reads this
+    /// when `SimConfig.adaptive_mutation` is `true`; otherwise the
+    /// global `cfg.point_mutation_rate` applies and this field is
+    /// purely informational.
+    pub mutation_rate: f32,
 }
 
 impl Agent {
@@ -139,6 +145,9 @@ impl Agent {
             challenge_bits: 0,
             memory: [0.0; 4],
             props: HashMap::new(),
+            // Sentinel; `spawn.rs` overwrites with the inherited (or
+            // configured) rate after construction.
+            mutation_rate: 0.0,
         }
     }
 

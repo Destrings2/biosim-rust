@@ -110,16 +110,18 @@ fn generate_child_from_single_parent_is_close_to_parent() {
     cfg.genome_initial_length_max = 24;
     let mut rng = Rng::seeded(0);
     let parent = make_random_genome(&cfg, &mut rng);
-    let pool = vec![parent.clone()];
+    let pool = vec![(parent.clone(), 0.0)];
     let params = ReproductionParams {
         sexual: false,
-        choose_by_fitness: false,
+        tournament_size: 1,
         mutation_rate: 0.0,
         insertion_deletion_rate: 0.0,
         deletion_ratio: 0.5,
         max_len: 100,
+        adaptive_mutation: false,
+        mutation_rate_jitter: 0.0,
     };
-    let child = generate_child_genome(&pool, &params, &mut rng);
+    let (child, _rate) = generate_child_genome(&pool, &params, &mut rng);
     assert_eq!(child, parent, "asexual zero-mutation reproduction must clone parent");
 }
 
@@ -130,32 +132,36 @@ fn generate_child_with_high_mutation_diverges_from_parent() {
     cfg.genome_initial_length_max = 24;
     let mut rng = Rng::seeded(0);
     let parent = make_random_genome(&cfg, &mut rng);
-    let pool = vec![parent.clone()];
+    let pool = vec![(parent.clone(), 1.0)];
     let params = ReproductionParams {
         sexual: false,
-        choose_by_fitness: false,
+        tournament_size: 1,
         mutation_rate: 1.0,
         insertion_deletion_rate: 0.0,
         deletion_ratio: 0.5,
         max_len: 100,
+        adaptive_mutation: false,
+        mutation_rate_jitter: 0.0,
     };
-    let child = generate_child_genome(&pool, &params, &mut rng);
+    let (child, _rate) = generate_child_genome(&pool, &params, &mut rng);
     assert_ne!(child, parent, "high mutation rate should produce a different child");
 }
 
 #[test]
 fn generate_child_from_empty_pool_returns_empty() {
     let mut rng = Rng::seeded(0);
-    let pool: Vec<Genome> = Vec::new();
+    let pool: Vec<(Genome, f32)> = Vec::new();
     let params = ReproductionParams {
         sexual: false,
-        choose_by_fitness: false,
+        tournament_size: 1,
         mutation_rate: 0.001,
         insertion_deletion_rate: 0.0,
         deletion_ratio: 0.5,
         max_len: 100,
+        adaptive_mutation: false,
+        mutation_rate_jitter: 0.0,
     };
-    let child = generate_child_genome(&pool, &params, &mut rng);
+    let (child, _rate) = generate_child_genome(&pool, &params, &mut rng);
     assert!(child.is_empty(), "empty parent pool should give empty child");
 }
 
@@ -173,10 +179,10 @@ fn genetic_diversity_returns_unit_value() {
 
 #[test]
 fn sexual_crossover_child_length_bounded_by_average_of_parents() {
-    // sexual_crossover clones parent `a` then overlays a slice from `b`, and
-    // truncates to target_len = (a.len + b.len) / 2. Because truncate only
-    // shrinks, the result length is min(a.len, target_len). With equal-length
-    // parents the child always has exactly target_len genes.
+    // Uniform crossover walks 0..(a.len + b.len)/2 and copies A[i] or
+    // B[i] per index; with both parents at length 12 the target is 12
+    // and neither parent ever runs short, so the loop always completes
+    // 12 iterations.
     let mut cfg = SimConfig::default();
     cfg.genome_initial_length_min = 12;
     cfg.genome_initial_length_max = 12;
@@ -185,18 +191,20 @@ fn sexual_crossover_child_length_bounded_by_average_of_parents() {
     let b = make_random_genome(&cfg, &mut rng);
     // Both parents are length 12 → target_len = 12 → child always length 12.
     let expected_len = (a.len() + b.len()) / 2;
-    let pool = vec![a, b];
+    let pool = vec![(a, 0.0), (b, 0.0)];
     let params = ReproductionParams {
         sexual: true,
-        choose_by_fitness: false,
+        tournament_size: 1,
         mutation_rate: 0.0,
         insertion_deletion_rate: 0.0,
         deletion_ratio: 0.5,
         max_len: 100,
+        adaptive_mutation: false,
+        mutation_rate_jitter: 0.0,
     };
     for seed in 0..20u64 {
         let mut r = Rng::seeded(seed);
-        let child = generate_child_genome(&pool, &params, &mut r);
+        let (child, _rate) = generate_child_genome(&pool, &params, &mut r);
         assert_eq!(
             child.len(),
             expected_len,
@@ -239,16 +247,18 @@ fn generate_child_with_sexual_true_and_two_parents_returns_nonempty() {
     let mut rng = Rng::seeded(1);
     let p1 = make_random_genome(&cfg, &mut rng);
     let p2 = make_random_genome(&cfg, &mut rng);
-    let pool = vec![p1, p2];
+    let pool = vec![(p1, 0.0), (p2, 0.0)];
     let params = ReproductionParams {
         sexual: true,
-        choose_by_fitness: false,
+        tournament_size: 1,
         mutation_rate: 0.0,
         insertion_deletion_rate: 0.0,
         deletion_ratio: 0.5,
         max_len: 100,
+        adaptive_mutation: false,
+        mutation_rate_jitter: 0.0,
     };
-    let child = generate_child_genome(&pool, &params, &mut rng);
+    let (child, _rate) = generate_child_genome(&pool, &params, &mut rng);
     assert!(
         !child.is_empty(),
         "sexual reproduction from two non-empty parents must produce a non-empty child"

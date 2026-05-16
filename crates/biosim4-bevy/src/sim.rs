@@ -83,7 +83,6 @@ fn default_config() -> SimConfig {
         signal_layers: 1,
         steps_per_generation: 200,
         max_generations: 200,
-        point_mutation_rate: 0.005,
         ..SimConfig::default()
     }
 }
@@ -740,8 +739,8 @@ fn reproduce_at(sim: &mut Sim, x: u16, y: u16) {
         return;
     }
 
-    let (parent_genome, parent_color) = match sim.state.population.get(parent_id) {
-        Some(a) if a.alive => (a.genome.clone(), a.color),
+    let (parent_genome, parent_color, parent_rate) = match sim.state.population.get(parent_id) {
+        Some(a) if a.alive => (a.genome.clone(), a.color, a.mutation_rate),
         _ => return,
     };
 
@@ -768,20 +767,26 @@ fn reproduce_at(sim: &mut Sim, x: u16, y: u16) {
     use biosim4_core::genome::ops::{generate_child_genome, ReproductionParams};
 
     let cfg = sim.state.config.clone();
-    let parents = vec![parent_genome];
+    // Single-parent clone — `tournament_size` is irrelevant with a
+    // pool of one. `parent_rate` carries through so adaptive runs
+    // jitter the rate the same way the GA loop does.
+    let parents = vec![(parent_genome, parent_rate)];
     let repro = ReproductionParams {
         sexual: false,
-        choose_by_fitness: false,
+        tournament_size: cfg.tournament_size,
         mutation_rate: cfg.point_mutation_rate,
         insertion_deletion_rate: cfg.gene_insertion_deletion_rate,
         deletion_ratio: cfg.deletion_ratio,
         max_len: cfg.genome_max_length,
+        adaptive_mutation: cfg.adaptive_mutation,
+        mutation_rate_jitter: cfg.mutation_rate_jitter,
     };
-    let child_genome = generate_child_genome(&parents, &repro, &mut sim.state.rng);
+    let (child_genome, child_rate) = generate_child_genome(&parents, &repro, &mut sim.state.rng);
     let nnet = create_wiring(&child_genome, sim.state.wiring_config());
     let id = sim.state.population.next_id();
     let mut child = Agent::new(id, child_loc, child_genome, nnet);
     child.color = parent_color;
+    child.mutation_rate = child_rate;
     let assigned = sim.state.population.spawn(child);
     sim.state.grid.set(child_loc, assigned);
 }

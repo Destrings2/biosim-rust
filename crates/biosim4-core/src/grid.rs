@@ -158,11 +158,10 @@ impl Grid {
         self.cells.fill(EMPTY);
     }
 
-    /// Map `loc` to its canonical in-bounds coordinate. On wrapping axes,
-    /// out-of-range coords are wrapped; on non-wrapping axes, out-of-range
-    /// returns `None`. This is the one call sites should use whenever a
-    /// coordinate is constructed from `loc + (dx, dy)` and may have run off
-    /// an edge — let the Grid decide whether the edge is real.
+    /// Map `loc` to its canonical in-bounds coordinate. On wrapping
+    /// axes, out-of-range coords are wrapped; on non-wrapping axes,
+    /// out-of-range returns `None`. Call sites that construct coords
+    /// from `loc + (dx, dy)` route through this.
     #[inline]
     pub fn wrap(&self, loc: Coord) -> Option<Coord> {
         self.topology.wrap(loc, self.size_x, self.size_y)

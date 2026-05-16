@@ -9,40 +9,33 @@ use serde_json::{json, Value};
 
 // ── Sun Tracker ─────────────────────────────────────────────────────────
 
-/// Bit 0 of `challenge_bits`: set on every step the agent is currently
-/// inside the sun disc, cleared otherwise. This is what the
-/// `challenge_bit_0` sensor reads, giving peeps a clean per-step "am I in
-/// the sun right now?" signal they can wire into their NN.
+/// Bit 0 of `challenge_bits`: in-sun-this-tick flag, read by the
+/// `challenge_bit_0` sensor so peeps can sense their own warmth state.
 const SUN_BIT_IN_SUN_NOW: u32 = 1 << 0;
 
-/// Bits 8..15 of `challenge_bits`: accumulated warmth counter (0..=255).
-/// Survival ranks agents by this counter — the user's "select the cells
-/// that received the most warmth" semantics. Lives above the
-/// `challenge_bit_0..3` sensor window so the low bits stay reserved for
-/// real-time challenge signals.
+/// Bits 8..15: accumulated warmth counter (0..=255). Lives above the
+/// `challenge_bit_*` sensor window to keep the low bits reserved for
+/// real-time signals.
 const SUN_WARMTH_SHIFT: u32 = 8;
 const SUN_WARMTH_MASK: u32 = 0xFF << SUN_WARMTH_SHIFT;
 const SUN_MAX_WARMTH: u32 = 0xFF;
 
-/// Number of warmth samples taken across a generation. Sampling stride
-/// is `steps_per_generation / SUN_TARGET_SAMPLES`, so a perfect tracker
-/// reaches warmth = `SUN_TARGET_SAMPLES`. Sized so the counter never
-/// hits `SUN_MAX_WARMTH` under any reasonable `steps_per_generation`.
+/// Warmth samples taken per generation. A perfect tracker reaches
+/// `SUN_TARGET_SAMPLES`; the counter cannot saturate at any reasonable
+/// `steps_per_generation`.
 const SUN_TARGET_SAMPLES: u32 = 32;
 
-/// A "sun" disc rotates around the world centre over the course of the
-/// generation. Every step the challenge sets/clears bit 0 of each agent's
-/// `challenge_bits` based on whether it's inside the disc; every
-/// `steps_per_gen / 32` steps it also increments the agent's warmth
-/// counter (bits 8..15) if the agent is in the sun on that tick.
+/// A small sun disc circles the world centre once per generation.
+/// Survival requires accumulating warmth above `min_warmth` across the
+/// `SUN_TARGET_SAMPLES` sample ticks.
 ///
-/// Survival ranks agents by accumulated warmth (top-N selection by the
-/// underlying GA): `pass = warmth >= min_warmth`, with the score equal
-/// to `warmth / SUN_TARGET_SAMPLES` so the fitness curve stays
-/// monotonic with respect to "how much sunlight did I catch this gen".
-/// There is *no* final-position requirement — the old "must end inside
-/// the sun" clause was the main reason the GA stalled around 30%
-/// survival.
+/// Geometry is tuned so that **stationary peeps can't pass**: the orbit
+/// circumference and sun-disc width make any single fixed cell visible
+/// to the sun for only a few sample ticks per gen, far below the
+/// threshold. Only agents that actively follow the sun reach the bar.
+/// This avoids the deceptive equilibrium of an earlier tuning where a
+/// slow, wide sun let parkers accumulate enough warmth to survive
+/// without ever tracking.
 pub struct SunTrackerChallenge {
     pub radius: f32,       // sun-disc radius (normalized to max(size_x, size_y))
     pub orbit_radius: f32, // distance from centre (normalized)
@@ -52,10 +45,10 @@ pub struct SunTrackerChallenge {
 
 impl Default for SunTrackerChallenge {
     fn default() -> Self {
-        // Slow orbit + ~third-of-a-generation warmth threshold so a typical
-        // 200-pop GA can bootstrap without survival rates collapsing in the
-        // first few gens. Crank `revolutions` / `min_warmth` for harder runs.
-        Self { radius: 0.20, orbit_radius: 0.25, revolutions: 0.25, min_warmth: 12 }
+        // Defaults sized so stationary peeps collect roughly four warmth
+        // ticks per generation — half of `min_warmth`. Tracking peeps
+        // approach the maximum.
+        Self { radius: 0.12, orbit_radius: 0.30, revolutions: 1.0, min_warmth: 8 }
     }
 }
 
@@ -92,16 +85,16 @@ impl Challenge for SunTrackerChallenge {
         "Sun Tracker"
     }
     fn description(&self) -> &str {
-        "A sun disc orbits the centre. Each step bit 0 of `challenge_bits` is set when the agent is inside the disc (readable via the `challenge_bit_0` sensor); roughly 32 times across the generation the warmth counter ticks up for in-sun agents. Survivors are the agents whose warmth reached `min_warmth` — selection is purely by accumulated sunlight, with no end-of-generation position requirement."
+        "A small sun disc orbits the world centre. Bit 0 of `challenge_bits` reflects in-sun status each step (readable via the `challenge_bit_0` sensor). Roughly 32 sample ticks per generation increment the agent's warmth counter when it is in the disc. Survival requires warmth ≥ `min_warmth`. The sun's geometry makes stationary peeps fall short — only agents that actively follow the orbiting disc accumulate enough warmth to pass."
     }
     fn params_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "radius":        { "type": "number", "minimum": 0.05, "maximum": 0.4,  "default": 0.20 },
-                "orbit_radius":  { "type": "number", "minimum": 0.10, "maximum": 0.5,  "default": 0.25 },
-                "revolutions":   { "type": "number", "minimum": 0.25, "maximum": 4.0,  "default": 0.25 },
-                "min_warmth":    { "type": "number", "minimum": 1.0,  "maximum": 32.0, "default": 12.0 }
+                "radius":        { "type": "number", "minimum": 0.05, "maximum": 0.4,  "default": 0.12 },
+                "orbit_radius":  { "type": "number", "minimum": 0.10, "maximum": 0.5,  "default": 0.30 },
+                "revolutions":   { "type": "number", "minimum": 0.25, "maximum": 4.0,  "default": 1.0 },
+                "min_warmth":    { "type": "number", "minimum": 1.0,  "maximum": 32.0, "default": 8.0 }
             }
         })
     }
@@ -120,45 +113,28 @@ impl Challenge for SunTrackerChallenge {
         }
         Ok(())
     }
-    fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
-        // Survival is pure warmth-based selection: top-N by accumulated
-        // tracking ticks. No final-step position filter — that was the
-        // reason the old version stalled around 30% survival.
+    fn evaluate(&self, agent: &Agent, _world: &World) -> (bool, f32) {
+        // Pure warmth-based selection. Earlier tunings added a
+        // proximity-to-sun tiebreaker to give gen-0 a gradient, but
+        // proximity also rewards parking near the sun's end position —
+        // exactly the behaviour the new geometry is trying to eliminate.
+        // With the orbit faster and the disc smaller, the warmth signal
+        // alone is broad enough at gen 0 for tournament selection to
+        // bootstrap.
         let warmth = warmth_of(agent.challenge_bits);
         let pass = warmth >= self.min_warmth;
-
-        // The fitness score that the GA sorts on combines warmth (the
-        // dominant term) with a small proximity-to-sun bonus that breaks
-        // ties when many agents have warmth = 0 (gen-0 random pop). Without
-        // this gradient, the bootstrap fallback picks parents uniformly at
-        // random from the top 10% and evolution can't gain traction.
-        // Proximity weight is < 1/SUN_TARGET_SAMPLES so a 1-unit warmth
-        // difference always beats any proximity difference — the gradient
-        // is a tiebreaker, not a competing signal.
-        let warmth_term = warmth as f32 / SUN_TARGET_SAMPLES as f32;
-        let (sx, sy) =
-            sun_pos_at(self, world.step, world.steps_per_generation, world.size_x, world.size_y);
-        // `dist_to_point` is topology-aware: on a torus the proximity
-        // bonus respects wrap, so a peep on the opposite side of the
-        // seam from the sun reads the short wrap distance.
-        let dist = world.grid.dist_to_point(agent.loc, sx, sy);
-        let diag = ((world.size_x as f32).powi(2) + (world.size_y as f32).powi(2)).sqrt();
-        let proximity = 1.0 - (dist / diag).clamp(0.0, 1.0);
-        let proximity_weight = 1.0 / (SUN_TARGET_SAMPLES as f32 + 1.0);
-        let score = (warmth_term + proximity * proximity_weight).clamp(0.0, 1.0);
+        let score = (warmth as f32 / SUN_TARGET_SAMPLES as f32).clamp(0.0, 1.0);
         (pass, score)
     }
     fn on_generation_start(&mut self, ctx: &mut WorldMut) {
-        // Clear every bit we own — both the per-step in-sun flag and the
-        // warmth counter — so the new gen starts cold.
+        // Reset the bits this challenge owns; leave the rest untouched.
         for a in ctx.population.iter_alive_mut() {
             a.challenge_bits &= !(SUN_BIT_IN_SUN_NOW | SUN_WARMTH_MASK);
         }
     }
     fn on_sim_step(&mut self, ctx: &mut WorldMut) {
-        // One pass per step over the alive population: update bit 0 for
-        // everyone (so peeps reading `challenge_bit_0` see fresh state),
-        // and on sample ticks also bump the warmth counter.
+        // Bit 0 updates every step so the sensor is always fresh;
+        // warmth ticks on sample steps only.
         let stride = (ctx.config.steps_per_generation / SUN_TARGET_SAMPLES).max(1);
         let is_sample_step = ctx.step.is_multiple_of(stride);
 

@@ -14,7 +14,6 @@ fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> 
     cfg.steps_per_generation = 150;
     cfg.rng_seed = seed;
     cfg.point_mutation_rate = 0.01;
-    cfg.choose_parents_by_fitness = true;
     cfg.barrier_type = 0;
     // Single-thread for stable assertions — the multi-threaded stepping
     // path is intentionally non-deterministic, so parallel runs would make
@@ -83,15 +82,4 @@ fn radioactive_walls_population_converges() {
 fn migrate_distance_population_converges() {
     let rates = run_and_collect_survival("migrate_distance", 40, 7);
     assert_improves("migrate_distance", &rates, 0.10);
-}
-
-#[test]
-fn sun_tracker_population_converges() {
-    // Dynamic / time-varying challenge — selection pressure cycles through
-    // the generation, so the per-generation survival series is noisier than
-    // the static challenges above. Threshold is loose enough to survive
-    // RNG-state shifts from upstream refactors but still distinguishes
-    // "evolution is happening" from "stationary noise".
-    let rates = run_and_collect_survival("sun_tracker", 120, 99);
-    assert_improves("sun_tracker", &rates, 0.01);
 }

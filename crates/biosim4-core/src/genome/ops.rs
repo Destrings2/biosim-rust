@@ -15,14 +15,17 @@
 //!
 //! # Reproduction
 //!
-//! `generate_child_genome(parents, params, rng)` assumes `parents` is sorted
-//! ascending by fitness (higher index = fitter). With `choose_by_fitness`,
-//! parent selection uses the transform `idx = (1 - r²) × N` — squaring `r`
-//! concentrates draws near index N-1 (the fittest parent).
+//! `generate_child_genome(parents, params, rng)` requires `parents`
+//! sorted ascending by fitness (higher index = fitter). Parent selection
+//! is tournament-of-`tournament_size`: `k = 1` removes fitness pressure,
+//! `k = 3` (default) gives a balanced gradient.
 //!
-//! Sexual crossover overlays a contiguous slice of parent B onto a clone of
-//! parent A; the result length is the average of A and B. Both mutation
-//! operators are applied to the child after crossover.
+//! Sexual crossover is uniform per-gene so individual genes survive with
+//! probability ½, preserving useful structure across recombination.
+//!
+//! Under `adaptive_mutation` the child's rate is the parent's rate
+//! perturbed by `exp(τ · (r − 0.5))`, an Evolution-Strategies
+//! self-adaptation step. Off by default.
 
 use crate::genome::gene::Gene;
 use crate::rng::Rng;
@@ -65,12 +68,42 @@ pub fn random_bit_flip(genome: &mut Genome, rng: &mut Rng) {
 }
 
 /// With probability `rate`, apply a point mutation to each gene.
+///
+/// At low rates the naive "draw `gen_bool(rate)` per gene" wastes 24+
+/// RNG draws per child to land roughly one flip. The geometric path
+/// samples the gap to the next flip in a single draw, so a default
+/// `rate = 0.05` child uses ~3 RNG calls instead of ~26. The cliff at
+/// `rate > 0.25` falls back to the per-gene loop because the geometric
+/// expected gap shrinks below 4 and the overhead of `ln` per gap
+/// stops paying off.
 pub fn apply_point_mutations(genome: &mut Genome, rate: f32, rng: &mut Rng) {
-    for gene in genome.iter_mut() {
-        if rng.gen_bool(rate) {
-            let bit = rng.gen_range_u32(0, 32);
-            *gene = Gene(gene.0 ^ (1u32 << bit));
+    if genome.is_empty() || rate <= 0.0 {
+        return;
+    }
+    if rate >= 0.25 {
+        for gene in genome.iter_mut() {
+            if rng.gen_bool(rate) {
+                let bit = rng.gen_range_u32(0, 32);
+                *gene = Gene(gene.0 ^ (1u32 << bit));
+            }
         }
+        return;
+    }
+    // Geometric gap sampling: skip = floor(ln(u) / ln(1 - rate)).
+    // `ln_q` is negative for rate ∈ (0, 1); the quotient is positive.
+    let ln_q = (1.0_f32 - rate).ln();
+    let len = genome.len();
+    let mut idx = 0usize;
+    while idx < len {
+        let u = rng.gen_f32().max(f32::MIN_POSITIVE);
+        let skip = (u.ln() / ln_q).floor() as usize;
+        idx += skip;
+        if idx >= len {
+            break;
+        }
+        let bit = rng.gen_range_u32(0, 32);
+        genome[idx] = Gene(genome[idx].0 ^ (1u32 << bit));
+        idx += 1;
     }
 }
 
@@ -102,91 +135,174 @@ pub fn random_insert_deletion(
 
 // ── Reproduction ─────────────────────────────────────────────────────────
 
+/// Clamp bounds for the per-individual mutation rate. The floor keeps
+/// adaptive runs from collapsing to a zero-search-pressure state; the
+/// ceiling prevents per-bit randomisation of every gene every generation.
+pub const MIN_MUTATION_RATE: f32 = 1e-4;
+pub const MAX_MUTATION_RATE: f32 = 0.5;
+
 /// Reproduction parameters passed to [`generate_child_genome`].
+///
+/// Parents are `(Genome, mutation_rate)` so the rate flows through
+/// selection alongside the genome. Under `adaptive_mutation` the rate
+/// evolves with the lineage; otherwise it is just `cfg.point_mutation_rate`
+/// forwarded.
 #[derive(Clone, Debug)]
 pub struct ReproductionParams {
-    /// Use two-parent sexual crossover when `true`; clone a single parent otherwise.
+    /// Use two-parent uniform crossover; clone a single parent when `false`.
     pub sexual: bool,
-    /// Bias parent selection toward higher-fitness parents when `true`.
-    pub choose_by_fitness: bool,
-    /// Per-gene bit-flip probability applied to the child genome.
+    /// Tournament size `k` for parent selection. `k = 1` removes fitness
+    /// pressure; `k = 3` is the recommended default; higher values
+    /// concentrate draws on top parents at the cost of diversity.
+    pub tournament_size: u32,
+    /// Per-gene bit-flip probability applied to the child. Used directly
+    /// when `adaptive_mutation` is `false`; otherwise it seeds gen-0
+    /// agents and is then superseded by the inherited per-individual rate.
     pub mutation_rate: f32,
-    /// Probability of inserting or deleting one gene from the child genome.
+    /// Per-child insertion-or-deletion probability.
     pub insertion_deletion_rate: f32,
-    /// Fraction of indel events that delete a gene (vs. inserting one).
+    /// Fraction of indel events that delete (vs. insert).
     pub deletion_ratio: f32,
-    /// Maximum allowed genome length after mutations.
+    /// Maximum genome length after mutations.
     pub max_len: u16,
+    /// Evolve the per-individual mutation rate alongside the genome.
+    pub adaptive_mutation: bool,
+    /// Jitter scale `τ` for adaptive inheritance. Consulted only when
+    /// [`adaptive_mutation`] is `true`.
+    ///
+    /// [`adaptive_mutation`]: Self::adaptive_mutation
+    pub mutation_rate_jitter: f32,
 }
 
-/// Generate a child genome from a pool of parent genomes.
-/// Assumes parents are sorted ascending by fitness (higher index = fitter).
+/// Tournament-of-`k` selection. Returns the highest sampled index, which
+/// is the fittest among `k` since `parents` is sorted ascending by
+/// fitness. Selection pressure is smooth in `k`:
+/// `P(top is chosen) = 1 − (1 − 1/N)^k`.
+#[inline]
+fn tournament_pick(parents_len: usize, k: u32, rng: &mut Rng) -> usize {
+    debug_assert!(parents_len > 0);
+    let k = k.max(1);
+    let mut best = rng.gen_range_usize(0, parents_len);
+    for _ in 1..k {
+        let cand = rng.gen_range_usize(0, parents_len);
+        if cand > best {
+            best = cand;
+        }
+    }
+    best
+}
+
+/// Log-uniform multiplicative jitter on a parent's mutation rate. Keeps
+/// the rate strictly positive and symmetric in log space, which suits
+/// ES-style self-adaptation. Cheaper than a Gaussian (no Box-Muller)
+/// and accurate enough at this population scale.
+#[inline]
+fn jitter_rate(parent_rate: f32, tau: f32, rng: &mut Rng) -> f32 {
+    let r = rng.gen_f32() - 0.5;
+    (parent_rate * (tau * r).exp()).clamp(MIN_MUTATION_RATE, MAX_MUTATION_RATE)
+}
+
+/// Generate one child `(genome, mutation_rate)` from a fitness-sorted
+/// parent pool of `(genome, rate)` pairs. Higher pool index = fitter.
 pub fn generate_child_genome(
-    parents: &[Genome],
+    parents: &[(Genome, f32)],
     params: &ReproductionParams,
     rng: &mut Rng,
-) -> Genome {
+) -> (Genome, f32) {
     let ReproductionParams {
         sexual,
-        choose_by_fitness,
+        tournament_size,
         mutation_rate,
         insertion_deletion_rate,
         deletion_ratio,
         max_len,
+        adaptive_mutation,
+        mutation_rate_jitter,
     } = *params;
     if parents.is_empty() {
-        return vec![];
+        return (vec![], mutation_rate);
     }
 
-    let pick = |rng: &mut Rng| -> usize {
-        if choose_by_fitness && parents.len() > 1 {
-            // Bias toward higher indices (fitter parents): take (1 - r²)*N so
-            // r near 0 (the high-density region of r²) maps to N-1 (fittest).
-            let r = rng.gen_f32();
-            let n = parents.len() as f32;
-            let idx = ((1.0 - r * r) * n) as usize;
-            idx.min(parents.len() - 1)
-        } else {
-            rng.gen_range_usize(0, parents.len())
-        }
-    };
+    let pick = |rng: &mut Rng| -> usize { tournament_pick(parents.len(), tournament_size, rng) };
 
-    let mut child = if sexual && parents.len() > 1 {
+    let (mut child, parent_rate) = if sexual && parents.len() > 1 {
         let a = pick(rng);
         let mut b = pick(rng);
-        while b == a && parents.len() > 1 {
+        // Bounded retry: a low-diversity pool must not stall the GA.
+        for _ in 0..4 {
+            if b != a {
+                break;
+            }
             b = pick(rng);
         }
-        sexual_crossover(&parents[a], &parents[b], rng)
+        // Inherit from parent A; uniform crossover uses A's slot order
+        // as the structural primary.
+        (uniform_crossover(&parents[a].0, &parents[b].0, rng), parents[a].1)
     } else {
-        parents[pick(rng)].clone()
+        let p = pick(rng);
+        (parents[p].0.clone(), parents[p].1)
     };
 
+    let child_rate = if adaptive_mutation {
+        jitter_rate(parent_rate, mutation_rate_jitter, rng)
+    } else {
+        parent_rate
+    };
+    let effective_rate = if adaptive_mutation { child_rate } else { mutation_rate };
+
     random_insert_deletion(&mut child, insertion_deletion_rate, deletion_ratio, max_len, rng);
-    apply_point_mutations(&mut child, mutation_rate, rng);
-    // Trim to max length
+    apply_point_mutations(&mut child, effective_rate, rng);
     if child.len() > max_len as usize {
         let trim = rng.gen_range_usize(0, child.len() - max_len as usize + 1);
         child.drain(..trim);
         child.truncate(max_len as usize);
     }
-    child
+    (child, child_rate)
 }
 
-fn sexual_crossover(a: &Genome, b: &Genome, rng: &mut Rng) -> Genome {
-    // Overlay a random slice of `b` onto `a`; result length = average of a and b.
-    let target_len = (a.len() + b.len()) / 2;
-    let mut child = a.clone();
-    if !b.is_empty() && !child.is_empty() {
-        let start = rng.gen_range_usize(0, child.len().min(b.len()));
-        let len = rng.gen_range_usize(1, (child.len().min(b.len()) - start + 1).max(2));
-        for i in 0..len {
-            if start + i < child.len() && start + i < b.len() {
-                child[start + i] = b[start + i];
-            }
-        }
+/// Uniform per-gene crossover. Each child position takes A[i] or B[i]
+/// with 50/50 probability, falling back to the longer parent when the
+/// chosen one runs short. Non-destructive: any individual gene survives
+/// with probability ½.
+///
+/// Child length uses **random rounding** of `(a + b) / 2` so the
+/// expected length is unbiased. Integer-division floor-bias otherwise
+/// drains length by ~0.25 genes per child per generation, collapsing
+/// genomes to zero within ~200 gens at default settings.
+fn uniform_crossover(a: &Genome, b: &Genome, rng: &mut Rng) -> Genome {
+    // One RNG draw funds the rounding bit plus 31 per-gene picks; refill
+    // every 32 picks. Saves ~24 RNG calls per crossover compared to a
+    // `gen_bool(0.5)` per gene — the dominant per-spawn cost on default
+    // genome lengths.
+    let mut bits = rng.gen_u32();
+    let mut bits_left = 31u8;
+    let round_up = (bits & 1) as usize;
+    bits >>= 1;
+    let sum = a.len() + b.len();
+    let target_len = (sum + round_up) / 2;
+    if target_len == 0 {
+        return Vec::new();
     }
-    child.truncate(target_len.max(1));
+    let mut child = Vec::with_capacity(target_len);
+    for i in 0..target_len {
+        if bits_left == 0 {
+            bits = rng.gen_u32();
+            bits_left = 32;
+        }
+        let pick_a = (bits & 1) != 0;
+        bits >>= 1;
+        bits_left -= 1;
+        // Fall back when the chosen parent is too short at `i`;
+        // `target_len ≤ max(len_a, len_b)` guarantees one side has it.
+        let gene = match (pick_a, i < a.len(), i < b.len()) {
+            (true, true, _) => a[i],
+            (false, _, true) => b[i],
+            (true, false, true) => b[i],
+            (false, true, false) => a[i],
+            (_, false, false) => break,
+        };
+        child.push(gene);
+    }
     child
 }
 

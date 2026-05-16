@@ -1371,10 +1371,10 @@ fn config_tab(
     widgets::slider_field_f32(
         ui,
         "Point mutation",
-        Some("Per-bit flip rate"),
+        Some("Per-gene bit-flip rate"),
         &mut cfg.point_mutation_rate,
         0.0..=0.5,
-        |v| format!("{v:.4}"),
+        |v| format!("{v:.3}"),
     );
     widgets::slider_field_f32(
         ui,
@@ -1398,14 +1398,38 @@ fn config_tab(
     widgets::toggle_field(
         ui,
         "Sexual reproduction",
-        Some("Crossover between two parents"),
+        Some("Uniform crossover between two parents"),
         &mut cfg.sexual_reproduction,
+    );
+    widgets::slider_field_u32(
+        ui,
+        "Tournament size",
+        Some("k for tournament(k); 1=uniform random, 3=default, 5+=strong"),
+        &mut cfg.tournament_size,
+        1..=16,
+        &[1, 2, 3, 5, 8],
+    );
+    widgets::slider_field_u32(
+        ui,
+        "Elitism count",
+        Some("Top-N survivors copied unchanged each gen"),
+        &mut cfg.elitism_count,
+        0..=64,
+        &[0, 1, 2, 4, 8, 16],
     );
     widgets::toggle_field(
         ui,
-        "Fitness parents",
-        Some("Pick parents by survival fitness"),
-        &mut cfg.choose_parents_by_fitness,
+        "Adaptive mutation",
+        Some("Each lineage evolves its own mutation rate"),
+        &mut cfg.adaptive_mutation,
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Mutation jitter τ",
+        Some("Inheritance scale for adaptive mutation"),
+        &mut cfg.mutation_rate_jitter,
+        0.0..=1.0,
+        |v| format!("{v:.2}"),
     );
     widgets::toggle_field(ui, "Kill enabled", Some("Peeps can kill"), &mut cfg.kill_enable);
 

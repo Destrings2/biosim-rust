@@ -10,7 +10,8 @@
 //! - **Evolution**: `steps_per_generation`, `max_generations`,
 //!   `genome_initial_length_{min,max}`, `genome_max_length`, `max_number_neurons`,
 //!   `point_mutation_rate`, `gene_insertion_deletion_rate`, `deletion_ratio`,
-//!   `sexual_reproduction`, `choose_parents_by_fitness`, `kill_enable`.
+//!   `sexual_reproduction`, `tournament_size`, `elitism_count`,
+//!   `adaptive_mutation`, `mutation_rate_jitter`, `kill_enable`.
 //! - **Agent defaults**: `responsiveness`, `responsiveness_curve_k_factor`,
 //!   `population_sensor_radius`, `signal_sensor_radius`,
 //!   `long_probe_distance`, `short_probe_barrier_distance`.
@@ -65,18 +66,42 @@ pub struct SimConfig {
     pub genome_max_length: u16,
     /// Maximum number of internal neurons per neural network.
     pub max_number_neurons: u16,
-    /// Per-gene probability of a random bit flip each generation.
+    /// Per-gene bit-flip probability each generation. Default `0.05`
+    /// yields ~1 flip per child on the 24-gene starter genome — the
+    /// lower bound of useful search pressure.
     pub point_mutation_rate: f32,
-    /// Per-genome probability of a gene insertion or deletion each generation.
+    /// Per-genome insertion-or-deletion probability each generation.
+    /// Default `0.01` lets genome length grow new structure without
+    /// destabilising the size distribution. `0.0` pins length to the
+    /// random initial value forever.
     pub gene_insertion_deletion_rate: f32,
-    /// Fraction of insertion/deletion events that delete a gene (vs. inserting one).
+    /// Fraction of indel events that delete (vs. insert) a gene.
     pub deletion_ratio: f32,
-    /// When `true`, child genomes use two-parent sexual crossover.
+    /// Use two-parent uniform crossover instead of asexual cloning.
+    /// Default `true`: uniform crossover preserves individual genes
+    /// with probability ½, so sexual reproduction dominates cloning.
     pub sexual_reproduction: bool,
-    /// When `true`, fitness-biased parent selection concentrates draws toward
-    /// fitter parents using a quadratic transform.
-    pub choose_parents_by_fitness: bool,
-    /// When `true`, the `kill_forward` action can kill nearby agents.
+    /// Tournament size `k` for parent selection. Each child draws `k`
+    /// uniform candidates from the parent pool and reproduces from the
+    /// fittest. `k = 1` means no fitness pressure; `k = 3` is the
+    /// default; `k = 5` is the practical ceiling for 1500-pop runs
+    /// before diversity collapses.
+    pub tournament_size: u32,
+    /// Top-fitness parents copied unchanged into the next generation.
+    /// Default `2`. Raise to protect more genomes from mutation noise
+    /// when many agents pass; lowers variation.
+    pub elitism_count: u32,
+    /// Let each lineage evolve its own per-individual mutation rate
+    /// (Evolution-Strategies self-adaptation). Off by default — the
+    /// fixed-rate path is the convergence-tuning baseline.
+    pub adaptive_mutation: bool,
+    /// Jitter scale `τ` for adaptive-mutation rate inheritance.
+    /// Default `0.2` keeps the per-generation change inside ±10 %.
+    /// Consulted only when [`adaptive_mutation`] is `true`.
+    ///
+    /// [`adaptive_mutation`]: Self::adaptive_mutation
+    pub mutation_rate_jitter: f32,
+    /// Allow the `kill_forward` action to kill nearby agents.
     pub kill_enable: bool,
 
     // ── Energy system ──────────────────────────────────────────────────────
@@ -143,11 +168,14 @@ impl Default for SimConfig {
             genome_initial_length_max: 24,
             genome_max_length: 300,
             max_number_neurons: 5,
-            point_mutation_rate: 0.001,
-            gene_insertion_deletion_rate: 0.0,
+            point_mutation_rate: 0.05,
+            gene_insertion_deletion_rate: 0.01,
             deletion_ratio: 0.5,
-            sexual_reproduction: false,
-            choose_parents_by_fitness: true,
+            sexual_reproduction: true,
+            tournament_size: 3,
+            elitism_count: 2,
+            adaptive_mutation: false,
+            mutation_rate_jitter: 0.2,
             kill_enable: false,
             enable_energy: false,
             energy_per_step_cost: 0.003,

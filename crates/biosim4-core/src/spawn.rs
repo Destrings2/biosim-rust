@@ -80,12 +80,15 @@ pub fn initialize_generation_0(state: &mut SimulationState) {
     state.actions.commit_enabled();
     let wiring_cfg = state.wiring_config();
 
+    let starting_rate = state.config.point_mutation_rate;
     for _ in 0..state.config.population {
         let genome = make_random_genome(&state.config, &mut state.rng);
         let nnet = create_wiring(&genome, wiring_cfg);
         let loc = state.grid.find_empty_location(&mut state.rng);
         let id = state.population.next_id();
-        let agent = Agent::new(id, loc, genome, nnet);
+        let mut agent = Agent::new(id, loc, genome, nnet);
+        // Seed the per-individual rate so adaptive runs have an anchor.
+        agent.mutation_rate = starting_rate;
         let assigned_id = state.population.spawn(agent);
         debug_assert_eq!(id, assigned_id);
         state.grid.set(loc, assigned_id);
@@ -101,36 +104,31 @@ fn fitness_cmp(a: f32, b: f32) -> std::cmp::Ordering {
     a.total_cmp(&b)
 }
 
-/// Pick parent genomes from this generation's evaluation results.
+/// Pick parents from this generation's evaluation results.
 ///
 /// Pool composition:
-/// - Normally: every agent that passed the challenge.
-/// - Extinction-recovery: if **no** agent passed but the population isn't
-///   empty, take the top 10% (minimum 2) by raw fitness regardless of
-///   pass/fail. Without this, hard challenges where no random agent passes
-///   gen 0 would just re-randomize the population every gen and never
-///   accumulate any selection pressure.
+/// - Normal: every agent that passed.
+/// - Extinction-recovery: when nobody passes, take the top 10% by raw
+///   fitness (minimum 2). Stops hard challenges from re-randomising
+///   the population every generation and losing accumulated pressure.
 ///
-/// Returned vec is sorted ascending by fitness so `generate_child_genome`'s
-/// fitness-biased parent selection works correctly (higher index = fitter).
-/// Returns `(parents, survivor_count)` where `survivor_count` is the number
-/// of agents that *actually passed* (not counting the extinction fallback).
-fn select_parent_genomes(evaluated: Vec<(Genome, f32, bool)>) -> (Vec<Genome>, u32) {
-    let survivor_count = evaluated.iter().filter(|(_, _, p)| *p).count() as u32;
+/// Returns parents sorted ascending by fitness (higher index = fitter)
+/// to match the tournament selector's index ordering. `survivor_count`
+/// reports actual passes, excluding extinction-fallback fillers.
+fn select_parent_genomes(evaluated: Vec<(Genome, f32, bool, f32)>) -> (Vec<(Genome, f32)>, u32) {
+    let survivor_count = evaluated.iter().filter(|(_, _, p, _)| *p).count() as u32;
 
-    // Filter pass=true into the pool, moving genomes rather than cloning.
-    let mut pool: Vec<(Genome, f32)> = Vec::with_capacity(survivor_count as usize);
-    let mut rejected: Vec<(Genome, f32)> = Vec::new();
-    for (g, f, pass) in evaluated {
+    let mut pool: Vec<(Genome, f32, f32)> = Vec::with_capacity(survivor_count as usize);
+    let mut rejected: Vec<(Genome, f32, f32)> = Vec::new();
+    for (g, f, pass, rate) in evaluated {
         if pass {
-            pool.push((g, f));
+            pool.push((g, f, rate));
         } else {
-            rejected.push((g, f));
+            rejected.push((g, f, rate));
         }
     }
 
     if pool.is_empty() && !rejected.is_empty() {
-        // Extinction-recovery: sort rejected by fitness desc, take top 10%.
         rejected.sort_by(|a, b| fitness_cmp(b.1, a.1));
         let take = (rejected.len() / 10).max(2);
         rejected.truncate(take);
@@ -138,38 +136,46 @@ fn select_parent_genomes(evaluated: Vec<(Genome, f32, bool)>) -> (Vec<Genome>, u
     }
 
     pool.sort_by(|a, b| fitness_cmp(a.1, b.1));
-    let parents = pool.into_iter().map(|(g, _)| g).collect();
+    let parents = pool.into_iter().map(|(g, _f, r)| (g, r)).collect();
     (parents, survivor_count)
 }
 
-/// Generate the next generation's genomes from a sorted parent pool.
-///
-/// - Empty parent pool → all random genomes.
-/// - Non-empty → elitism preserves the top 2 unchanged, the rest are
-///   produced via crossover/mutation against the parent pool.
+/// Generate the next generation's `(genome, mutation_rate)` pairs from a
+/// sorted parent pool. Empty pool → all random genomes seeded with
+/// `cfg.point_mutation_rate`. Non-empty → `cfg.elitism_count` survivors
+/// pass through unchanged, the rest are produced via crossover and
+/// mutation.
 fn generate_new_genomes(
-    parent_genomes: &[Genome],
+    parent_genomes: &[(Genome, f32)],
     cfg: &crate::sim_config::SimConfig,
     rng: &mut crate::rng::Rng,
     new_pop: usize,
-) -> Vec<Genome> {
+) -> Vec<(Genome, f32)> {
     if parent_genomes.is_empty() {
-        return (0..new_pop).map(|_| make_random_genome(cfg, rng)).collect();
+        return (0..new_pop)
+            .map(|_| (make_random_genome(cfg, rng), cfg.point_mutation_rate))
+            .collect();
     }
 
-    let elite_count = 2.min(parent_genomes.len());
+    // Clamp elitism so a hard challenge with few survivors doesn't ask
+    // for more elites than exist.
+    let elite_count = (cfg.elitism_count as usize).min(parent_genomes.len());
     let repro = ReproductionParams {
         sexual: cfg.sexual_reproduction,
-        choose_by_fitness: cfg.choose_parents_by_fitness,
+        tournament_size: cfg.tournament_size,
         mutation_rate: cfg.point_mutation_rate,
         insertion_deletion_rate: cfg.gene_insertion_deletion_rate,
         deletion_ratio: cfg.deletion_ratio,
         max_len: cfg.genome_max_length,
+        adaptive_mutation: cfg.adaptive_mutation,
+        mutation_rate_jitter: cfg.mutation_rate_jitter,
     };
 
     let mut out = Vec::with_capacity(new_pop);
-    // Elitism: copy the top-N survivors unchanged. Cheap insurance against
-    // losing the best genome to mutation, especially on hard challenges.
+    // Elitism: copy the top-N survivors unchanged (genome AND rate, so a
+    // well-tuned adaptive lineage isn't reset on promotion). Cheap
+    // insurance against losing the best genome to mutation, especially
+    // on hard challenges where survivors are scarce.
     out.extend(parent_genomes.iter().rev().take(elite_count).cloned());
     while out.len() < new_pop {
         out.push(generate_child_genome(parent_genomes, &repro, rng));
@@ -204,16 +210,18 @@ fn reset_world(state: &mut SimulationState) {
 pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     let world = state.world();
 
-    let evaluated: Vec<(Genome, f32, bool)> = state
+    let evaluated: Vec<(Genome, f32, bool, f32)> = state
         .population
         .iter_alive()
         .map(|a| {
             let (pass, fitness) = state.challenges.evaluate(a, &world);
-            (a.genome.clone(), fitness, pass)
+            // Carry the agent's mutation_rate through selection so
+            // adaptive lineages preserve their inherited rate.
+            (a.genome.clone(), fitness, pass, a.mutation_rate)
         })
         .collect();
 
-    let (parent_genomes, survivor_count) = select_parent_genomes(evaluated);
+    let (parent_pool, survivor_count) = select_parent_genomes(evaluated);
 
     let new_pop = state.config.population as usize;
     // Commit pending enable/disable changes: from this generation on, new
@@ -224,16 +232,17 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     let wiring_cfg = state.wiring_config();
 
     let new_genomes =
-        generate_new_genomes(parent_genomes.as_slice(), &state.config, &mut state.rng, new_pop);
+        generate_new_genomes(parent_pool.as_slice(), &state.config, &mut state.rng, new_pop);
 
     reset_world(state);
     state.generation += 1;
 
-    for genome in new_genomes {
+    for (genome, mutation_rate) in new_genomes {
         let nnet = create_wiring(&genome, wiring_cfg);
         let loc = state.grid.find_empty_location(&mut state.rng);
         let id = state.population.next_id();
-        let agent = Agent::new(id, loc, genome, nnet);
+        let mut agent = Agent::new(id, loc, genome, nnet);
+        agent.mutation_rate = mutation_rate;
         let assigned_id = state.population.spawn(agent);
         debug_assert_eq!(id, assigned_id);
         state.grid.set(loc, assigned_id);
