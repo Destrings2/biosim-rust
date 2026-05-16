@@ -1,7 +1,9 @@
 [package]
 name = "biosim4-native"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Headless CLI runner for biosim4-rs"
 
 [dependencies]
 biosim4-core = { path = "../biosim4-core", features = ["parallel"] }
