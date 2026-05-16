@@ -412,11 +412,7 @@ fn process_commands(
                 let structural_changed = cfg.size_x != cur.size_x
                     || cfg.size_y != cur.size_y
                     || cfg.signal_layers != cur.signal_layers
-                    || cfg.rng_seed != cur.rng_seed
-                    // Topology is baked into Grid at construction; in-place
-                    // patching would leave the grid honouring the old wrap
-                    // contract while sensors / challenges read the new one.
-                    || cfg.topology != cur.topology;
+                    || cfg.rng_seed != cur.rng_seed;
                 let threads_changed = cfg.num_threads != cur.num_threads;
 
                 if let Ok(json) = serde_json::to_string_pretty(&cfg) {
@@ -435,6 +431,12 @@ fn process_commands(
                     controls.refit_camera = true;
                     controls.painted_count = 0;
                 } else {
+                    // Topology lives on both the Grid (consulted on every
+                    // cell lookup) and the SimConfig (the persisted shape).
+                    // Mid-run patching keeps the two in sync without
+                    // touching any allocations — every read goes through
+                    // `grid.topology`, no caches need rebuilding.
+                    sim.state.grid.topology = cfg.topology;
                     sim.state.config = cfg;
                     controls.grid_dirty = true;
                 }

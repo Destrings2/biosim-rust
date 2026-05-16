@@ -1520,11 +1520,10 @@ fn config_tab(
     let needs_reset = cfg_snapshot.size_x != cur.size_x
         || cfg_snapshot.size_y != cur.size_y
         || cfg_snapshot.signal_layers != cur.signal_layers
-        || cfg_snapshot.rng_seed != cur.rng_seed
-        || cfg_snapshot.topology != cur.topology;
+        || cfg_snapshot.rng_seed != cur.rng_seed;
     let apply_label = if needs_reset { "APPLY  ·  RESET" } else { "APPLY" };
     let apply_hint = if needs_reset {
-        "size_x / size_y / signal_layers / rng_seed / topology change requires reinitializing the grid — current run will be discarded."
+        "size_x / size_y / signal_layers / rng_seed change requires reinitializing the grid — current run will be discarded."
     } else {
         "Patch the running simulation in place. Per-step values take effect immediately; mutation, selection, and barrier settings take effect at the next generation rollover."
     };
