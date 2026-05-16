@@ -138,10 +138,12 @@ impl Challenge for SunTrackerChallenge {
         let warmth_term = warmth as f32 / SUN_TARGET_SAMPLES as f32;
         let (sx, sy) =
             sun_pos_at(self, world.step, world.steps_per_generation, world.size_x, world.size_y);
-        let dx = agent.loc.x as f32 - sx;
-        let dy = agent.loc.y as f32 - sy;
+        // `dist_to_point` is topology-aware: on a torus the proximity
+        // bonus respects wrap, so a peep on the opposite side of the
+        // seam from the sun reads the short wrap distance.
+        let dist = world.grid.dist_to_point(agent.loc, sx, sy);
         let diag = ((world.size_x as f32).powi(2) + (world.size_y as f32).powi(2)).sqrt();
-        let proximity = 1.0 - ((dx * dx + dy * dy).sqrt() / diag).clamp(0.0, 1.0);
+        let proximity = 1.0 - (dist / diag).clamp(0.0, 1.0);
         let proximity_weight = 1.0 / (SUN_TARGET_SAMPLES as f32 + 1.0);
         let score = (warmth_term + proximity * proximity_weight).clamp(0.0, 1.0);
         (pass, score)
@@ -170,9 +172,7 @@ impl Challenge for SunTrackerChallenge {
         let r = self.radius * ctx.config.size_x.max(ctx.config.size_y) as f32;
         let r2 = r * r;
         for a in ctx.population.iter_alive_mut() {
-            let dx = a.loc.x as f32 - sx;
-            let dy = a.loc.y as f32 - sy;
-            let in_sun = dx * dx + dy * dy <= r2;
+            let in_sun = ctx.grid.dist_sq_to_point(a.loc, sx, sy) <= r2;
             if in_sun {
                 a.challenge_bits |= SUN_BIT_IN_SUN_NOW;
                 if is_sample_step {
@@ -239,19 +239,20 @@ impl Challenge for DiasporaChallenge {
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
         let me = agent.loc;
-        let mut nearest_sq = f32::INFINITY;
+        let mut nearest_sq = i32::MAX;
         for other in world.population.iter_alive() {
             if other.id == agent.id {
                 continue;
             }
-            let dx = (other.loc.x - me.x) as f32;
-            let dy = (other.loc.y - me.y) as f32;
-            let d2 = dx * dx + dy * dy;
+            // `grid.dist_sq` is topology-aware: on a torus, "anti-flock"
+            // means anti-flock across the seam too — neighbours don't
+            // get cheap distance from the cylinder wrap.
+            let d2 = world.grid.dist_sq(me, other.loc);
             if d2 < nearest_sq {
                 nearest_sq = d2;
             }
         }
-        let nearest = nearest_sq.sqrt();
+        let nearest = (nearest_sq as f32).sqrt();
         let pass = nearest >= self.min_distance;
         let max = self.min_distance * 2.0;
         (pass, (nearest / max).clamp(0.0, 1.0))
@@ -340,8 +341,9 @@ impl Challenge for SurvivorChallenge {
             .population
             .iter_alive()
             .filter_map(|a| {
-                let dx = a.loc.x as f32 - cx;
-                let dy = a.loc.y as f32 - cy;
+                // Topology-aware distance keeps the safe zone shaped
+                // correctly across wrap seams on a torus.
+                let (dx, dy) = ctx.grid.delta_to_point(a.loc, cx, cy);
                 let in_safe = dx * dx + dy * dy <= r2;
                 if in_safe {
                     return None;

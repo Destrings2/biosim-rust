@@ -201,11 +201,12 @@ Use `challenge_bits` for in-generation progress tracking.
 | `touch_any_wall` | Must visit a wall during the generation. |
 | `location_sequence` | Must visit a list of waypoints in order. Bits 0..n track progress. |
 
-### Radioactive (1)
+### World-edge hazards (2)
 
 | ID | Description |
 |---|---|
-| `radioactive_walls` | Border zones kill on contact. Survivor = anyone alive at end-of-generation. |
+| `radioactive_walls` | Probabilistic damage per step: kill probability falls off exponentially with distance from the currently-active wall (west, then east at mid-generation). Survivor = alive at end-of-generation. |
+| `lethal_borders` | Instant-kill version: any agent sitting on the world's outer border row/column dies the same step. `grace_steps` (default 1) opens with a short safe window so peeps spawned on the border can step away. Counterpart to `against_any_wall`. |
 
 ### Altruism (2)
 

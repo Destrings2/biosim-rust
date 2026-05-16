@@ -231,7 +231,15 @@ impl Population {
                 continue;
             }
             let old_loc = agent.loc;
-            let new_dir = (new_loc - old_loc).as_dir();
+            // Direction must come from `grid.delta` rather than the raw
+            // `new_loc - old_loc`: on a wrapping topology a step that
+            // crossed the seam looks like a giant backwards jump in raw
+            // coords (e.g. x=size_x-1 → x=0 is `-(size_x-1)`), and
+            // `as_dir` would flag it as the opposite cardinal. Going
+            // through the topology picks the shortest signed
+            // displacement, which is the actual step the agent took.
+            let (dx, dy) = grid.delta(old_loc, new_loc);
+            let new_dir = crate::types::Coord::new(dx as i16, dy as i16).as_dir();
             grid.set(old_loc, crate::grid::EMPTY);
             grid.set(new_loc, id);
             agent.loc = new_loc;

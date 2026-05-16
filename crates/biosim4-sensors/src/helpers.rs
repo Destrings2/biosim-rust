@@ -46,8 +46,13 @@ pub fn population_density_along_axis(
         if nloc == loc || !grid.is_occupied_at(nloc) {
             return;
         }
-        let dx = (nloc.x - loc.x) as f64;
-        let dy = (nloc.y - loc.y) as f64;
+        // `grid.delta` returns the wrap-aware signed displacement, so a
+        // neighbour that came in through a wrap (e.g. x=size−1 seen from
+        // x=0 on TorusX) contributes the short −1 vector, not a giant
+        // forward step. On a plane the delta is just `nloc − loc`.
+        let (dx_i, dy_i) = grid.delta(loc, nloc);
+        let dx = dx_i as f64;
+        let dy = dy_i as f64;
         let proj = dir_unit.0 * dx + dir_unit.1 * dy;
         sum += proj / (dx * dx + dy * dy);
     });
@@ -221,8 +226,10 @@ pub fn signal_density_along_axis(
         if nloc == loc {
             return;
         }
-        let dx = (nloc.x - loc.x) as f64;
-        let dy = (nloc.y - loc.y) as f64;
+        // Wrap-aware displacement (see population_density_along_axis).
+        let (dx_i, dy_i) = grid.delta(loc, nloc);
+        let dx = dx_i as f64;
+        let dy = dy_i as f64;
         let proj = dir_unit.0 * dx + dir_unit.1 * dy;
         let mag = signals.get(layer, nloc) as f64;
         sum += (mag * proj) / (dx * dx + dy * dy);

@@ -173,7 +173,7 @@ impl SimulationState {
         let challenges = ChallengeRegistry::new();
         let breeds = crate::registry::BreedRegistry::new();
 
-        let mut grid = Grid::new(config.size_x, config.size_y);
+        let mut grid = Grid::with_topology(config.size_x, config.size_y, config.topology);
         create_barrier(&mut grid, config.barrier_type);
 
         let signals = Signals::new(config.signal_layers, config.size_x, config.size_y);

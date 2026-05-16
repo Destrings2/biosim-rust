@@ -60,10 +60,9 @@ impl Challenge for CircleChallenge {
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
-        let (nx, ny) = nloc(agent, world);
-        let dx = nx - self.cx;
-        let dy = ny - self.cy;
-        let dist = (dx * dx + dy * dy).sqrt();
+        // Wrap-aware: on a torus the safe disc straddles the seam and
+        // an agent on the opposite side of the wrap is still inside.
+        let dist = world.grid.norm_dist_to_norm_point(agent.loc, self.cx, self.cy);
         if dist > self.radius {
             return (false, 0.0);
         }
@@ -243,10 +242,7 @@ impl Challenge for CenterWeightedChallenge {
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
-        let (nx, ny) = nloc(agent, world);
-        let dx = nx - 0.5;
-        let dy = ny - 0.5;
-        let dist = (dx * dx + dy * dy).sqrt();
+        let dist = world.grid.norm_dist_to_norm_point(agent.loc, 0.5, 0.5);
         if dist > self.radius {
             return (false, 0.0);
         }
@@ -293,10 +289,7 @@ impl Challenge for CenterUnweightedChallenge {
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
-        let (nx, ny) = nloc(agent, world);
-        let dx = nx - 0.5;
-        let dy = ny - 0.5;
-        let dist = (dx * dx + dy * dy).sqrt();
+        let dist = world.grid.norm_dist_to_norm_point(agent.loc, 0.5, 0.5);
         let pass = dist <= self.radius;
         (pass, if pass { 1.0 } else { 0.0 })
     }
@@ -471,21 +464,21 @@ impl Challenge for NearBarrierChallenge {
             return (false, 0.0);
         }
         let radius_px = self.radius * world.size_x as f32;
-        let (nx, ny) = nloc(agent, world);
-        let min_dist = world
+        // Walk barrier centres in pixel space using `grid.dist` so the
+        // distance respects topology wrap. On the bounded `Plane` this
+        // is identical to the previous normalized-then-Euclidean math;
+        // on a torus an agent next to a barrier across the seam is
+        // correctly counted as adjacent.
+        let min_dist_px = world
             .grid
             .barrier_centers
             .iter()
-            .map(|bc| {
-                let bcnx = bc.x as f32 / (world.size_x - 1) as f32;
-                let bcny = bc.y as f32 / (world.size_y - 1) as f32;
-                ((nx - bcnx).powi(2) + (ny - bcny).powi(2)).sqrt()
-            })
+            .map(|bc| world.grid.dist(agent.loc, *bc))
             .fold(f32::MAX, f32::min);
-        if min_dist * world.size_x as f32 > radius_px {
+        if min_dist_px > radius_px {
             return (false, 0.0);
         }
-        let score = (radius_px - min_dist * world.size_x as f32) / radius_px;
+        let score = (radius_px - min_dist_px) / radius_px;
         (true, score.clamp(0.0, 1.0))
     }
     fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {

@@ -46,7 +46,12 @@ impl Challenge for MigrateDistanceChallenge {
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
-        let dist = (agent.loc - agent.birth_loc).length();
+        // Topology-aware distance: on a torus, walking off one edge and
+        // back on the other doesn't count as "long migration" — the
+        // shortest path is the wrap, which is short. Same field name
+        // as before; on the bounded plane this is identical to
+        // `(loc − birth_loc).length()`.
+        let dist = world.grid.dist(agent.birth_loc, agent.loc);
         let max_dist = (world.size_x.max(world.size_y) as f32) * std::f32::consts::SQRT_2;
         let normalized = (dist / max_dist).clamp(0.0, 1.0);
         let pass = normalized >= self.min_distance;

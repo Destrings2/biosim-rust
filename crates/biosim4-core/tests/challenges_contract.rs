@@ -67,6 +67,7 @@ fn registry_lists_all_known_built_in_challenges() {
         "touch_any_wall",
         "location_sequence",
         "radioactive_walls",
+        "lethal_borders",
         "altruism",
         "altruism_sacrifice",
     ] {
@@ -381,4 +382,108 @@ fn weighted_sum_composition_evaluates_correctly() {
         score_high
     );
     assert!(!pass_high, "score 0.5 < threshold 0.6 should fail");
+}
+
+// ── Lethal Borders ──────────────────────────────────────────────────────
+
+/// Build a minimal `WorldMut` borrowing the supplied pieces. The
+/// programmable pool stays empty (no spawns), and the rng is a fresh
+/// seeded one — `lethal_borders` is deterministic so the rng is unused
+/// but a `WorldMut` requires one.
+fn fire_lethal_borders_step(
+    cfg: &SimConfig,
+    grid: &mut Grid,
+    population: &mut Population,
+    step: u32,
+    grace_steps: u32,
+) {
+    use biosim4_core::programmable::ProgrammablePool;
+    let mut reg = ChallengeRegistry::new();
+    register_builtin_challenges(&mut reg);
+    reg.set_single("lethal_borders", Some(json!({ "grace_steps": grace_steps as i64 }))).unwrap();
+    let mut signals = Signals::new(1, cfg.size_x, cfg.size_y);
+    let mut programmable = ProgrammablePool::new();
+    let mut rng = Rng::seeded(0xB0DE);
+    let mut ctx = biosim4_core::registry::challenge::WorldMut {
+        grid,
+        signals: &mut signals,
+        population,
+        programmable: &mut programmable,
+        rng: &mut rng,
+        step,
+        generation: 0,
+        config: cfg,
+    };
+    reg.on_sim_step(&mut ctx);
+}
+
+#[test]
+fn lethal_borders_queues_border_agents_for_death_after_grace() {
+    // Three agents: one on the west border (x=0), one on the east border
+    // (x=size_x-1), one in the interior. After a step past the grace
+    // window, only the two border agents should be queued for death.
+    let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
+    let mut grid = Grid::new(cfg.size_x, cfg.size_y);
+    let mut pop = Population::new(3);
+    let mut rng = Rng::seeded(0xDEAD);
+
+    let west_id = pop.spawn(make_agent(pop.next_id(), Coord::new(0, 5), &cfg, &mut rng));
+    let east_id = pop.spawn(make_agent(pop.next_id(), Coord::new(15, 5), &cfg, &mut rng));
+    let interior_id = pop.spawn(make_agent(pop.next_id(), Coord::new(8, 8), &cfg, &mut rng));
+
+    fire_lethal_borders_step(&cfg, &mut grid, &mut pop, /* step */ 1, /* grace */ 1);
+
+    assert!(pop.death_queue.contains(&west_id), "west-border agent must be queued");
+    assert!(pop.death_queue.contains(&east_id), "east-border agent must be queued");
+    assert!(!pop.death_queue.contains(&interior_id), "interior agent must NOT be queued");
+}
+
+#[test]
+fn lethal_borders_grace_window_protects_step_zero_spawns() {
+    // With the default `grace_steps = 1`, a peep that spawned on the border
+    // survives step 0 — it gets one tick to step inward before the kill
+    // check engages.
+    let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
+    let mut grid = Grid::new(cfg.size_x, cfg.size_y);
+    let mut pop = Population::new(1);
+    let mut rng = Rng::seeded(0xBEEF);
+    let id = pop.spawn(make_agent(pop.next_id(), Coord::new(0, 7), &cfg, &mut rng));
+
+    // Step 0 — inside the grace window, no kill.
+    fire_lethal_borders_step(&cfg, &mut grid, &mut pop, /* step */ 0, /* grace */ 1);
+    assert!(
+        !pop.death_queue.contains(&id),
+        "grace window must protect spawn-at-border peeps on step 0"
+    );
+
+    // Step 1 — grace just ended, kill fires.
+    fire_lethal_borders_step(&cfg, &mut grid, &mut pop, /* step */ 1, /* grace */ 1);
+    assert!(pop.death_queue.contains(&id), "kill check must engage once step >= grace_steps");
+}
+
+#[test]
+fn lethal_borders_zero_grace_kills_immediately() {
+    // `grace_steps = 0` means the kill check fires on step 0 too.
+    let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
+    let mut grid = Grid::new(cfg.size_x, cfg.size_y);
+    let mut pop = Population::new(1);
+    let mut rng = Rng::seeded(0xACE);
+    let id = pop.spawn(make_agent(pop.next_id(), Coord::new(0, 7), &cfg, &mut rng));
+    fire_lethal_borders_step(&cfg, &mut grid, &mut pop, /* step */ 0, /* grace */ 0);
+    assert!(pop.death_queue.contains(&id), "grace_steps=0 must kill on step 0");
+}
+
+#[test]
+fn lethal_borders_does_not_kill_dead_or_interior_peeps() {
+    // Sanity: agents already off-border don't get queued. Combined with the
+    // earlier test this fully covers the conditional in `on_sim_step`.
+    let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
+    let mut grid = Grid::new(cfg.size_x, cfg.size_y);
+    let mut pop = Population::new(2);
+    let mut rng = Rng::seeded(0x5EED);
+    let a = pop.spawn(make_agent(pop.next_id(), Coord::new(5, 5), &cfg, &mut rng));
+    let b = pop.spawn(make_agent(pop.next_id(), Coord::new(10, 10), &cfg, &mut rng));
+    fire_lethal_borders_step(&cfg, &mut grid, &mut pop, 5, 1);
+    assert!(pop.death_queue.is_empty(), "no interior peeps should be queued");
+    let _ = (a, b);
 }

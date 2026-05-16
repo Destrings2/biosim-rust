@@ -1,8 +1,12 @@
-//! Radioactive walls challenge.
+//! World-edge hazard challenges.
 //!
-//! `radioactive_walls` — kills agents that enter configurable lethal border
-//! zones via `on_sim_step`. The border width and lethality probability are
-//! configurable. Agents that survive all steps in a non-lethal zone pass.
+//! - `radioactive_walls` — kills agents probabilistically based on distance
+//!   to the currently-active wall (west then east, flipped at gen midpoint).
+//! - `lethal_borders` — kills any agent that steps onto the world's outer
+//!   border row/column. Deterministic, instant.
+//!
+//! Both apply damage per-step in `on_sim_step` and report "alive at gen
+//! end == pass" from `evaluate`.
 
 use biosim4_core::agent::Agent;
 use biosim4_core::registry::challenge::{Challenge, ChallengeOverlay, WorldMut};
@@ -122,5 +126,100 @@ impl Challenge for RadioactiveWallsChallenge {
             });
         }
         out
+    }
+}
+
+// ── Lethal Borders ──────────────────────────────────────────────────────
+
+/// Instant-kill version of "stay off the wall": any agent sitting on the
+/// world's outer border row or column (x = 0 / size_x − 1 or y = 0 /
+/// size_y − 1) is queued for death the same step. Selection pressure is
+/// "learn to stay inside the grid".
+///
+/// `grace_steps` skips the kill check for the first N steps of the
+/// generation so peeps unlucky enough to spawn at the border get a
+/// chance to step away. The default is 1 — peeps spawn, take one move,
+/// and then any peep still at a border dies.
+pub struct LethalBordersChallenge {
+    /// Number of opening steps during which the border is *not* lethal.
+    /// Prevents spawn-at-border peeps from being killed on step 0 before
+    /// they ever get to act, which would inject pure environmental
+    /// noise into the fitness signal.
+    pub grace_steps: u32,
+}
+
+impl Default for LethalBordersChallenge {
+    fn default() -> Self {
+        Self { grace_steps: 1 }
+    }
+}
+
+impl Challenge for LethalBordersChallenge {
+    fn id(&self) -> &str {
+        "lethal_borders"
+    }
+    fn name(&self) -> &str {
+        "Lethal Borders"
+    }
+    fn description(&self) -> &str {
+        "Touching the world's outer border (x = 0 / size_x − 1, y = 0 / size_y − 1) kills the agent the same step. `grace_steps` opens the generation with a short safe window so peeps that spawn on a border can step away before the kill check begins. Survivors at gen-end pass — counterpart to `against_any_wall`, which rewards exactly the opposite behaviour."
+    }
+    fn params_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "grace_steps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 64,
+                    "default": 1,
+                    "description": "Steps from gen start with no kill check — keeps spawn-at-border peeps from dying on step 0"
+                }
+            }
+        })
+    }
+    fn configure(&mut self, p: Value) -> Result<(), String> {
+        if let Some(v) = p.get("grace_steps") {
+            self.grace_steps = v.as_u64().ok_or("grace_steps")? as u32;
+        }
+        Ok(())
+    }
+    fn evaluate(&self, _agent: &Agent, _world: &World) -> (bool, f32) {
+        // Kill is applied per-step; alive at gen-end == survived.
+        (true, 1.0)
+    }
+    fn on_sim_step(&mut self, ctx: &mut WorldMut) {
+        if ctx.step < self.grace_steps {
+            return;
+        }
+        // Snapshot the victim ids before mutating — `queue_for_death`
+        // takes `&mut population` and we're already iterating it.
+        let victims: Vec<u32> = ctx
+            .population
+            .iter_alive()
+            .filter(|a| ctx.grid.is_border(a.loc))
+            .map(|a| a.id)
+            .collect();
+        for id in victims {
+            ctx.population.queue_for_death(id);
+        }
+    }
+    fn overlays(&self, world: &World) -> Vec<ChallengeOverlay> {
+        // Paint the four border strips so the kill zone is visible in
+        // the canvas. Single-cell wide; the gizmo renderer outlines each
+        // rect, so this shows up as a red frame hugging the edge.
+        let sx = world.size_x as f32;
+        let sy = world.size_y as f32;
+        let color = [255, 40, 40, 110];
+        vec![
+            // top
+            ChallengeOverlay::Rectangle { x: 0.0, y: 0.0, w: sx, h: 1.0, color },
+            // bottom
+            ChallengeOverlay::Rectangle { x: 0.0, y: sy - 1.0, w: sx, h: 1.0, color },
+            // left
+            ChallengeOverlay::Rectangle { x: 0.0, y: 0.0, w: 1.0, h: sy, color },
+            // right
+            ChallengeOverlay::Rectangle { x: sx - 1.0, y: 0.0, w: 1.0, h: sy, color },
+        ]
     }
 }

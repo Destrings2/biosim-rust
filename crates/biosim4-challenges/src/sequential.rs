@@ -127,9 +127,10 @@ impl Challenge for LocationSequenceChallenge {
             let next = (0..centres.len()).find(|&i| a.challenge_bits & (1 << i) == 0);
             if let Some(i) = next {
                 let (cx, cy) = centres[i];
-                let dx = a.loc.x as f32 - cx;
-                let dy = a.loc.y as f32 - cy;
-                if dx * dx + dy * dy <= r2 {
+                // Topology-aware: a waypoint at the wrap-opposite side
+                // of the seam from the agent is still reachable via the
+                // short path on TorusX/Sphere worlds.
+                if ctx.grid.dist_sq_to_point(a.loc, cx, cy) <= r2 {
                     a.challenge_bits |= 1 << i;
                 }
             }

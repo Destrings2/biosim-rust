@@ -56,6 +56,7 @@ pub mod sim_config;
 pub mod sim_state;
 pub mod sim_step;
 pub mod spawn;
+pub mod topology;
 pub mod types;
 pub mod world;
 

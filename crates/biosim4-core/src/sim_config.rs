@@ -24,6 +24,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::topology::Topology;
+
 /// Full simulation configuration. JSON-serializable so frontends can read and write it.
 ///
 /// World dimensions (`size_x`, `size_y`, `population`) are effectively
@@ -106,6 +108,12 @@ pub struct SimConfig {
     /// Procedural barrier layout: 0 = none, 1–7 = preset patterns.
     /// User-painted overrides in `SimulationState::user_barriers` layer on top.
     pub barrier_type: u8,
+    /// World topology — controls whether the edges wrap. See
+    /// [`Topology`] for the variants. Defaults to `Plane` (bounded
+    /// rectangle, historical behaviour). Changing this is structural:
+    /// `SimulationState::new` consumes it at grid-construction time.
+    #[serde(default)]
+    pub topology: Topology,
 
     // ── Analysis / output ──────────────────────────────────────────────────
     /// Collect genome analysis statistics every N generations.
@@ -152,6 +160,7 @@ impl Default for SimConfig {
             long_probe_distance: 16,
             short_probe_barrier_distance: 4,
             barrier_type: 0,
+            topology: Topology::Plane,
             genome_analysis_stride: 25,
             display_sample_genomes: 5,
             genome_comparison_method: 0,

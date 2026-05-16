@@ -272,7 +272,15 @@ pub fn resolve_movement(ctx: &mut ActionContext) {
     if dx == 0 && dy == 0 {
         return;
     }
-    let new_loc = Coord::new(ctx.agent.loc.x + dx, ctx.agent.loc.y + dy);
+    // Route the candidate through `grid.wrap`: on bounded axes a step off
+    // the edge returns `None` (move dropped, just like the old
+    // `is_in_bounds` check); on a wrapping axis it returns the canonical
+    // in-bounds coord so the queued move lands on the wrapped cell
+    // rather than being filtered out.
+    let raw = Coord::new(ctx.agent.loc.x + dx, ctx.agent.loc.y + dy);
+    let Some(new_loc) = ctx.world.grid.wrap(raw) else {
+        return;
+    };
     // Queue moves into empty cells AND into kill-barrier cells. The latter
     // are not "free to step onto" — `Population::apply_moves` recognises
     // the kill-barrier case and converts the move into the agent's death
@@ -280,9 +288,6 @@ pub fn resolve_movement(ctx: &mut ActionContext) {
     // If we filtered on `is_empty_at` alone, agents stepping into hazards
     // would have their moves silently dropped instead of dying, which
     // makes the kill-barrier tool look broken.
-    if !ctx.world.grid.is_in_bounds(new_loc) {
-        return;
-    }
     if ctx.world.grid.is_empty_at(new_loc) || ctx.world.grid.is_kill_barrier_at(new_loc) {
         ctx.move_queue.push((ctx.agent.id, new_loc));
     }

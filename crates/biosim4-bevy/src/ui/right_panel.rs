@@ -40,6 +40,17 @@ const BARRIER_TYPE_OPTIONS: &[(u8, &str)] = &[
 const GENOME_COMPARISON_OPTIONS: &[(u8, &str)] =
     &[(0, "Jaro-Winkler"), (1, "Hamming bits"), (2, "Hamming bytes")];
 
+/// Display labels for `SimConfig.topology` — mirrors the variants of
+/// [`biosim4_core::topology::Topology`]. "Sphere" is the user-facing
+/// name for the "wraps both axes" case; topologically it's a flat torus
+/// but the simulator semantic is "no edges in any direction".
+const TOPOLOGY_OPTIONS: &[(biosim4_core::topology::Topology, &str)] = &[
+    (biosim4_core::topology::Topology::Plane, "Plane (bounded)"),
+    (biosim4_core::topology::Topology::TorusX, "Torus X (wraps E↔W)"),
+    (biosim4_core::topology::Topology::TorusY, "Torus Y (wraps N↔S)"),
+    (biosim4_core::topology::Topology::Sphere, "Sphere (wraps both)"),
+];
+
 pub fn draw_right_panel(
     mut contexts: EguiContexts,
     sim: Res<Sim>,
@@ -270,6 +281,12 @@ fn stats_tab(
     kv_row(ui, "Grid", &format!("{}×{}", sim.state.config.size_x, sim.state.config.size_y));
     kv_row(ui, "Painted", &format!("{} cells", controls.painted_count));
     kv_row(ui, "Signal layers", &format!("{}", sim.state.config.signal_layers));
+    let topology_label = TOPOLOGY_OPTIONS
+        .iter()
+        .find(|(t, _)| *t == sim.state.config.topology)
+        .map(|(_, name)| *name)
+        .unwrap_or("?");
+    kv_row(ui, "Topology", topology_label);
     kv_row(
         ui,
         "Barrier type",
@@ -1277,6 +1294,13 @@ fn config_tab(
     if widgets::seed_field(ui, "RNG seed", None, &mut cfg.rng_seed) {
         cfg.rng_seed = generate_seed();
     }
+    widgets::enum_field(
+        ui,
+        "Topology",
+        Some("Which edges wrap"),
+        &mut cfg.topology,
+        TOPOLOGY_OPTIONS,
+    );
 
     // ─── GENETICS ──────────────────────────────────────────────────────────
     let length_tally = if cfg.genome_initial_length_min == cfg.genome_initial_length_max {
@@ -1496,10 +1520,11 @@ fn config_tab(
     let needs_reset = cfg_snapshot.size_x != cur.size_x
         || cfg_snapshot.size_y != cur.size_y
         || cfg_snapshot.signal_layers != cur.signal_layers
-        || cfg_snapshot.rng_seed != cur.rng_seed;
+        || cfg_snapshot.rng_seed != cur.rng_seed
+        || cfg_snapshot.topology != cur.topology;
     let apply_label = if needs_reset { "APPLY  ·  RESET" } else { "APPLY" };
     let apply_hint = if needs_reset {
-        "size_x / size_y / signal_layers / rng_seed change requires reinitializing the grid — current run will be discarded."
+        "size_x / size_y / signal_layers / rng_seed / topology change requires reinitializing the grid — current run will be discarded."
     } else {
         "Patch the running simulation in place. Per-step values take effect immediately; mutation, selection, and barrier settings take effect at the next generation rollover."
     };

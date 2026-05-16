@@ -412,7 +412,11 @@ fn process_commands(
                 let structural_changed = cfg.size_x != cur.size_x
                     || cfg.size_y != cur.size_y
                     || cfg.signal_layers != cur.signal_layers
-                    || cfg.rng_seed != cur.rng_seed;
+                    || cfg.rng_seed != cur.rng_seed
+                    // Topology is baked into Grid at construction; in-place
+                    // patching would leave the grid honouring the old wrap
+                    // contract while sensors / challenges read the new one.
+                    || cfg.topology != cur.topology;
                 let threads_changed = cfg.num_threads != cur.num_threads;
 
                 if let Ok(json) = serde_json::to_string_pretty(&cfg) {

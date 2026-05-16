@@ -40,6 +40,7 @@
 //! `find_empty_location` spin-loops until a random empty cell is found.
 //! The caller must ensure population < grid area to avoid an infinite loop.
 
+use crate::topology::Topology;
 use crate::types::Coord;
 
 /// Grid cell value indicating an unoccupied cell.
@@ -117,18 +118,35 @@ pub fn programmable_id_of(cell: u32) -> u32 {
 
 /// 2D arena grid. Each cell stores EMPTY, BARRIER, or an agent ID (1..population).
 /// Flat row-major storage: `cells[y * size_x + x]`.
+///
+/// All geometry queries — wrap, displacement, distance, border, in-bounds
+/// — are routed through the embedded [`Topology`]. Callers don't match on
+/// the topology directly; they call [`Grid::wrap`], [`Grid::delta`],
+/// [`Grid::dist_sq`], etc. and the right behaviour falls out of whatever
+/// variant the world was configured with. See the [`crate::topology`]
+/// module for the contract.
 pub struct Grid {
     pub size_x: u16,
     pub size_y: u16,
+    /// Which axes wrap. Set at construction (from `SimConfig`); never mutated.
+    pub topology: Topology,
     cells: Vec<u32>,
     pub barrier_locations: Vec<Coord>,
     pub barrier_centers: Vec<Coord>,
 }
 
 impl Grid {
+    /// Build a bounded-plane grid. Equivalent to `with_topology(size_x,
+    /// size_y, Topology::Plane)`; preserved as the historical default
+    /// constructor so existing tests and tools keep working.
     pub fn new(size_x: u16, size_y: u16) -> Self {
+        Self::with_topology(size_x, size_y, Topology::default())
+    }
+
+    /// Build a grid with an explicit topology.
+    pub fn with_topology(size_x: u16, size_y: u16, topology: Topology) -> Self {
         let cells = vec![EMPTY; size_x as usize * size_y as usize];
-        Self { size_x, size_y, cells, barrier_locations: vec![], barrier_centers: vec![] }
+        Self { size_x, size_y, topology, cells, barrier_locations: vec![], barrier_centers: vec![] }
     }
 
     #[inline]
@@ -140,56 +158,164 @@ impl Grid {
         self.cells.fill(EMPTY);
     }
 
+    /// Map `loc` to its canonical in-bounds coordinate. On wrapping axes,
+    /// out-of-range coords are wrapped; on non-wrapping axes, out-of-range
+    /// returns `None`. This is the one call sites should use whenever a
+    /// coordinate is constructed from `loc + (dx, dy)` and may have run off
+    /// an edge — let the Grid decide whether the edge is real.
     #[inline]
-    pub fn at(&self, loc: Coord) -> u32 {
-        self.cells[self.idx(loc)]
+    pub fn wrap(&self, loc: Coord) -> Option<Coord> {
+        self.topology.wrap(loc, self.size_x, self.size_y)
     }
 
+    /// Topology-aware signed displacement vector from `from` to `to`. On
+    /// wrapping axes picks the shorter of the two possible paths around
+    /// the cylinder; on non-wrapping axes returns the raw subtraction.
+    /// Building block for [`Grid::dist_sq`] / [`Grid::chebyshev_dist`].
+    #[inline]
+    pub fn delta(&self, from: Coord, to: Coord) -> (i32, i32) {
+        self.topology.delta(from, to, self.size_x, self.size_y)
+    }
+
+    /// Topology-aware squared Euclidean distance. Cheaper than `dist` —
+    /// callers comparing distances should prefer this and only `sqrt` at
+    /// the end if they need the metric value.
+    #[inline]
+    pub fn dist_sq(&self, from: Coord, to: Coord) -> i32 {
+        let (dx, dy) = self.delta(from, to);
+        dx * dx + dy * dy
+    }
+
+    /// Topology-aware Euclidean distance.
+    #[inline]
+    pub fn dist(&self, from: Coord, to: Coord) -> f32 {
+        (self.dist_sq(from, to) as f32).sqrt()
+    }
+
+    /// Topology-aware Chebyshev (L∞) distance: `max(|dx|, |dy|)` over
+    /// the wrap-aware displacement. Used by 8-neighbourhood logic.
+    #[inline]
+    pub fn chebyshev_dist(&self, from: Coord, to: Coord) -> i32 {
+        let (dx, dy) = self.delta(from, to);
+        dx.abs().max(dy.abs())
+    }
+
+    /// Wrap-aware signed displacement from `from` to a fractional point
+    /// (`to_x`, `to_y`). For challenges whose targets aren't integer
+    /// cells — orbiting suns, jittered safe-zones, normalised coords.
+    #[inline]
+    pub fn delta_to_point(&self, from: Coord, to_x: f32, to_y: f32) -> (f32, f32) {
+        self.topology.delta_f(from, to_x, to_y, self.size_x, self.size_y)
+    }
+
+    /// Wrap-aware squared L2 distance from `from` to a fractional point.
+    #[inline]
+    pub fn dist_sq_to_point(&self, from: Coord, to_x: f32, to_y: f32) -> f32 {
+        let (dx, dy) = self.delta_to_point(from, to_x, to_y);
+        dx * dx + dy * dy
+    }
+
+    /// Wrap-aware L2 distance from `from` to a fractional point.
+    #[inline]
+    pub fn dist_to_point(&self, from: Coord, to_x: f32, to_y: f32) -> f32 {
+        self.dist_sq_to_point(from, to_x, to_y).sqrt()
+    }
+
+    /// Wrap-aware Euclidean distance to a target expressed in normalised
+    /// `[0, 1]` coordinates (the convention several spatial challenges
+    /// use). Each axis is normalised by its own `size - 1`, matching the
+    /// pre-topology math. Returned distance is also in normalised units.
+    pub fn norm_dist_to_norm_point(&self, from: Coord, ncx: f32, ncy: f32) -> f32 {
+        let sx = (self.size_x.saturating_sub(1)).max(1) as f32;
+        let sy = (self.size_y.saturating_sub(1)).max(1) as f32;
+        let cx_px = ncx * sx;
+        let cy_px = ncy * sy;
+        let (dx_px, dy_px) = self.delta_to_point(from, cx_px, cy_px);
+        let dx = dx_px / sx;
+        let dy = dy_px / sy;
+        (dx * dx + dy * dy).sqrt()
+    }
+
+    /// Internal: read a raw cell value. Wraps before indexing so any
+    /// caller that constructed an over-edge coord on a wrapping axis
+    /// still resolves to a valid index. Panics on out-of-bounds on a
+    /// non-wrapping axis — caller should have checked with [`wrap`] first.
+    #[inline]
+    pub fn at(&self, loc: Coord) -> u32 {
+        let c = self.wrap(loc).expect("Grid::at called with OOB coord on non-wrapping axis");
+        self.cells[self.idx(c)]
+    }
+
+    /// Internal: write a raw cell value. Wraps before indexing. Same
+    /// out-of-bounds semantics as [`at`].
     #[inline]
     pub fn set(&mut self, loc: Coord, val: u32) {
-        let i = self.idx(loc);
+        let c = self.wrap(loc).expect("Grid::set called with OOB coord on non-wrapping axis");
+        let i = self.idx(c);
         self.cells[i] = val;
     }
 
+    /// True if `loc` (after wrapping where applicable) lands on a valid
+    /// cell. Equivalent to `self.wrap(loc).is_some()`. On a torus, all
+    /// finite coords are in bounds (they wrap); on a plane this is the
+    /// classical 0 ≤ x < size_x check.
+    #[inline]
     pub fn is_in_bounds(&self, loc: Coord) -> bool {
-        loc.x >= 0 && loc.y >= 0 && (loc.x as u16) < self.size_x && (loc.y as u16) < self.size_y
+        self.wrap(loc).is_some()
     }
 
+    /// True if `loc` sits on an outer edge the agent can't cross. On the
+    /// `Plane` topology that's the full rectangular boundary; wrapping
+    /// axes don't contribute borders since the agent can step through.
+    /// On `Sphere` no cell is a border.
     pub fn is_border(&self, loc: Coord) -> bool {
-        loc.x == 0
-            || loc.y == 0
-            || loc.x as u16 == self.size_x - 1
-            || loc.y as u16 == self.size_y - 1
+        self.topology.is_border(loc, self.size_x, self.size_y)
     }
 
+    #[inline]
     pub fn is_empty_at(&self, loc: Coord) -> bool {
-        self.is_in_bounds(loc) && self.at(loc) == EMPTY
+        match self.wrap(loc) {
+            Some(c) => self.cells[self.idx(c)] == EMPTY,
+            None => false,
+        }
     }
+    #[inline]
     pub fn is_barrier_at(&self, loc: Coord) -> bool {
-        self.is_in_bounds(loc) && self.at(loc) == BARRIER
+        match self.wrap(loc) {
+            Some(c) => self.cells[self.idx(c)] == BARRIER,
+            None => false,
+        }
     }
+    #[inline]
     pub fn is_kill_barrier_at(&self, loc: Coord) -> bool {
-        self.is_in_bounds(loc) && self.at(loc) == KILL_BARRIER
+        match self.wrap(loc) {
+            Some(c) => self.cells[self.idx(c)] == KILL_BARRIER,
+            None => false,
+        }
     }
     /// True if the cell blocks movement (regular wall or kill barrier).
     /// Use this to test "can an agent move here?" — kill barriers are
     /// drained specially in `drain_move_queue` so the agent doesn't end
     /// up on the cell.
+    #[inline]
     pub fn is_blocking_at(&self, loc: Coord) -> bool {
-        let v = if self.is_in_bounds(loc) {
-            self.at(loc)
-        } else {
-            return false;
-        };
-        v == BARRIER || v == KILL_BARRIER
+        match self.wrap(loc) {
+            Some(c) => {
+                let v = self.cells[self.idx(c)];
+                v == BARRIER || v == KILL_BARRIER
+            }
+            None => false,
+        }
     }
+    #[inline]
     pub fn is_occupied_at(&self, loc: Coord) -> bool {
-        let v = if self.is_in_bounds(loc) {
-            self.at(loc)
-        } else {
-            return false;
-        };
-        v != EMPTY && v != BARRIER && v != KILL_BARRIER
+        match self.wrap(loc) {
+            Some(c) => {
+                let v = self.cells[self.idx(c)];
+                v != EMPTY && v != BARRIER && v != KILL_BARRIER
+            }
+            None => false,
+        }
     }
 
     /// Find a random empty location. Spin-loops — caller must ensure population < grid area.
@@ -221,8 +347,11 @@ pub fn visit_neighborhood(grid: &Grid, center: Coord, radius: f32, mut f: impl F
             if dx_sq + (dy as f32).powi(2) > r2 {
                 continue;
             }
-            let loc = Coord::new(center.x + dx, center.y + dy);
-            if grid.is_in_bounds(loc) {
+            // Wrap via Grid so wrapping axes deliver the canonical coord;
+            // bounded axes drop OOB neighbours. Same call shape works on
+            // every topology — sensors reading densities don't need to
+            // know whether they're sweeping a torus or a plane.
+            if let Some(loc) = grid.wrap(Coord::new(center.x + dx, center.y + dy)) {
                 f(loc);
             }
         }

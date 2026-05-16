@@ -9,7 +9,9 @@
 //! - `migration` — `migrate_distance`: rewards traveling far from birth location.
 //! - `sequential` — challenges requiring ordered behavior during the generation:
 //!   `touch_any_wall` (uses `challenge_bits`), `location_sequence`.
-//! - `radioactive` — `radioactive_walls`: lethal border zones.
+//! - `radioactive` — world-edge hazard challenges: `radioactive_walls`
+//!   (probabilistic, distance-falloff) and `lethal_borders` (instant
+//!   kill on touching the outer row/column).
 //! - `altruism` — `altruism`, `altruism_sacrifice`: proximity-based group fitness.
 //! - `dynamic` — time-varying challenges with `on_sim_step` and
 //!   `on_generation_start` hooks: `sun_tracker`, `diaspora`,
@@ -24,6 +26,7 @@
 mod altruism;
 mod dynamic;
 mod migration;
+mod predators;
 mod quarantine;
 mod radioactive;
 mod sequential;
@@ -31,11 +34,11 @@ mod social;
 mod spatial;
 mod tag;
 mod wanderers;
-mod predators;
 
 pub use altruism::*;
 pub use dynamic::*;
 pub use migration::*;
+pub use predators::*;
 pub use quarantine::*;
 pub use radioactive::*;
 pub use sequential::*;
@@ -43,7 +46,6 @@ pub use social::*;
 pub use spatial::*;
 pub use tag::*;
 pub use wanderers::*;
-pub use predators::*;
 
 use biosim4_core::registry::ChallengeRegistry;
 
@@ -66,7 +68,7 @@ use biosim4_core::registry::ChallengeRegistry;
 ///
 /// **Sequential** (2): `touch_any_wall`, `location_sequence`.
 ///
-/// **Radioactive** (1): `radioactive_walls`.
+/// **World-edge hazards** (2): `radioactive_walls`, `lethal_borders`.
 ///
 /// **Altruism** (2): `altruism`, `altruism_sacrifice`.
 ///
@@ -96,8 +98,9 @@ pub fn register_builtin_challenges(registry: &mut ChallengeRegistry) {
     // Sequential
     registry.register(Box::new(TouchAnyWallChallenge));
     registry.register(Box::new(LocationSequenceChallenge::default()));
-    // Radioactive
+    // World-edge hazards
     registry.register(Box::new(RadioactiveWallsChallenge::default()));
+    registry.register(Box::new(LethalBordersChallenge::default()));
     // Altruism
     registry.register(Box::new(AltruismChallenge::default()));
     registry.register(Box::new(AltruismSacrificeChallenge::default()));

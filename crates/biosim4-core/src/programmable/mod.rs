@@ -556,11 +556,20 @@ impl ProgrammablePool {
                 }
             }
 
-            // 5. Move.
-            if let Some(dest) = out.move_to {
-                if !grid.is_in_bounds(dest) {
-                    // out-of-bounds: ignore.
-                } else if grid.is_kill_barrier_at(dest) {
+            // 5. Move. Use `grid.wrap` so a target that crossed a
+            // wrapping edge lands on the canonical cell; on the bounded
+            // plane this is identical to the old `is_in_bounds` check.
+            if let Some(raw_dest) = out.move_to {
+                let Some(dest) = grid.wrap(raw_dest) else {
+                    // OOB on a non-wrapping axis: ignore.
+                    if let Some(layer) = out.signal_emit {
+                        if layer < signals.layer_count() {
+                            signals.increment(layer, entity.loc, grid);
+                        }
+                    }
+                    continue;
+                };
+                if grid.is_kill_barrier_at(dest) {
                     // Stepping onto a kill barrier kills the entity.
                     grid.set(entity.loc, grid::EMPTY);
                     entity.alive = false;
@@ -571,8 +580,10 @@ impl ProgrammablePool {
                     grid.set(from, grid::EMPTY);
                     grid.set(dest, grid::encode_programmable(id));
                     entity.loc = dest;
-                    let dir = (dest - from).as_dir();
-                    entity.heading = dir;
+                    // Derive heading from the wrap-aware delta so seam
+                    // crossings don't flip the entity's heading 180°.
+                    let (dx, dy) = grid.delta(from, dest);
+                    entity.heading = crate::types::Coord::new(dx as i16, dy as i16).as_dir();
                 } else {
                     // Occupied by something other than the just-killed peep;
                     // leave the entity in place.

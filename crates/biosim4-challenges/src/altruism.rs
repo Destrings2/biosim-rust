@@ -50,11 +50,7 @@ impl Challenge for AltruismChallenge {
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
-        let nx = agent.loc.x as f32 / (world.size_x - 1) as f32;
-        let ny = agent.loc.y as f32 / (world.size_y - 1) as f32;
-        let dx = nx - self.cx;
-        let dy = ny - self.cy;
-        let dist = (dx * dx + dy * dy).sqrt();
+        let dist = world.grid.norm_dist_to_norm_point(agent.loc, self.cx, self.cy);
         if dist > self.radius {
             return (false, 0.0);
         }
@@ -113,11 +109,8 @@ impl Challenge for AltruismSacrificeChallenge {
         Ok(())
     }
     fn evaluate(&self, agent: &Agent, world: &World) -> (bool, f32) {
-        let nx = agent.loc.x as f32 / (world.size_x - 1) as f32;
-        let ny = agent.loc.y as f32 / (world.size_y - 1) as f32;
-        let dx = nx - self.sacrifice_cx;
-        let dy = ny - self.sacrifice_cy;
-        let dist = (dx * dx + dy * dy).sqrt();
+        let dist =
+            world.grid.norm_dist_to_norm_point(agent.loc, self.sacrifice_cx, self.sacrifice_cy);
         // In sacrifice zone → fail (die)
         if dist <= self.radius {
             return (false, 0.0);

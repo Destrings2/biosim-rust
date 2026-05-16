@@ -337,6 +337,34 @@ pub fn enum_field_u8(
     });
 }
 
+/// Right-aligned ComboBox for any `Copy + PartialEq` field — the typed
+/// counterpart to [`enum_field_u8`]. Use for proper Rust enums (e.g.
+/// `Topology`) so callers don't have to round-trip through `u8`.
+pub fn enum_field<T>(
+    ui: &mut egui::Ui,
+    title: &str,
+    hint: Option<&str>,
+    value: &mut T,
+    options: &[(T, &'static str)],
+) where
+    T: Copy + PartialEq,
+{
+    let current = options.iter().find(|(v, _)| *v == *value).map(|(_, name)| *name).unwrap_or("?");
+    field_row(ui, title, hint, |ui| {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            egui::ComboBox::from_id_salt(title)
+                .selected_text(egui::RichText::new(current).size(11.0).color(theme::TEXT))
+                .show_ui(ui, |ui| {
+                    for (val, name) in options {
+                        if ui.selectable_label(*value == *val, *name).clicked() {
+                            *value = *val;
+                        }
+                    }
+                });
+        });
+    });
+}
+
 // ─── Generic slider / chip core ─────────────────────────────────────────────
 
 /// Slider + fixed-width value strip on the right.

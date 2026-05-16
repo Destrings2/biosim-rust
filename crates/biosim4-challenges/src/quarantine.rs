@@ -85,9 +85,10 @@ impl Challenge for QuarantineChallenge {
 
         for a in ctx.population.iter_alive_mut() {
             a.challenge_bits &= !BIT_INFECTED;
-            let dx = a.loc.x as f32 - cx;
-            let dy = a.loc.y as f32 - cy;
-            if dx * dx + dy * dy <= r2 {
+            // Topology-aware: seed disc wraps across the seam on torus
+            // worlds — same behavioural intent (one connected disc),
+            // just measured along the shortest path.
+            if ctx.grid.dist_sq_to_point(a.loc, cx, cy) <= r2 {
                 a.challenge_bits |= BIT_INFECTED;
             }
         }
