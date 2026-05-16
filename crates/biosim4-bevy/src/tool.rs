@@ -160,10 +160,13 @@ fn handle_tool_input(
 }
 
 /// Keyboard shortcuts mirror the React frontend: 1/2/3/4 for tools, space for
-/// play/pause, C for challenge picker (not wired here — UI handles it).
+/// play/pause, S/G/E for the paused-only transport actions (single step,
+/// finish generation, run full epoch), C for challenge picker (not wired
+/// here — UI handles it).
 fn tool_keyboard_shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     mut controls: ResMut<SimControls>,
+    mut queue: ResMut<SimCommandQueue>,
     mut contexts: EguiContexts,
 ) {
     if let Ok(ctx) = contexts.ctx_mut() {
@@ -187,5 +190,17 @@ fn tool_keyboard_shortcuts(
         controls.running = !controls.running;
     } else if keys.just_pressed(KeyCode::Escape) {
         controls.selected_agent = None;
+    } else if !controls.running {
+        // Step / step-generation / epoch are paused-only — gate the
+        // hotkeys on `!running` so they match the disabled affordance on
+        // the playback bar's buttons (the command handlers no-op while
+        // playing anyway, but firing them silently would be confusing).
+        if keys.just_pressed(KeyCode::KeyS) {
+            queue.items.push(SimCommand::StepOnce);
+        } else if keys.just_pressed(KeyCode::KeyG) {
+            queue.items.push(SimCommand::StepGeneration);
+        } else if keys.just_pressed(KeyCode::KeyE) {
+            queue.items.push(SimCommand::RunEpoch);
+        }
     }
 }
