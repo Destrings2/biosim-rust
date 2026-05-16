@@ -273,7 +273,17 @@ pub fn resolve_movement(ctx: &mut ActionContext) {
         return;
     }
     let new_loc = Coord::new(ctx.agent.loc.x + dx, ctx.agent.loc.y + dy);
-    if ctx.world.grid.is_in_bounds(new_loc) && ctx.world.grid.is_empty_at(new_loc) {
+    // Queue moves into empty cells AND into kill-barrier cells. The latter
+    // are not "free to step onto" — `Population::apply_moves` recognises
+    // the kill-barrier case and converts the move into the agent's death
+    // (clears the source cell, marks `alive = false`, prunes `alive_ids`).
+    // If we filtered on `is_empty_at` alone, agents stepping into hazards
+    // would have their moves silently dropped instead of dying, which
+    // makes the kill-barrier tool look broken.
+    if !ctx.world.grid.is_in_bounds(new_loc) {
+        return;
+    }
+    if ctx.world.grid.is_empty_at(new_loc) || ctx.world.grid.is_kill_barrier_at(new_loc) {
         ctx.move_queue.push((ctx.agent.id, new_loc));
     }
 }

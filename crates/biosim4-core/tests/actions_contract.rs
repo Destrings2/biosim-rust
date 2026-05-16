@@ -285,8 +285,67 @@ fn move_blocked_by_occupied_cell_does_not_queue() {
             run_motor_and_resolve(&reg, east_idx, 10.0, ctx);
             ctx.move_queue.clone()
         });
-    // resolve_movement filters by is_empty_at — should not queue.
+    // resolve_movement filters out occupied cells (only empty cells and
+    // kill barriers reach `Population::apply_moves`).
     assert!(queued.is_empty(), "move into occupied cell must not queue, got {:?}", queued);
+}
+
+#[test]
+fn move_into_kill_barrier_queues_and_kills_agent() {
+    // Regression: moves into kill-barrier cells were silently dropped by
+    // `resolve_movement` (the old filter required `is_empty_at`), so the
+    // KILL_BARRIER handling in `Population::apply_moves` was unreachable —
+    // the kill-barrier tool looked broken even though core had the right
+    // logic. resolve_movement now also accepts kill-barrier targets.
+    use biosim4_core::grid::KILL_BARRIER;
+    let cfg = SimConfig { size_x: 16, size_y: 16, ..SimConfig::default() };
+    let mut grid = Grid::new(cfg.size_x, cfg.size_y);
+    let mut signals = Signals::new(1, cfg.size_x, cfg.size_y);
+    let mut population = Population::new(1);
+    let mut rng = Rng::seeded(14);
+
+    let agent = make_test_agent(population.next_id(), Coord::new(5, 5), &cfg, &mut rng);
+    let id = population.spawn(agent);
+    grid.set(Coord::new(5, 5), id);
+    grid.set(Coord::new(6, 5), KILL_BARRIER); // hazard one step east
+    population.get_mut(id).unwrap().responsiveness = 1.0;
+
+    let mut reg = ActionRegistry::new();
+    register_builtin_actions(&mut reg);
+    let east_idx = (0..reg.count()).find(|&i| reg.id(i) == "move_east").unwrap();
+
+    let mut arng = Rng::seeded(0);
+    let queued: Vec<(AgentId, Coord)> =
+        with_action_ctx(&cfg, &grid, &mut signals, &mut population, id, &mut arng, |ctx| {
+            run_motor_and_resolve(&reg, east_idx, 10.0, ctx);
+            ctx.move_queue.clone()
+        });
+    assert!(
+        !queued.is_empty(),
+        "resolve_movement should queue the move into the kill barrier so apply_moves can kill"
+    );
+    assert!(
+        queued.iter().all(|(_, c)| *c == Coord::new(6, 5)),
+        "queued move must target the kill-barrier cell, got {:?}",
+        queued
+    );
+
+    // Now drive the move through `apply_moves` and confirm the kill landed.
+    population.drain_move_queue_from(&mut grid, queued);
+    assert!(
+        !population.get(id).unwrap().alive,
+        "agent that stepped onto a kill barrier must be dead after drain"
+    );
+    assert!(
+        grid.is_empty_at(Coord::new(5, 5)),
+        "source cell must be cleared after kill-barrier death"
+    );
+    assert_eq!(
+        grid.at(Coord::new(6, 5)),
+        KILL_BARRIER,
+        "kill-barrier cell itself is left in place"
+    );
+    assert!(!population.alive_ids().contains(&id), "alive_ids must be pruned of the dead agent");
 }
 
 #[test]
