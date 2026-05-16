@@ -104,6 +104,37 @@ pub struct SimConfig {
     /// Allow the `kill_forward` action to kill nearby agents.
     pub kill_enable: bool,
 
+    // ── Speciation ─────────────────────────────────────────────────────────
+    /// Bucket population into species by genome distance and reproduce
+    /// within species. Default `false`.
+    #[serde(default)]
+    pub enable_speciation: bool,
+    /// Compatibility distance threshold (1 − similarity). Lower = more
+    /// species; higher = fewer. Adaptive τ adjusts at runtime to keep the
+    /// species count near `species_count_target`.
+    #[serde(default = "default_compatibility_threshold")]
+    pub compatibility_threshold: f32,
+    /// Target number of species. Adaptive τ adjusts toward this.
+    #[serde(default = "default_species_count_target")]
+    pub species_count_target: u32,
+    /// Acceptable band for target species count.
+    #[serde(default = "default_species_count_target_tolerance")]
+    pub species_count_target_tolerance: u32,
+    /// τ adjustment step per generation when out of band.
+    #[serde(default = "default_compatibility_threshold_step")]
+    pub compatibility_threshold_step: f32,
+    /// Generations a species can go without improving before it is denied
+    /// offspring. The two top species are immune.
+    #[serde(default = "default_stagnation_limit")]
+    pub stagnation_limit: u32,
+    /// Minimum members for a species to copy its top genome unchanged.
+    #[serde(default = "default_species_elitism_min")]
+    pub species_elitism_min: u32,
+    /// Probability of drawing the second parent from a different species
+    /// during sexual reproduction.
+    #[serde(default = "default_interspecies_mating_rate")]
+    pub interspecies_mating_rate: f32,
+
     // ── Energy system ──────────────────────────────────────────────────────
     /// Enable the energy and food subsystems.
     pub enable_energy: bool,
@@ -177,6 +208,14 @@ impl Default for SimConfig {
             adaptive_mutation: false,
             mutation_rate_jitter: 0.2,
             kill_enable: false,
+            enable_speciation: false,
+            compatibility_threshold: default_compatibility_threshold(),
+            species_count_target: default_species_count_target(),
+            species_count_target_tolerance: default_species_count_target_tolerance(),
+            compatibility_threshold_step: default_compatibility_threshold_step(),
+            stagnation_limit: default_stagnation_limit(),
+            species_elitism_min: default_species_elitism_min(),
+            interspecies_mating_rate: default_interspecies_mating_rate(),
             enable_energy: false,
             energy_per_step_cost: 0.003,
             food_regen_rate: 0.0005,
@@ -217,3 +256,12 @@ impl SimConfig {
         Ok(())
     }
 }
+
+// ── Serde Defaults ───────────────────────────────────────────────────────
+fn default_compatibility_threshold() -> f32 { 0.30 }
+fn default_species_count_target() -> u32 { 15 }
+fn default_species_count_target_tolerance() -> u32 { 5 }
+fn default_compatibility_threshold_step() -> f32 { 0.02 }
+fn default_stagnation_limit() -> u32 { 15 }
+fn default_species_elitism_min() -> u32 { 5 }
+fn default_interspecies_mating_rate() -> f32 { 0.001 }

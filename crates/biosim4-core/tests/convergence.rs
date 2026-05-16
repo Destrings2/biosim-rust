@@ -7,6 +7,15 @@ use biosim4_core::{
 };
 
 fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> Vec<f32> {
+    run_with_speciation(challenge_id, generations, seed, false)
+}
+
+fn run_with_speciation(
+    challenge_id: &str,
+    generations: u32,
+    seed: u64,
+    enable_speciation: bool,
+) -> Vec<f32> {
     let mut cfg = SimConfig::default();
     cfg.size_x = 96;
     cfg.size_y = 96;
@@ -19,6 +28,7 @@ fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> 
     // path is intentionally non-deterministic, so parallel runs would make
     // the per-generation survival series flaky against a fixed threshold.
     cfg.num_threads = 1;
+    cfg.enable_speciation = enable_speciation;
 
     let mut state = SimulationState::new(cfg);
     biosim4_sensors::register_builtin_sensors(&mut state.sensors);
@@ -83,3 +93,38 @@ fn migrate_distance_population_converges() {
     let rates = run_and_collect_survival("migrate_distance", 40, 7);
     assert_improves("migrate_distance", &rates, 0.10);
 }
+
+/// Speciation convergence test for `sun_tracker`.
+///
+/// `sun_tracker` is a deceptive challenge — fitness-only selection plateaus
+/// around 18% tail survival because local optima trap the entire lineage.
+/// Speciation protects structurally distinct variants in their own niches,
+/// allowing the population to escape and continue improving.
+///
+/// Threshold: mean tail survival > 30% for 3 independent seeds averaged.
+/// (Baseline without speciation plateaus around 18%.)
+#[test]
+fn sun_tracker_with_speciation_converges() {
+    let seeds = [0xBEEF42, 0xC0FFEE, 0xDEAD99];
+    let gens = 200;
+
+    let tail_means: Vec<f32> = seeds
+        .iter()
+        .map(|&seed| {
+            let rates = run_with_speciation("sun_tracker", gens, seed, true);
+            let tail = mean(&rates[rates.len() - 10..]);
+            eprintln!("[sun_tracker+speciation seed={seed:#x}] tail_10={tail:.3}");
+            tail
+        })
+        .collect();
+
+    let mean_tail = mean(&tail_means);
+    eprintln!(
+        "[sun_tracker+speciation] mean_tail_survival={mean_tail:.3} (threshold=0.30)"
+    );
+    assert!(
+        mean_tail > 0.30,
+        "sun_tracker with speciation: mean tail survival {mean_tail:.3} did not exceed 0.30"
+    );
+}
+

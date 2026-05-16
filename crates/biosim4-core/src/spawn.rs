@@ -31,7 +31,10 @@
 
 use crate::agent::Agent;
 use crate::genome::neural_net::create_wiring;
-use crate::genome::ops::{generate_child_genome, make_random_genome, Genome, ReproductionParams};
+use crate::genome::ops::{
+    generate_child_genome, generate_child_genome_interspecies, make_random_genome, Genome,
+    ReproductionParams,
+};
 use crate::registry::challenge::WorldMut;
 use crate::sim_state::SimulationState;
 
@@ -183,6 +186,106 @@ fn generate_new_genomes(
     out
 }
 
+/// Speciated genome generation. Buckets parents by genome distance, allocates
+/// offspring slots based on species fitness, and breeds within species.
+fn generate_new_genomes_speciated(
+    state: &mut SimulationState,
+    parent_genomes: &[(Genome, f32)],
+    new_pop: usize,
+) -> Vec<(Genome, f32)> {
+    if parent_genomes.is_empty() {
+        return (0..new_pop)
+            .map(|_| {
+                (
+                    make_random_genome(&state.config, &mut state.rng),
+                    state.config.point_mutation_rate,
+                )
+            })
+            .collect();
+    }
+
+    let method = state.config.genome_comparison_method;
+    state.speciation.speciate(parent_genomes, method, &state.config);
+    state.speciation.assign_offspring_slots(parent_genomes, new_pop as u32);
+    state.speciation.prune_stagnant(parent_genomes, state.config.stagnation_limit);
+
+    let repro = ReproductionParams {
+        sexual: state.config.sexual_reproduction,
+        tournament_size: state.config.tournament_size,
+        mutation_rate: state.config.point_mutation_rate,
+        insertion_deletion_rate: state.config.gene_insertion_deletion_rate,
+        deletion_ratio: state.config.deletion_ratio,
+        max_len: state.config.genome_max_length,
+        adaptive_mutation: state.config.adaptive_mutation,
+        mutation_rate_jitter: state.config.mutation_rate_jitter,
+    };
+
+    let mut out = Vec::with_capacity(new_pop);
+
+    // Iterating by clone of species to keep borrow checker happy while generating
+    for species in state.speciation.species.clone() {
+        if species.allocated_offspring == 0 || species.members.is_empty() {
+            continue;
+        }
+
+        let mut species_parents = Vec::with_capacity(species.members.len());
+        for &idx in &species.members {
+            species_parents.push(parent_genomes[idx].clone());
+        }
+
+        // Sort species parents by fitness for tournament selection
+        species_parents.sort_by(|a, b| a.1.total_cmp(&b.1));
+
+        let mut spawned = 0;
+
+        // Elitism within species
+        if species.members.len() >= state.config.species_elitism_min as usize {
+            if spawned < species.allocated_offspring {
+                // Top parent is at the end because of ascending sort
+                out.push(species_parents.last().unwrap().clone());
+                spawned += 1;
+            }
+        }
+
+        while spawned < species.allocated_offspring {
+            let child = if state.rng.gen_bool(state.config.interspecies_mating_rate)
+                && state.config.sexual_reproduction
+            {
+                generate_child_genome_interspecies(
+                    &species_parents,
+                    parent_genomes,
+                    &repro,
+                    &mut state.rng,
+                )
+            } else {
+                generate_child_genome(&species_parents, &repro, &mut state.rng)
+            };
+            out.push(child);
+            spawned += 1;
+        }
+    }
+
+    // Adaptive τ adjustment
+    state.speciation.update_compatibility_threshold(
+        state.config.species_count_target,
+        state.config.species_count_target_tolerance,
+        state.config.compatibility_threshold_step,
+    );
+    
+    // Housekeeping for next generation
+    state.speciation.end_of_generation(parent_genomes, &mut state.rng);
+
+    // In case of rounding issues missing slots (due to largest-remainder handling
+    // bugs, though it should be exact), fill any missing slots randomly from the pool.
+    while out.len() < new_pop {
+        out.push(generate_child_genome(parent_genomes, &repro, &mut state.rng));
+    }
+
+    // Truncate just in case rounding exceeded (shouldn't happen)
+    out.truncate(new_pop);
+    out
+}
+
 /// Clear the world for a new generation: empty the grid, restamp barriers,
 /// reset signals, regenerate food (if enabled), wipe the programmable pool.
 fn reset_world(state: &mut SimulationState) {
@@ -231,8 +334,11 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     state.actions.commit_enabled();
     let wiring_cfg = state.wiring_config();
 
-    let new_genomes =
-        generate_new_genomes(parent_pool.as_slice(), &state.config, &mut state.rng, new_pop);
+    let new_genomes = if state.config.enable_speciation {
+        generate_new_genomes_speciated(state, parent_pool.as_slice(), new_pop)
+    } else {
+        generate_new_genomes(parent_pool.as_slice(), &state.config, &mut state.rng, new_pop)
+    };
 
     reset_world(state);
     state.generation += 1;

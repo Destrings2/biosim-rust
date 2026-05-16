@@ -31,6 +31,12 @@ fn main() {
     // stepping path is non-deterministic.
     cfg.num_threads = 1;
     cfg.rng_seed = 0xC0FFEE;
+    
+    let args: Vec<String> = std::env::args().collect();
+    let speciation_flag = args.iter().any(|arg| arg == "--species");
+    if speciation_flag {
+        cfg.enable_speciation = true;
+    }
 
     let mut state = SimulationState::new(cfg);
     biosim4_sensors::register_builtin_sensors(&mut state.sensors);
@@ -127,6 +133,22 @@ fn main() {
             div,
             mean_rate
         );
+
+        if state.config.enable_speciation {
+            let num_species = state.speciation.species.iter().filter(|s| !s.members.is_empty()).count();
+            if num_species > 0 {
+                let mut active_species: Vec<_> = state.speciation.species.iter().filter(|s| !s.members.is_empty()).collect();
+                active_species.sort_by_key(|s| std::cmp::Reverse(s.members.len()));
+                
+                let sizes: Vec<String> = active_species.iter().take(5).map(|s| format!("{}", s.members.len())).collect();
+                let best_fitness: Vec<String> = active_species.iter().take(5).map(|s| format!("{:.1}", s.all_time_best_fitness)).collect();
+                
+                println!(
+                    "      └─ species: count={:02} top5_sizes=[{}] top5_best_fitness=[{}]",
+                    num_species, sizes.join(", "), best_fitness.join(", ")
+                );
+            }
+        }
     }
 
     let pop_total = state.config.population as f32;

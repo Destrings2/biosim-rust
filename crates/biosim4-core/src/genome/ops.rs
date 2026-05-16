@@ -209,6 +209,24 @@ pub fn generate_child_genome(
     params: &ReproductionParams,
     rng: &mut Rng,
 ) -> (Genome, f32) {
+    generate_child_genome_impl(parents, params, rng, None)
+}
+
+pub fn generate_child_genome_interspecies(
+    parents: &[(Genome, f32)],
+    global_parents: &[(Genome, f32)],
+    params: &ReproductionParams,
+    rng: &mut Rng,
+) -> (Genome, f32) {
+    generate_child_genome_impl(parents, params, rng, Some(global_parents))
+}
+
+fn generate_child_genome_impl(
+    parents: &[(Genome, f32)],
+    params: &ReproductionParams,
+    rng: &mut Rng,
+    global_parents: Option<&[(Genome, f32)]>,
+) -> (Genome, f32) {
     let ReproductionParams {
         sexual,
         tournament_size,
@@ -228,16 +246,29 @@ pub fn generate_child_genome(
     let (mut child, parent_rate) = if sexual && parents.len() > 1 {
         let a = pick(rng);
         let mut b = pick(rng);
-        // Bounded retry: a low-diversity pool must not stall the GA.
-        for _ in 0..4 {
-            if b != a {
-                break;
+        let mut b_genome = &parents[b].0;
+        
+        // Interspecies mating: if global_parents is provided, parent B comes from there
+        if let Some(global) = global_parents {
+            if global.len() > 1 {
+                let pick_global = |rng: &mut Rng| -> usize { tournament_pick(global.len(), tournament_size, rng) };
+                b = pick_global(rng);
+                b_genome = &global[b].0;
             }
-            b = pick(rng);
+        } else {
+            // Bounded retry: a low-diversity pool must not stall the GA.
+            for _ in 0..4 {
+                if b != a {
+                    break;
+                }
+                b = pick(rng);
+            }
+            b_genome = &parents[b].0;
         }
+        
         // Inherit from parent A; uniform crossover uses A's slot order
         // as the structural primary.
-        (uniform_crossover(&parents[a].0, &parents[b].0, rng), parents[a].1)
+        (uniform_crossover(&parents[a].0, b_genome, rng), parents[a].1)
     } else {
         let p = pick(rng);
         (parents[p].0.clone(), parents[p].1)
