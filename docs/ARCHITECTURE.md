@@ -1,164 +1,229 @@
-# biosim4-rs Architecture
+# Architecture
 
-biosim4-rs is a Rust implementation of a genetic neural-net artificial life simulator. Agents evolve over generations on a 2D grid, guided by pluggable sensors, actions, and survival challenges. The workspace targets two deployment surfaces: a native command-line interface (CLI) and a WebAssembly (WASM) module consumed by a React frontend.
+biosim4-rs is a genetic neural-net artificial life simulator. Agents
+evolve on a 2D toroidal-bounded grid; each agent runs a feed-forward
+neural net compiled from a variable-length genome of 32-bit genes.
+Sensors and actions are pluggable; survival challenges decide which
+agents reproduce.
+
+The workspace targets two frontends — a Bevy + egui GUI and a
+headless CLI — over a single platform-agnostic engine.
 
 ---
 
-## Crate Map
+## Workspace crates
 
 | Crate | Role |
 |---|---|
-| `biosim4-core` | Simulation engine — all genetics, neural nets, environment, stepping, and reproduction logic. Platform-agnostic library. |
-| `biosim4-native` | Thin CLI binary. Reads a JSON config, runs the simulation loop, prints stats. Enables the `parallel` feature of core. |
-| `biosim4-wasm` | WebAssembly bindings. Wraps `SimulationState` in a JS-callable `Simulator` class; renders frames to RGBA buffers. |
+| `biosim4-core` | Engine. Genome, neural net, world state, registries, stepping, reproduction. No dependency on the catalogue crates. |
+| `biosim4-sensors` | 40 built-in sensors. |
+| `biosim4-actions` | 23 built-in actions. |
+| `biosim4-challenges` | 27 built-in survival challenges plus two programmable-entity demos. |
+| `biosim4-breeds` | Curated sensor/action/challenge presets (`default`, `navigator`, `forager`, `socialite`, `predator`, `scholar`, `minimal`). |
+| `biosim4-native` | Headless CLI. Reads `SimConfig` JSON, runs N generations, prints stats. Enables `biosim4-core/parallel`. |
+| `biosim4-bevy` | Bevy 0.18 + egui frontend. Live render, tool palette, parameter editor, fast-forward loop. |
+
+Crate boundaries are deliberate: the engine never imports the
+catalogue crates, so a new sensor never triggers a core rebuild. The
+catalogue crates depend on `biosim4-core`, and the frontends depend on
+all of the above.
 
 ---
 
-## Module Dependency Directed Acyclic Graph (DAG)
+## Module DAG (within `biosim4-core`)
 
-Dependencies flow strictly upward. No cycles.
+Dependencies flow upward. No cycles.
 
 ```
 analysis  sim_step  spawn
     └────────┬────────┘
           sim_state
-    ┌─────────┼──────────────────────┐
- sensors   actions   challenges   breeds
-    └─────────┼──────────────────────┘
+    ┌─────────┼──────────────────────────────────┐
+ sensors   actions   challenges   breeds   programmable
+    └─────────┼──────────────────────────────────┘
            registry
-    ┌─────────┼────────────────────┐
- population  world  signals_layer  barriers
-    └─────────┼────────────────────┘
+    ┌─────────┼────────────────────────────────────┐
+ population  world  signals_layer  food_layer  barriers
+    └─────────┼────────────────────────────────────┘
             agent
-       genome/{gene,ops,neural_net}
+       genome/{gene, ops, neural_net}
     ┌─────────┼────────────────────┐
    grid    sim_config     rng
               └──────┬──────────────┘
                    types
 ```
 
----
-
-## Generation Lifecycle
-
-One generation proceeds as follows:
-
-1. **World reset** — `population.clear()`, `grid.zero_fill()`, `signals.zero_fill()`.
-2. **Barrier placement** — `create_barrier(grid, barrier_type)` stamps the procedural layout; `reapply_user_barriers()` overlays manual overrides on top.
-3. **Registry commit** — `sensors.commit_enabled()` and `actions.commit_enabled()` rebuild the `active_map`, reflecting any enable/disable changes queued since the previous generation.
-4. **Neural wiring config** — `wiring_config()` returns `{sensor_count, action_count, max_neurons}` from the committed active sets.
-5. **Agent spawn** — for each population slot: generate (or reproduce) a genome, compile it into a `NeuralNet` via `create_wiring`, find a random empty grid cell, and place the agent.
-6. **Generation start hooks** — `challenges.on_generation_start()` runs (e.g., `SunTracker` repositions its target zone).
-7. **Step loop** — `step_one()` executes `steps_per_generation` times:
-   - Challenge `on_sim_step` hooks run.
-   - Every alive agent is evaluated: sensors feed into the neural net, action levels are computed, actions are queued or executed.
-   - Death queue and move queue are drained.
-   - Signal layer 0 fades by 1.
-8. **Survivor evaluation** — `spawn_new_generation()` evaluates every alive agent against active challenges, builds a survivor pool, and reproduces the next population.
+`SimulationState` owns every piece of mutable state (grid, population,
+signals, food, programmable pool, registries, RNG, scratch buffers).
+Its fields are public so the step engine can perform split borrows
+(`&mut population` alongside `&grid`) without intermediate accessors.
 
 ---
 
-## Cross-Cutting Patterns
+## Generation lifecycle
+
+```
+initialize_generation_0(state)        ┐
+  reset_world                          │  Called once at startup, then
+  apply_feature_enables                │  again from spawn_new_generation
+  challenges.on_generation_start       │  at every generation boundary.
+                                       │  Replays the world from scratch.
+
+for step in 0..steps_per_generation:
+    step_one(state, step)              ┐  Per-step loop. See
+      challenge_hooks.on_sim_step      │  docs/SIMULATION_LOOP.md for
+      programmable.refresh_spatial     │  the call graph.
+      step_all_agents (Phase 1 + 2)    │
+      population.drain_death_queue     │
+      population.drain_move_queue      │
+      programmable.step_all            │
+      population.drain_death_queue     │  (programmable kill_peep_at)
+      signals.fade(0)                  │
+      food.regen                       │
+
+spawn_new_generation(state)            ┐
+  evaluate every alive agent           │  Survivor selection +
+  build survivor pool (bootstrap       │  reproduction. Commits
+    fallback at 10% if zero pass)      │  pending registry changes.
+  sort by fitness ascending            │
+  sensors.commit_enabled()             │
+  actions.commit_enabled()             │
+  preserve top-2 elites unchanged      │
+  reproduce remaining via              │
+    generate_child_genome              │
+  reset_world + replace cohort         │
+  state.generation += 1                │
+  challenges.on_generation_start       │
+```
+
+The bootstrap fallback prevents stagnation on hard challenges where
+zero agents pass in early generations. Elitism preserves the two
+fittest genomes unchanged so a string of bad mutations cannot erase
+hard-won progress.
+
+---
+
+## Cross-cutting patterns
 
 ### Registry pending/commit lifecycle
 
-`SensorRegistry` and `ActionRegistry` maintain two indices: the raw registration order (never changes) and the `active_map` — a dense `Vec<u16>` mapping `enabled_idx → actual_idx`. Genomes reference sensors and actions by `enabled_idx`.
+`SensorRegistry` and `ActionRegistry` keep two indices:
 
-`set_enabled(id, false)` marks a sensor/action as pending-disabled without rebuilding `active_map`. The change takes effect in two stages:
+- the raw registration order (never changes after `register`), and
+- the `active_map: Vec<u16>` mapping `enabled_idx → actual_idx`.
 
-- **Mid-generation**: the registry's `evaluate`/`execute` methods check the disabled set and return `0.0` / skip immediately, so existing agents experience the change without any wiring shift.
-- **At generation boundary**: `commit_enabled()` rebuilds `active_map`. New neural nets compiled in `spawn_new_generation` wire against the updated `enabled_count`, so they never contain genes pointing at disabled nodes.
+Genomes reference sensors and actions by `enabled_idx`. `set_enabled(id,
+false)` queues a change; it does **not** rebuild `active_map`.
 
-This two-stage approach keeps wiring stable within a generation, preventing mid-run index shifts. It also allows experiments to toggle sensors and actions between generations.
+- Mid-generation: the registry's `evaluate` / `execute` short-circuits
+  disabled entries to `0.0` or no-op. Existing agents are unaffected;
+  their neural nets keep stable indices.
+- At generation boundary: `commit_enabled()` rebuilds `active_map`.
+  Newly compiled nets in `spawn_new_generation` wire against the
+  updated `enabled_count`. Dead nets from the previous generation
+  are never rewired.
 
-### Deferred move/death queues
+`ChallengeRegistry` uses a different model — an explicit active list
+plus a composition mode (`Any`, `All`, `WeightedSum`) — but exposes
+the same JSON config surface.
 
-Agent actions do not modify the grid or population immediately. Instead:
+### Deferred move and death queues
 
-- Movement requests go into `population.move_queue: Vec<(AgentId, Coord)>`.
-- Kill requests go into `population.death_queue: Vec<AgentId>`.
+Agent actions never mutate the grid or population directly. They push
+to two per-generation queues:
 
-At the end of each `step_one()`, `drain_death_queue()` runs first, then `drain_move_queue()`. Running death first ensures a killed agent's slot is freed before any move tries to enter it. Immediate mutation would corrupt the `alive_ids` snapshot being iterated. It would also cause borrow-checker conflicts between the agent under evaluation and the population as a whole.
+- `population.move_queue: Vec<(AgentId, Coord)>`
+- `population.death_queue: Vec<AgentId>`
 
-### Scratch buffers (StepScratch)
+`step_one` drains the death queue first, then the move queue. Death
+first guarantees a killed agent's slot is free before any move tries
+to enter it. Immediate mutation would invalidate the `alive_ids`
+snapshot being iterated and would conflict with the borrows held by
+sensor and action code.
 
-`SimulationState` holds a `StepScratch` with three reusable buffers:
+### Scratch buffers
 
-- `alive_ids: Vec<AgentId>` — snapshotted from `population.alive_ids()` at the start of `step_all_agents`; iteration is over this snapshot, not the live list.
-- `action_accum: Vec<f32>` — per-agent action level accumulator passed to `feed_forward`.
-- `neuron_accum: Vec<f32>` — per-agent neuron accumulator passed to `feed_forward`.
+`SimulationState.scratch.alive_ids` is snapshotted from
+`population.alive_ids()` at the start of `step_all_agents`. Iterating
+the snapshot lets the step engine mutate `population` mid-loop. The
+buffer is reused across steps and carries no semantic state between
+them.
 
-These buffers carry no semantic state between steps. The system clears and resizes them at the start of each use. They eliminate roughly 600K heap allocations per generation at typical parameters (1000 agents × 300 steps × 2 accumulators).
+### Raw-pointer Phase 1 / Phase 2 split in `step_one_agent`
 
-### Raw pointer split in `step_one_agent`
+Each agent step needs simultaneous mutable access to `agent.nnet` (to
+update neuron outputs) and immutable access to `population` (for
+sensors that scan neighbors). Safe references on the same
+`Vec<Option<Agent>>` cannot express that split.
 
-Each agent step requires simultaneous mutable access to `agent.nnet` (to update neuron outputs) and immutable access to the rest of `population` (for sensors that scan neighbors). The Rust borrow checker cannot express this split through safe references on the same `Vec<Option<Agent>>`.
+`step_one_agent` uses raw pointers to isolate the two domains:
 
-`step_one_agent` uses raw pointers to isolate the two aliasing domains:
+- **Phase 1** (sensor eval + feed-forward) — `agent_ptr: *mut Agent`
+  reaches only `agent.nnet`. Sensors receive `&Agent` (via
+  `population.get(id)`) and read everything else.
+- **Phase 2** (action execution) — `agent_ptr` is reused as `&mut
+  Agent`. Population slots are index-stable (append-only `Vec`), so
+  the pointer remains valid. The inline `SAFETY` comments in
+  `sim_step.rs` document the aliasing analysis per pointer.
 
-- **Phase 1** (sensor eval + feed-forward): `step_one_agent` uses `agent_ptr: *mut Agent` only to reach `agent.nnet`. Sensors receive a `&Agent` view (via `population.get(id)`) that reads `loc`, `heading`, `age`, `osc_period`, `long_probe_dist`, `genome`, `responsiveness`, and `last_move_dir` — never `nnet`. No two live references reach the same memory.
-- **Phase 2** (action execution): `agent_ptr` is reused to get `&mut Agent`. `Population` slots are index-stable (append-only `Vec`), so the pointer remains valid. The inline SAFETY comments acknowledge the aliasing tension between `ctx.signals: &mut Signals` and `world.signals: &Signals`. The aliasing is safe in practice because no built-in action reads `world.signals` during Phase 2.
-
-See the inline `SAFETY` comments in `sim_step.rs` for the per-pointer aliasing analysis.
+See [SIMULATION_LOOP.md](SIMULATION_LOOP.md) for the call graph.
 
 ### Genome modulo wiring
 
-A `Gene`'s `source_num` and `sink_num` fields are raw 7-bit values (0..127). `create_wiring` remaps them modulo `sensor_count` / `action_count` / `max_neurons`, so the same genome is valid for any registry configuration. Changing `enabled_count` shifts all wiring semantics for existing nets. `commit_enabled()` therefore runs at generation boundaries — only nets compiled after the commit use the new counts. Nets from the previous generation (now dead) are never re-wired.
+`Gene.source_num` and `Gene.sink_num` are raw 7-bit fields (0..127).
+`create_wiring` remaps them modulo `sensor_count`, `action_count`, or
+`max_neurons` at neural-net compile time, so a genome stays valid
+against any registry configuration. Changing `enabled_count` shifts
+the wiring semantics of every gene — `commit_enabled()` therefore
+runs only at generation boundaries.
+
+### Programmable entities
+
+A challenge can place scripted, non-evolved entities (predators,
+herders, wanderers) into the world via `state.programmable`. They
+occupy grid cells, block movement, and step every tick through a
+`Program` trait impl. The `nearest_alien_dist` sensor reads through
+the pool's spatial index.
+
+`Program::step` runs in parallel across alive programmables. It must
+read freely from `ctx.world` but mutate only the entity's own fields
+and a `ProgramOutput` request struct. The framework merges all
+outputs sequentially after the parallel section, matching how peep
+actions queue moves and deaths.
+
+The full developer guide is in
+[`crates/biosim4-core/src/programmable/README.md`](../crates/biosim4-core/src/programmable/README.md).
 
 ### Determinism contract
 
-Determinism is **conditional on thread count**:
+Determinism is conditional on thread count.
 
-- **`num_threads == 1` (or the `parallel` feature off)**: the simulation is fully reproducible at a fixed `rng_seed`. `SimulationState::new` calls `Rng::seeded(rng_seed)` and every stochastic draw routes through `state.rng` or the per-agent Phase 1 hash, so same seed → same evolution byte-for-byte.
+- `num_threads == 1` (or the `parallel` feature off) — fully
+  reproducible at a fixed `rng_seed`. Every stochastic draw routes
+  through `state.rng` or the per-agent Phase 1 hash. Same seed →
+  same evolution byte-for-byte.
+- `num_threads > 1` with `parallel` on — intentionally
+  non-deterministic. Phase 2 workers seed thread-local RNGs from
+  system entropy, and `rayon::fold + reduce` merges chunk-local
+  queues in work-stealing order. Same seed → similar but not
+  identical evolution. Trades roughly 3× throughput at 8 threads.
 
-- **`num_threads > 1` with the `parallel` feature on**: the multi-threaded stepping path is **intentionally non-deterministic**. Phase 2 workers seed thread-local Rngs from system entropy, and `rayon::fold + reduce` merges chunk-local move/death queues in arbitrary work-stealing order. Same seed → similar but not identical evolution run-to-run. This trade buys ~3× throughput at 8 threads.
+Phase 1 (sensors + neural feed-forward) uses a stateless
+`(rng_seed, generation, sim_step, agent_id)` hash regardless of
+thread count, so **per-agent sensor randomness is always
+reproducible**. Only Phase 2 action draws diverge.
 
-Phase 1 (sensors + neural feed-forward) keeps a stateless `(rng_seed, generation, sim_step, agent_id)` hash regardless of thread count, so **per-agent sensor randomness is always reproducible** — only Phase 2 action draws diverge. Tests that need full reproducibility set `num_threads = 1`; the `parallel_determinism.rs` test suite documents the boundary explicitly.
-
----
-
-## Extension Points
-
-### Adding a sensor
-
-1. Implement `biosim4_core::registry::Sensor` on a `Send + Sync` struct.
-2. `evaluate` must return a value in `[0.0, 1.0]`.
-3. Call `state.sensors.register(Box::new(MySensor))`.
-4. The sensor participates in genome wiring from the next `commit_enabled()`.
-
-### Adding an action
-
-1. Implement `biosim4_core::registry::Action` on a `Send + Sync` struct.
-2. `execute` receives the raw neural output level (arbitrary float range).
-3. Call `state.actions.register(Box::new(MyAction))`.
-
-### Adding a challenge
-
-1. Implement `biosim4_core::registry::Challenge`.
-2. `evaluate` must return `(pass: bool, fitness: f32)` where `fitness` is in `[0.0, 1.0]`.
-3. Provide a `params_schema()` JSON Schema object and a `configure(Value)` method.
-4. Call `state.challenges.register(Box::new(MyChallenge::default()))`.
-5. Set it active via `state.challenges.set_single("my_id", Some(params_json))`.
+The executable contract lives in
+[`crates/biosim4-core/tests/parallel_determinism.rs`](../crates/biosim4-core/tests/parallel_determinism.rs).
 
 ---
 
-## WASM Surface
+## Reference
 
-The `biosim4-wasm` crate exports a single `Simulator` class via `wasm-bindgen`.
-
-**JavaScript (JS) lifecycle:**
-```js
-const sim = new Simulator(configJson);       // init + generation 0
-sim.set_challenge(challengeConfigJson);       // optional; must be called before stepping
-const rgba = sim.get_frame();                 // Uint8Array, size_x*size_y*4 bytes, Y-flipped
-sim.step();                                   // advance one simulation step
-const stats = sim.spawn_next_generation();    // end of generation; returns JSON EpochStats
-```
-
-`get_frame()` produces a row-major red-green-blue-alpha (RGBA) buffer with Y flipped: canvas row 0 is the top of the world, world Y=0 (bottom) is the last canvas row. Pass the buffer directly into `new ImageData(rgba, width, height)`.
-
-Register custom sensors and actions from JS:
-```js
-sim.register_js_sensor("my_id", "My Sensor", (agentId, worldJson) => 0.5);
-sim.register_js_action("my_id", "My Action", (agentId, level, worldJson) => {});
-```
+- [`docs/SIMULATION_LOOP.md`](SIMULATION_LOOP.md) — per-step execution
+  path, `step_one_agent` two-phase design, `feed_forward` invariant,
+  generation transition.
+- [`docs/CONFIG.md`](CONFIG.md) — `SimConfig` field reference.
+- [`docs/EXTENDING.md`](EXTENDING.md) — sensor, action, challenge,
+  breed, and programmable extension walkthrough.
+- [`docs/BUILTINS.md`](BUILTINS.md) — catalogue of every built-in.

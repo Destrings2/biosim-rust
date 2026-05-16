@@ -1,7 +1,8 @@
 [package]
 name = "biosim4-bevy"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 description = "Native Bevy frontend for biosim4-rs with parallel simulation stepping"
 
 [[bin]]
