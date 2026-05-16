@@ -101,7 +101,7 @@ Gated by `config.enable_energy`.
 
 | ID | Description |
 |---|---|
-| `nearest_alien_dist` | Distance to nearest live programmable entity, normalized by grid diagonal. Returns `1.0` when the pool is empty. Not in the default breed; opt in via a custom breed that lists it. |
+| `longprobe_alien_fwd` | Forward long probe for the nearest live programmable. Walks `agent.long_probe_dist` cells along `last_move_dir`; returns `(steps − 1) / long_probe_dist` when a programmable cell is hit, or `1.0` when the probe runs off the grid, hits a barrier, hits a peep (line-of-sight block), or finds nothing in range. Same shape as `longprobe_pop_fwd`. Not in the default breed; opt in via a custom breed that lists it. |
 
 ## Actions (23)
 

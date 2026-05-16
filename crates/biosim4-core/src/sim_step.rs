@@ -111,13 +111,6 @@ pub fn step_one(state: &mut SimulationState, step: u32) {
     state.sim_step = step;
     run_challenge_step_hooks(state);
 
-    // Sensors fired in the parallel peep loop may query the programmable
-    // pool's spatial index. Rebuild it here, once, sequentially — so the
-    // par_iter section only ever reads it. The refresh is a no-op when no
-    // mutation has happened since the last call (pool stays cold for
-    // peep-only runs).
-    state.programmable.refresh_spatial_index(state.config.size_x, state.config.size_y);
-
     let queues = step_all_agents(state);
     state.population.drain_death_queue_from(&mut state.grid, queues.deaths);
     state.population.drain_move_queue_from(&mut state.grid, queues.moves);

@@ -115,17 +115,26 @@ fn full_loop_with_wanderers_does_not_panic() {
 }
 
 #[test]
-fn nearest_alien_sensor_falls_to_zero_with_close_programmable() {
+fn longprobe_alien_fwd_drops_when_programmable_lands_in_line_of_sight() {
     use biosim4_core::registry::SensorContext;
+    use biosim4_core::types::{Compass, Dir};
     let mut state = new_state(small_config());
     activate_wanderers(&mut state, 0); // 0 wanderers = empty pool baseline
     spawn_new_generation(&mut state);
 
-    // With empty pool, sensor reads 1.0 (= "nothing nearby").
-    let agent = state.population.iter_alive().next().expect("at least one peep");
-    let agent_loc = agent.loc;
-    let agent_id = agent.id;
-    let world = state.world();
+    // Pick a peep that isn't on the east edge so we can place an alien
+    // east of it without running off the grid.
+    let max_x = state.config.size_x as i16 - 2;
+    let agent_id = state
+        .population
+        .iter_alive()
+        .find(|p| p.loc.x < max_x)
+        .map(|p| p.id)
+        .expect("at least one peep not at the east edge");
+    // Point the peep east so the long-probe walks toward the placed alien.
+    state.population.get_mut(agent_id).unwrap().last_move_dir = Dir(Compass::E);
+    let agent_loc = state.population.get(agent_id).unwrap().loc;
+
     // `SensorRegistry::evaluate` takes the *enabled* index (into the
     // dense active_map), not the registration index. After
     // `apply_feature_enables` some sensors are disabled, so the two
@@ -137,13 +146,17 @@ fn nearest_alien_sensor_falls_to_zero_with_close_programmable() {
         if !enabled {
             continue;
         }
-        if sensor.id() == "nearest_alien_dist" {
+        if sensor.id() == "longprobe_alien_fwd" {
             sensor_idx = Some(enabled_counter);
             break;
         }
         enabled_counter += 1;
     }
-    let sensor_idx = sensor_idx.expect("nearest_alien_dist registered and enabled");
+    let sensor_idx = sensor_idx.expect("longprobe_alien_fwd registered and enabled");
+
+    // Empty pool: probe walks until it hits the grid edge (or a peep) and
+    // returns 1.0.
+    let world = state.world();
     let mut rng = biosim4_core::rng::Rng::seeded(0);
     let mut ctx = SensorContext {
         agent: state.population.get(agent_id).unwrap(),
@@ -156,18 +169,23 @@ fn nearest_alien_sensor_falls_to_zero_with_close_programmable() {
     drop(world);
     assert!((empty_reading - 1.0).abs() < 1e-6, "empty pool: sensor returns 1.0");
 
-    // Now drop a programmable RIGHT NEXT to the agent and re-check — sensor
-    // should now read very low (close to 0).
-    let neighbour = Coord::new(agent_loc.x.saturating_add(1), agent_loc.y);
-    if state.grid.is_empty_at(neighbour) {
-        let prog = state.programmable.register_or_get("test_static", || Box::new(StaticProgram));
-        state.programmable.spawn(&mut state.grid, prog, 0, neighbour, [255, 0, 0]);
+    // Place an alien directly east of the peep. The cell must be empty
+    // (no neighbouring peep) for the spawn to land — peeps block the
+    // probe's line of sight, so the test wouldn't be measuring the alien
+    // otherwise.
+    let neighbour = Coord::new(agent_loc.x + 1, agent_loc.y);
+    if !state.grid.is_empty_at(neighbour) {
+        // Highly unlikely in a 32×32 grid with 20 peeps, but bail out
+        // cleanly rather than running a meaningless assertion.
+        eprintln!("east neighbour of chosen peep was occupied; skipping");
+        return;
     }
-    // The pool's spatial index is normally refreshed once per step before
-    // sensors fire (see `sim_step::step_one`). Test reads happen outside
-    // that loop, so we have to refresh manually.
-    let cfg = state.config.clone();
-    state.programmable.refresh_spatial_index(cfg.size_x, cfg.size_y);
+    let prog = state.programmable.register_or_get("test_static", || Box::new(StaticProgram));
+    state
+        .programmable
+        .spawn(&mut state.grid, prog, 0, neighbour, [255, 0, 0])
+        .expect("spawn into empty cell");
+
     let world = state.world();
     let mut rng = biosim4_core::rng::Rng::seeded(0);
     let mut ctx = SensorContext {
@@ -177,9 +195,14 @@ fn nearest_alien_sensor_falls_to_zero_with_close_programmable() {
         rng: &mut rng,
     };
     let close_reading = state.sensors.evaluate(sensor_idx, &mut ctx);
+    // Alien at +1 east, probe_dist = 16 → reading = 0/16 = 0.0.
     assert!(
         close_reading < empty_reading,
-        "close programmable: sensor must drop below the empty baseline (close={close_reading}, empty={empty_reading})"
+        "alien in line of sight must drop the reading below the empty baseline (close={close_reading}, empty={empty_reading})"
+    );
+    assert!(
+        close_reading < 1.0 / state.population.get(agent_id).unwrap().long_probe_dist as f32 + 1e-6,
+        "alien one step ahead should read ≈ 0, got {close_reading}"
     );
 }
 

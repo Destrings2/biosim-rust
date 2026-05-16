@@ -1,11 +1,11 @@
 //! Shared helper functions for sensor implementations.
 //!
-//! These are free functions used by multiple sensors in `mod.rs`.
+//! These are free functions used by multiple sensor modules.
 //! `population_density_along_axis` computes the weighted density difference
 //! between the forward and backward (or left and right) half of a neighborhood,
 //! enabling directional population and signal sensors.
 
-use biosim4_core::grid::{visit_neighborhood, Grid};
+use biosim4_core::grid::{cell_kind, visit_neighborhood, CellKind, Grid};
 use biosim4_core::population::Population;
 use biosim4_core::signals_layer::Signals;
 use biosim4_core::types::{Coord, Dir};
@@ -134,6 +134,45 @@ pub fn long_probe_population_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &G
         }
         if grid.is_occupied_at(target) {
             return count as f32 / probe_dist as f32;
+        }
+        count += 1;
+    }
+    1.0
+}
+
+/// Distance in steps to the nearest programmable ("alien") ahead,
+/// normalized to `[0, 1]`. Same shape as [`long_probe_population_fwd`].
+///
+/// Walks forward up to `probe_dist` empty cells. If a programmable cell
+/// is hit at step `i`, returns `(i − 1) / probe_dist` (closer = lower).
+/// If the probe runs off the grid, hits a barrier, or hits a peep before
+/// any programmable, returns `1.0` — "no alien in sight". A stationary
+/// agent (`last_move_dir == Compass::CENTER`) also reads `1.0`, since
+/// without a heading there's no "forward" to walk along.
+///
+/// Peeps block line of sight the same way they block
+/// [`long_probe_population_fwd`]'s probe; the only distinction is that
+/// this function fires on the programmable cell instead of any occupied
+/// one. That gives challenges with `longprobe_alien_fwd` wired into a
+/// custom breed a directional reading: an agent has to be facing the
+/// programmable to see it, just like every other long probe.
+pub fn long_probe_alien_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid) -> f32 {
+    let step = dir.as_normalized_coord();
+    if step.x == 0 && step.y == 0 {
+        return 1.0;
+    }
+    let mut count: u32 = 0;
+    for _ in 0..probe_dist {
+        let target =
+            Coord::new(loc.x + step.x * (count as i16 + 1), loc.y + step.y * (count as i16 + 1));
+        if !grid.is_in_bounds(target) || grid.is_blocking_at(target) {
+            return 1.0;
+        }
+        let cell = grid.at(target);
+        match cell_kind(cell) {
+            CellKind::Programmable(_) => return count as f32 / probe_dist as f32,
+            CellKind::Agent(_) => return 1.0,
+            _ => {}
         }
         count += 1;
     }

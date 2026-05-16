@@ -2,9 +2,9 @@
 
 This module gives challenges a way to put **non-evolved, scripted entities** in
 the world alongside the evolving peeps. They occupy grid cells, peeps can see
-them through the `nearest_alien_dist` sensor, and they step every tick via a
-Rust trait. The Wanderers challenge in `biosim4-challenges` is the smoke-test
-consumer; a predator challenge fits the same shape.
+them through the forward-only `longprobe_alien_fwd` probe, and they step
+every tick via a Rust trait. The Wanderers challenge in `biosim4-challenges`
+is the smoke-test consumer; a predator challenge fits the same shape.
 
 ## When to use a programmable
 
@@ -72,19 +72,18 @@ Each `sim_step::step_one` runs in this order:
 
 1. `run_challenge_step_hooks(state)` — challenges run their `on_sim_step`
    (may spawn programmables, mutate `challenge_bits`, etc.).
-2. `state.programmable.refresh_spatial_index(...)` — rebuilds the spatial
-   bucket index if any mutation has happened. The next parallel section
-   reads it without locking.
-3. **Peep step** (parallel, rayon): sensors evaluate, neural nets feed
-   forward, actions queue moves and deaths.
-4. Drain peep death queue, then peep move queue.
-5. **Programmable step** (parallel, rayon): each alive programmable's
+2. **Peep step** (parallel, rayon): sensors evaluate, neural nets feed
+   forward, actions queue moves and deaths. `longprobe_alien_fwd` walks
+   the grid directly through the pool's grid encoding (no shared index
+   to refresh, so the parallel section locks nothing).
+3. Drain peep death queue, then peep move queue.
+4. **Programmable step** (parallel, rayon): each alive programmable's
    `Program::step` runs in its own task. The framework merges all outputs
    sequentially after the parallel section.
-6. Drain peep death queue again (for `kill_peep_at` requests).
-7. Fade signals, regenerate food.
+5. Drain peep death queue again (for `kill_peep_at` requests).
+6. Fade signals, regenerate food.
 
-Step 5 is gated at the call site: if the pool is empty the entire stack
+Step 4 is gated at the call site: if the pool is empty the entire stack
 frame is skipped. Peep-only runs pay one boolean check per step for the
 infrastructure.
 
@@ -206,34 +205,22 @@ isn't `EMPTY` or a barrier sentinel.
 
 The crate ships one generic sensor:
 
-- **`nearest_alien_dist`** — normalized L2 distance to the nearest live
-  programmable, in `[0, 1]`. Returns `1.0` when the pool is empty.
+- **`longprobe_alien_fwd`** — forward long probe for the nearest live
+  programmable. Walks `agent.long_probe_dist` cells along
+  `agent.last_move_dir`, returning `(steps − 1) / long_probe_dist` if the
+  probe finds a programmable cell, or `1.0` if it runs off the grid, hits
+  a barrier, hits a peep (line-of-sight block), or finds nothing within
+  range. Same shape as `longprobe_pop_fwd` — closer = lower reading.
 
 It's *not* in the default breed's NN wiring. Adding it to every run would
 cost one extra input weight per peep per step on peep-only runs. To enable
-it, list `"nearest_alien_dist"` in your custom breed's sensor set
-(`biosim4-breeds/src/lib.rs`). The pool's `refresh_spatial_index` runs once
-per step before the parallel peep section, so each sensor read walks a
-small ring of buckets instead of the whole alive list.
+it, list `"longprobe_alien_fwd"` in your custom breed's sensor set
+(`biosim4-breeds/src/lib.rs`). The probe reads the grid directly through
+the pool's cell encoding (`grid::cell_kind`), so peeps see a fresh value
+every step without any shared index to maintain.
 
 To add a challenge-specific sensor (e.g. "distance to predators only"),
 implement `Sensor` in your own crate and have your custom breed enable it.
-
-## Spatial index
-
-`programmable::SpatialIndex` is a uniform bucket hash with bucket size 8
-cells per axis. The pool owns it; sensors read through
-`pool.nearest_alien_dist_sq(loc)`.
-
-- Rebuild: O(N) once per step. The pool tracks a `spatial_dirty` flag;
-  `refresh_spatial_index` is a no-op when nothing has changed.
-- Query: O(buckets visited). The ring scan terminates as soon as
-  `(ring * bucket_size + 1)² > best_so_far_sq`. In typical pools the
-  query finishes within one or two rings.
-
-The bench at peep-only baseline (pop=1500, 4 threads) shows the spatial
-index path matches the pre-programmable baseline within noise: the flag
-check is the only cost when the pool is empty.
 
 ## Lifecycle summary
 
@@ -241,37 +228,38 @@ check is the only cost when the pool is empty.
 | ------------------------- | ----------------------------------------------------------- |
 | `SimulationState::new`    | Pool created, empty.                                        |
 | `initialize_generation_0` | Pool cleared. Challenges may spawn in `on_generation_start`.|
-| Every `step_one`          | Spatial index refreshed if dirty. Programs step in parallel.|
+| Every `step_one`          | Programs step in parallel after peeps.                      |
 | `spawn_new_generation`    | Pool cleared inside `reset_world`. Challenges respawn.      |
-| `Recreate` (resize)       | Pool cleared with the grid; spatial index resizes lazily.   |
+| `Recreate` (resize)       | Pool cleared with the grid.                                 |
 
 ## Files in this module
 
 | File         | Contents                                                        |
 | ------------ | --------------------------------------------------------------- |
 | `mod.rs`     | `Programmable`, `Program`, `ProgramContext`, `ProgramOutput`, `ProgrammablePool`, `step_all`. |
-| `spatial.rs` | `SpatialIndex` — uniform bucket hash plus expanding-ring scan.  |
+| `library.rs` | Reusable helpers (`has_line_of_sight`, `nearest_peep_in_los`, `move_towards`, `random_walk_step`). |
 
 Related files outside the module:
 
 | File                                            | Role                                                                 |
 | ----------------------------------------------- | -------------------------------------------------------------------- |
 | `core/src/grid.rs`                              | `CellKind`, `cell_kind`, `encode_programmable`, `PROGRAMMABLE_FLAG`. |
-| `core/src/sim_step.rs`                          | Per-step orchestration; calls `step_all` and `refresh_spatial_index`. |
+| `core/src/sim_step.rs`                          | Per-step orchestration; calls `step_all`.                            |
 | `core/src/spawn.rs`                             | `reset_world` clears the pool at every rollover.                     |
-| `sensors/src/lib.rs`                            | `NearestAlienDist` sensor.                                           |
+| `sensors/src/programmable.rs`                   | `LongprobeAlienFwd` sensor.                                          |
+| `sensors/src/helpers.rs`                        | `long_probe_alien_fwd` — the probe walk it delegates to.             |
 | `challenges/src/wanderers.rs`                   | Reference consumer; ~160 lines including JSON schema.                |
 | `bevy/src/grid_render.rs`                       | Paints programmable cells from their `color` field.                  |
 | `bevy/src/ui/inspector.rs`                      | Inspector panel for selected programmables.                          |
 
 ## Tests
 
-- `core/src/programmable/mod.rs` — 5 unit tests covering spawn, despawn,
+- `core/src/programmable/mod.rs` — unit tests covering spawn, despawn,
   clear, and `step_all` move and die paths.
-- `core/src/programmable/spatial.rs` — 5 unit tests, including a
-  brute-force equivalence stress test against 50 random entities.
-- `core/tests/programmable_e2e.rs` — 5 end-to-end tests covering generation
-  rollover, spatial-index freshness, and sensor reads.
+- `core/src/programmable/library.rs` — unit tests for `has_line_of_sight`
+  and `nearest_peep_in_los`.
+- `core/tests/programmable_e2e.rs` — end-to-end tests covering generation
+  rollover, programmable movement, and the `longprobe_alien_fwd` sensor.
 
 Run all of them with:
 

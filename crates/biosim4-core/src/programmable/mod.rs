@@ -4,8 +4,7 @@
 //! challenge. It occupies a grid cell (under a separate id range — see
 //! [`grid::PROGRAMMABLE_FLAG`]), is stepped every `sim_step` by a
 //! [`Program`] (a Rust impl picked at registration time), and can be
-//! perceived by peeps through the generic `nearest_alien_*` sensor
-//! family.
+//! perceived by peeps through the generic `longprobe_alien_fwd` sensor.
 //!
 //! # Why not just use [`Agent`]?
 //!
@@ -40,8 +39,6 @@
 //! deterministic across thread counts. Same trade-off the peep pipeline
 //! already lives with.
 
-mod spatial;
-pub use spatial::SpatialIndex;
 pub mod library;
 
 use std::collections::HashMap;
@@ -207,17 +204,6 @@ pub struct ProgrammablePool {
     /// end, dodging the borrow conflict with the pool view that programs
     /// read from.
     scratch_results: Vec<(ProgrammableId, Programmable, ProgramOutput)>,
-    /// Coarse spatial bucketing of alive entities, used by sensors like
-    /// `nearest_alien_dist` to skip the per-peep linear scan over the
-    /// pool. Rebuilt once per step before the parallel peep section; see
-    /// [`refresh_spatial_index`](Self::refresh_spatial_index).
-    spatial_index: SpatialIndex,
-    /// Set true whenever an alive entity is added, removed, or moved
-    /// outside `step_all`'s own merge — including challenge-driven
-    /// spawning during `on_generation_start`. Cleared by the next
-    /// `refresh_spatial_index`, which also handles the dirty flag set
-    /// by `step_all`'s end-of-merge pass.
-    spatial_dirty: bool,
 }
 
 impl ProgrammablePool {
@@ -228,8 +214,6 @@ impl ProgrammablePool {
             program_index: HashMap::new(),
             alive_ids: Vec::new(),
             scratch_results: Vec::new(),
-            spatial_index: SpatialIndex::new(),
-            spatial_dirty: false,
         }
     }
 
@@ -317,7 +301,6 @@ impl ProgrammablePool {
         grid.set(loc, grid::encode_programmable(id));
         self.agents.push(Some(entity));
         self.alive_ids.push(id);
-        self.spatial_dirty = true;
 
         // on_spawn runs sequentially — no parallel-safety concerns.
         // A scratch Rng is sufficient here; no World snapshot exists at gen-start.
@@ -346,7 +329,6 @@ impl ProgrammablePool {
         grid.set(entity.loc, grid::EMPTY);
         // O(alive) but cheap — pool sizes are tens to low hundreds.
         self.alive_ids.retain(|&pid| pid != id);
-        self.spatial_dirty = true;
     }
 
     /// Wipe the pool: despawn every entity and clear its grid cell.
@@ -362,7 +344,6 @@ impl ProgrammablePool {
         }
         self.agents.truncate(1); // keep slot 0 reserved
         self.alive_ids.clear();
-        self.spatial_dirty = true;
     }
 
     /// Wipe every programmable whose `owner` tag matches. Other entities
@@ -622,39 +603,6 @@ impl ProgrammablePool {
         self.alive_ids.retain(|&id| {
             self.agents.get(id as usize).and_then(|s| s.as_ref()).is_some_and(|e| e.alive)
         });
-
-        // Movement / deaths shifted positions and population — the
-        // spatial index now lags reality. Next `refresh_spatial_index`
-        // call will pick this up.
-        self.spatial_dirty = true;
-    }
-
-    // ── Spatial index ─────────────────────────────────────────────────
-
-    /// Rebuild the spatial index against the current pool state if any
-    /// mutation has happened since the last refresh. Idempotent — safe to
-    /// call every step; only does work when needed.
-    ///
-    /// The caller passes the live world dimensions because the pool itself
-    /// doesn't track the grid (`SimulationState` owns that). When the grid
-    /// is resized the spatial index resizes itself transparently.
-    pub fn refresh_spatial_index(&mut self, size_x: u16, size_y: u16) {
-        if !self.spatial_dirty {
-            return;
-        }
-        self.spatial_index.rebuild(size_x, size_y, &self.agents, &self.alive_ids);
-        self.spatial_dirty = false;
-    }
-
-    /// Squared L2 distance to the nearest alive programmable from `loc`, or
-    /// `None` if the pool is empty. Reads the spatial index — caller must
-    /// have invoked [`refresh_spatial_index`](Self::refresh_spatial_index)
-    /// at some point in the current step.
-    pub fn nearest_alien_dist_sq(&self, loc: Coord) -> Option<u32> {
-        if self.alive_ids.is_empty() {
-            return None;
-        }
-        self.spatial_index.nearest_dist_sq(loc, &self.agents)
     }
 }
 

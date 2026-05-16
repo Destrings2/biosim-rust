@@ -3,7 +3,7 @@
 //! Spawns `count` non-evolved entities that wander randomly each step. They
 //! don't kill peeps, don't compete for cells with any policy beyond grid
 //! collision, and don't affect the survival selection (`evaluate` returns
-//! "everyone passes"). They exist so the renderer, the `nearest_alien_dist`
+//! "everyone passes"). They exist so the renderer, the `longprobe_alien_fwd`
 //! sensor, and `ProgrammablePool::step_all` get exercised end-to-end before
 //! more interesting challenges (predators, herders, …) plug into the same
 //! abstraction.

@@ -72,8 +72,7 @@ initialize_generation_0(state)        ┐
 for step in 0..steps_per_generation:
     step_one(state, step)              ┐  Per-step loop. See
       challenge_hooks.on_sim_step      │  docs/SIMULATION_LOOP.md for
-      programmable.refresh_spatial     │  the call graph.
-      step_all_agents (Phase 1 + 2)    │
+      step_all_agents (Phase 1 + 2)    │  the call graph.
       population.drain_death_queue     │
       population.drain_move_queue      │
       programmable.step_all            │
@@ -182,8 +181,9 @@ runs only at generation boundaries.
 A challenge can place scripted, non-evolved entities (predators,
 herders, wanderers) into the world via `state.programmable`. They
 occupy grid cells, block movement, and step every tick through a
-`Program` trait impl. The `nearest_alien_dist` sensor reads through
-the pool's spatial index.
+`Program` trait impl. Peeps perceive them via the `longprobe_alien_fwd`
+sensor, which walks the agent's heading and reads programmable cells
+directly off the grid (no shared index to refresh).
 
 `Program::step` runs in parallel across alive programmables. It must
 read freely from `ctx.world` but mutate only the entity's own fields
