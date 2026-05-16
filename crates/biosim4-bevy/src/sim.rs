@@ -668,6 +668,20 @@ fn set_barrier(sim: &mut Sim, x: u16, y: u16, tile: Option<biosim4_core::sim_sta
     }
     sim.state.grid.set(loc, target_val);
 
+    // Treat each drawn cell as its own barrier center so the `near_barrier`
+    // challenge and any `barrier_centers`-driven overlay react to user paint.
+    // Drawn cells aren't clustered — for a long wall this means one center
+    // per cell, which is acceptable: the challenge only takes the minimum.
+    let in_centers = sim.state.grid.barrier_centers.iter().position(|c| *c == loc);
+    let painting = matches!(tile, Some(BarrierTile::Wall) | Some(BarrierTile::Kill));
+    match (painting, in_centers) {
+        (true, None) => sim.state.grid.barrier_centers.push(loc),
+        (false, Some(i)) => {
+            sim.state.grid.barrier_centers.swap_remove(i);
+        }
+        _ => {}
+    }
+
     let override_tile = match tile {
         Some(BarrierTile::Wall) => BarrierTile::Wall,
         Some(BarrierTile::Kill) => BarrierTile::Kill,
@@ -772,7 +786,8 @@ fn rebuild_procedural_barriers(sim: &mut Sim) {
     for y in 0..sy {
         for x in 0..sx {
             let loc = biosim4_core::types::Coord::new(x, y);
-            if sim.state.grid.at(loc) == biosim4_core::grid::BARRIER {
+            let cell = sim.state.grid.at(loc);
+            if cell == biosim4_core::grid::BARRIER || cell == biosim4_core::grid::KILL_BARRIER {
                 sim.state.grid.set(loc, biosim4_core::grid::EMPTY);
             }
         }

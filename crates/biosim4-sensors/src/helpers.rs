@@ -84,6 +84,10 @@ fn unit_dir(dir: Dir) -> (f64, f64) {
 /// `>0.5` means barriers are farther in the forward direction (more
 /// non-barrier space ahead), and `<0.5` means barriers are farther in the
 /// reverse direction.
+///
+/// Both `BARRIER` and `KILL_BARRIER` cells stop the probe — for an agent
+/// "is there a barrier ahead?" includes hazards. Sensors that need to
+/// distinguish hazards from walls use `kill_barrier_fwd` instead.
 pub fn short_probe_barrier_distance(loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid) -> f32 {
     let step = dir.as_normalized_coord();
     let pd = probe_dist as i16;
@@ -97,7 +101,7 @@ pub fn short_probe_barrier_distance(loc: Coord, dir: Dir, probe_dist: u32, grid:
                 // side to the maximum reading.
                 return probe_dist;
             }
-            if grid.is_barrier_at(target) {
+            if grid.is_blocking_at(target) {
                 return count;
             }
             count += 1;
@@ -125,7 +129,7 @@ pub fn long_probe_population_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &G
     for _ in 0..probe_dist {
         let target =
             Coord::new(loc.x + step.x * (count as i16 + 1), loc.y + step.y * (count as i16 + 1));
-        if !grid.is_in_bounds(target) || grid.is_barrier_at(target) {
+        if !grid.is_in_bounds(target) || grid.is_blocking_at(target) {
             return 1.0;
         }
         if grid.is_occupied_at(target) {
@@ -142,6 +146,9 @@ pub fn long_probe_population_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &G
 /// a barrier is hit at step `i`, returns `(i − 1) / probe_dist` — higher
 /// = farther. Running off the grid before finding a barrier returns
 /// `1.0`, matching the "no barrier within range" reading.
+///
+/// Both walls and kill barriers count as barriers here; use
+/// `kill_barrier_fwd` to single out hazards.
 pub fn long_probe_barrier_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid) -> f32 {
     let step = dir.as_normalized_coord();
     let mut count: u32 = 0;
@@ -151,7 +158,7 @@ pub fn long_probe_barrier_fwd(loc: Coord, dir: Dir, probe_dist: u32, grid: &Grid
         if !grid.is_in_bounds(target) {
             return 1.0;
         }
-        if grid.is_barrier_at(target) {
+        if grid.is_blocking_at(target) {
             return count as f32 / probe_dist as f32;
         }
         count += 1;

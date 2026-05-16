@@ -113,6 +113,11 @@ impl SimulationState {
     /// Re-apply the user's manual barrier overrides on top of whatever
     /// procedural pattern `create_barrier` produced. Call this after every
     /// `grid.zero_fill() + create_barrier(...)` sequence.
+    ///
+    /// Each painted Wall/Kill cell is also recorded in `grid.barrier_centers`
+    /// so the `near_barrier` challenge (and anything else iterating centers)
+    /// reacts to user-drawn barriers, not just the procedural cluster
+    /// centroids that `create_barrier` populates.
     pub fn reapply_user_barriers(&mut self) {
         let sx = self.config.size_x as i16;
         let sy = self.config.size_y as i16;
@@ -138,6 +143,11 @@ impl SimulationState {
                     BarrierTile::Kill => crate::grid::KILL_BARRIER,
                 },
             );
+            if matches!(tile, BarrierTile::Wall | BarrierTile::Kill)
+                && !self.grid.barrier_centers.contains(&loc)
+            {
+                self.grid.barrier_centers.push(loc);
+            }
         }
     }
 }
