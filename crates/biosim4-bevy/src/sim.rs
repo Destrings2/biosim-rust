@@ -783,10 +783,12 @@ fn reproduce_at(sim: &mut Sim, x: u16, y: u16) {
     };
     let (child_genome, child_rate) = generate_child_genome(&parents, &repro, &mut sim.state.rng);
     let nnet = create_wiring(&child_genome, sim.state.wiring_config());
+    let dead = child_genome.len().saturating_sub(nnet.connection_count()) as u16;
     let id = sim.state.population.next_id();
     let mut child = Agent::new(id, child_loc, child_genome, nnet);
     child.color = parent_color;
     child.mutation_rate = child_rate;
+    child.dead_gene_count = dead;
     let assigned = sim.state.population.spawn(child);
     sim.state.grid.set(child_loc, assigned);
 }

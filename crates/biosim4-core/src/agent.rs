@@ -118,6 +118,14 @@ pub struct Agent {
     /// global `cfg.point_mutation_rate` applies and this field is
     /// purely informational.
     pub mutation_rate: f32,
+
+    /// Number of genes that did not produce a connection in `nnet` —
+    /// i.e. `genome.len() − nnet.connection_count()`. These are genes
+    /// referencing neurons that `create_wiring` culled, so they carry
+    /// no behavioural effect but still occupy genome length and
+    /// reproduction cost. Surfaced to the GA via the
+    /// `bloat_penalty_weight` parsimony pressure in `spawn.rs`.
+    pub dead_gene_count: u16,
 }
 
 impl Agent {
@@ -148,6 +156,7 @@ impl Agent {
             // Sentinel; `spawn.rs` overwrites with the inherited (or
             // configured) rate after construction.
             mutation_rate: 0.0,
+            dead_gene_count: 0,
         }
     }
 

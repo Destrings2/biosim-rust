@@ -84,11 +84,13 @@ pub fn initialize_generation_0(state: &mut SimulationState) {
     for _ in 0..state.config.population {
         let genome = make_random_genome(&state.config, &mut state.rng);
         let nnet = create_wiring(&genome, wiring_cfg);
+        let dead = genome.len().saturating_sub(nnet.connection_count()) as u16;
         let loc = state.grid.find_empty_location(&mut state.rng);
         let id = state.population.next_id();
         let mut agent = Agent::new(id, loc, genome, nnet);
         // Seed the per-individual rate so adaptive runs have an anchor.
         agent.mutation_rate = starting_rate;
+        agent.dead_gene_count = dead;
         let assigned_id = state.population.spawn(agent);
         debug_assert_eq!(id, assigned_id);
         state.grid.set(loc, assigned_id);
@@ -209,15 +211,27 @@ fn reset_world(state: &mut SimulationState) {
 /// recovery fallback parents).
 pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     let world = state.world();
+    // Parsimony pressure: agents carrying dead-end gene chains get a
+    // small fitness deduction proportional to the dead fraction. The
+    // `pass` boolean is preserved — challenge admission must not depend
+    // on bloat — but the adjusted score re-orders the parent pool so
+    // lean genomes outrank equally-fit bloated ones. Multiplying by 0.0
+    // is a no-op when the feature is disabled (default).
+    let bloat_weight = state.config.bloat_penalty_weight;
 
     let evaluated: Vec<(Genome, f32, bool, f32)> = state
         .population
         .iter_alive()
         .map(|a| {
             let (pass, fitness) = state.challenges.evaluate(a, &world);
+            // `dead_norm` is in [0, 1]; the subtraction is bounded by
+            // `bloat_weight`. With the default weight = 0 this is exactly
+            // zero — no behavioural change and no float-rounding drift.
+            let dead_norm = a.dead_gene_count as f32 / a.genome.len().max(1) as f32;
+            let adjusted = fitness - bloat_weight * dead_norm;
             // Carry the agent's mutation_rate through selection so
             // adaptive lineages preserve their inherited rate.
-            (a.genome.clone(), fitness, pass, a.mutation_rate)
+            (a.genome.clone(), adjusted, pass, a.mutation_rate)
         })
         .collect();
 
@@ -239,10 +253,12 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
 
     for (genome, mutation_rate) in new_genomes {
         let nnet = create_wiring(&genome, wiring_cfg);
+        let dead = genome.len().saturating_sub(nnet.connection_count()) as u16;
         let loc = state.grid.find_empty_location(&mut state.rng);
         let id = state.population.next_id();
         let mut agent = Agent::new(id, loc, genome, nnet);
         agent.mutation_rate = mutation_rate;
+        agent.dead_gene_count = dead;
         let assigned_id = state.population.spawn(agent);
         debug_assert_eq!(id, assigned_id);
         state.grid.set(loc, assigned_id);

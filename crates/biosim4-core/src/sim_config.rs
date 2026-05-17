@@ -11,7 +11,8 @@
 //!   `genome_initial_length_{min,max}`, `genome_max_length`, `max_number_neurons`,
 //!   `point_mutation_rate`, `gene_insertion_deletion_rate`, `deletion_ratio`,
 //!   `sexual_reproduction`, `tournament_size`, `elitism_count`,
-//!   `adaptive_mutation`, `mutation_rate_jitter`, `kill_enable`.
+//!   `adaptive_mutation`, `mutation_rate_jitter`, `kill_enable`,
+//!   `bloat_penalty_weight`.
 //! - **Agent defaults**: `responsiveness`, `responsiveness_curve_k_factor`,
 //!   `population_sensor_radius`, `signal_sensor_radius`,
 //!   `long_probe_distance`, `short_probe_barrier_distance`.
@@ -103,6 +104,17 @@ pub struct SimConfig {
     pub mutation_rate_jitter: f32,
     /// Allow the `kill_forward` action to kill nearby agents.
     pub kill_enable: bool,
+    /// Parsimony pressure on dead-end gene count. Each agent's raw
+    /// fitness is reduced by `weight × (dead_genes / max(genome_len, 1))`
+    /// before parent ranking, so genomes carrying connections that
+    /// `create_wiring` culled (and that therefore contribute no
+    /// behaviour) sort below clean genomes of equal effective fitness.
+    /// Default `0.0` (off). Suggested tuning range `0.02 – 0.05`;
+    /// values above `0.2` over-prune and choke exploration since dead
+    /// genes are mutation substrate. The penalty only re-orders the
+    /// parent pool — challenge `pass`/fail is unaffected.
+    #[serde(default)]
+    pub bloat_penalty_weight: f32,
 
     // ── Energy system ──────────────────────────────────────────────────────
     /// Enable the energy and food subsystems.
@@ -177,6 +189,7 @@ impl Default for SimConfig {
             adaptive_mutation: false,
             mutation_rate_jitter: 0.2,
             kill_enable: false,
+            bloat_penalty_weight: 0.0,
             enable_energy: false,
             energy_per_step_cost: 0.003,
             food_regen_rate: 0.0005,

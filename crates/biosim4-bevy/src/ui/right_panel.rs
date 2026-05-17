@@ -1431,6 +1431,14 @@ fn config_tab(
         0.0..=1.0,
         |v| format!("{v:.2}"),
     );
+    widgets::slider_field_f32(
+        ui,
+        "Bloat penalty",
+        Some("Parsimony pressure on dead-end gene count"),
+        &mut cfg.bloat_penalty_weight,
+        0.0..=0.5,
+        |v| format!("{v:.3}"),
+    );
     widgets::toggle_field(ui, "Kill enabled", Some("Peeps can kill"), &mut cfg.kill_enable);
 
     // ─── AGENT DEFAULTS ────────────────────────────────────────────────────

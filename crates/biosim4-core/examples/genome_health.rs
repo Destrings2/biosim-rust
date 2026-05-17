@@ -63,7 +63,7 @@ fn main() {
     println!("challenge={challenge} gens={gens} stride={stride}");
     println!();
     println!(
-        "{:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>6} {:>6} {:>8} {:>9}",
+        "{:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>6} {:>6} {:>6} {:>8} {:>9}",
         "gen",
         "alive",
         "minL",
@@ -74,6 +74,7 @@ fn main() {
         "deadN",
         "0conn",
         "noAct",
+        "dead%",
         "surv%",
         "diverz",
         "mut_rate"
@@ -107,12 +108,23 @@ fn main() {
         let mean_rate: f32 =
             alive.iter().map(|a| a.mutation_rate).sum::<f32>() / alive.len() as f32;
 
+        // dead% = mean per-agent fraction of genes that didn't produce a
+        // wired connection. Empty genomes contribute 0 (max(1) guard).
+        // Tracks parsimony pressure under bloat_penalty_weight — should
+        // trend down with penalty on, stay flat with penalty off.
+        let dead_pct: f32 = alive
+            .iter()
+            .map(|a| a.dead_gene_count as f32 / a.genome.len().max(1) as f32)
+            .sum::<f32>()
+            / alive.len() as f32
+            * 100.0;
+
         let genome_refs: Vec<&Genome> = alive.iter().map(|a| &a.genome).collect();
         let mut div_rng = biosim4_core::rng::Rng::seeded(0xD1B45 ^ g as u64);
         let div = genetic_diversity(&genome_refs, 0, &mut div_rng);
 
         println!(
-            "{:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>6} {:>5.1}% {:>8.3} {:>9.4}",
+            "{:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>6} {:>5.1}% {:>5.1}% {:>8.3} {:>9.4}",
             g,
             alive.len(),
             lengths[0],
@@ -123,6 +135,7 @@ fn main() {
             zero_genome,
             dead_nnet,
             no_action,
+            dead_pct,
             last_surv_pct,
             div,
             mean_rate

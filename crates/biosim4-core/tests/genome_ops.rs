@@ -264,3 +264,39 @@ fn generate_child_with_sexual_true_and_two_parents_returns_nonempty() {
         "sexual reproduction from two non-empty parents must produce a non-empty child"
     );
 }
+
+/// Dead-end gene chains must show up as `genome.len() − connection_count()`.
+///
+/// `create_wiring` Step 3 iteratively culls neurons whose outputs are zero;
+/// Step 5 then drops every gene that referenced a culled neuron. The plan
+/// surfaces that count to the GA via the `bloat_penalty_weight` parsimony
+/// pressure, so this test pins the arithmetic: if a future refactor stops
+/// dropping dead genes (or starts dropping live ones), the penalty would
+/// silently lose its signal.
+#[test]
+fn dead_gene_count_matches_genome_minus_connections() {
+    use biosim4_core::genome::gene::{
+        Gene, SINK_ACTION, SINK_NEURON, SOURCE_NEURON, SOURCE_SENSOR,
+    };
+    use biosim4_core::genome::neural_net::{create_wiring, WiringConfig};
+
+    let cfg = WiringConfig { sensor_count: 1, action_count: 1, max_neurons: 4 };
+
+    // Two parallel paths share the genome:
+    //   live:  sensor 0 → neuron 0 → action 0
+    //   dead:  neuron 1 → neuron 2 → neuron 3
+    //
+    // Neuron 3 has no outgoing connection, so Step 3 culls it; the cull
+    // cascades back through neuron 2 → neuron 1. Step 5 drops the two
+    // chain genes, leaving the live path intact. dead = 4 − 2 = 2.
+    let genome = vec![
+        Gene::new(SOURCE_SENSOR, 0, SINK_NEURON, 0, 1000),
+        Gene::new(SOURCE_NEURON, 0, SINK_ACTION, 0, 1000),
+        Gene::new(SOURCE_NEURON, 1, SINK_NEURON, 2, 1000),
+        Gene::new(SOURCE_NEURON, 2, SINK_NEURON, 3, 1000),
+    ];
+    let nnet = create_wiring(&genome, cfg);
+    let dead = genome.len() - nnet.connection_count();
+    assert_eq!(nnet.connection_count(), 2, "live sensor→neuron→action path should survive");
+    assert_eq!(dead, 2, "neuron→neuron→neuron chain should be culled, leaving 2 dead genes");
+}
