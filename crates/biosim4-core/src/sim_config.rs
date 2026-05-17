@@ -105,14 +105,23 @@ pub struct SimConfig {
     /// Allow the `kill_forward` action to kill nearby agents.
     pub kill_enable: bool,
     /// Parsimony pressure on dead-end gene count. Each agent's raw
-    /// fitness is reduced by `weight × (dead_genes / max(genome_len, 1))`
-    /// before parent ranking, so genomes carrying connections that
-    /// `create_wiring` culled (and that therefore contribute no
-    /// behaviour) sort below clean genomes of equal effective fitness.
-    /// Default `0.0` (off). Suggested tuning range `0.02 – 0.05`;
-    /// values above `0.2` over-prune and choke exploration since dead
-    /// genes are mutation substrate. The penalty only re-orders the
-    /// parent pool — challenge `pass`/fail is unaffected.
+    /// fitness is reduced by `weight × dead_norm²` (where
+    /// `dead_norm = dead_genes / max(genome_len, 1)`) before parent
+    /// ranking, so genomes carrying connections that `create_wiring`
+    /// culled (and that therefore contribute no behaviour) sort below
+    /// clean genomes of equal effective fitness.
+    ///
+    /// The **quadratic** curve makes moderate bloat (`dead_norm ≤ 0.3`,
+    /// the normal operating range for healthy lineages) nearly free,
+    /// while extreme bloat (`dead_norm ≥ 0.8`) still pays close to the
+    /// full weight. This is the second iteration of the penalty: a
+    /// linear curve was too aggressive on exploring lineages because
+    /// new wirings frequently come with newly-dead old chains.
+    ///
+    /// Default `0.0` (off). Under the quadratic curve, suggested tuning
+    /// range is `0.05 – 0.15`; values above `0.3` start to over-prune
+    /// at high bloat. The penalty only re-orders the parent pool —
+    /// challenge `pass`/fail is unaffected.
     #[serde(default)]
     pub bloat_penalty_weight: f32,
 

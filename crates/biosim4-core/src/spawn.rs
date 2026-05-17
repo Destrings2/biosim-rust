@@ -346,11 +346,21 @@ fn reset_world(state: &mut SimulationState) {
 pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
     let world = state.world();
     // Parsimony pressure: agents carrying dead-end gene chains get a
-    // small fitness deduction proportional to the dead fraction. The
-    // `pass` boolean is preserved — challenge admission must not depend
-    // on bloat — but the adjusted score re-orders the parent pool so
-    // lean genomes outrank equally-fit bloated ones. Multiplying by 0.0
-    // is a no-op when the feature is disabled (default).
+    // small fitness deduction. `pass` is preserved — challenge admission
+    // must not depend on bloat — but the adjusted score re-orders the
+    // parent pool so lean genomes outrank equally-fit bloated ones.
+    // Multiplying by 0.0 is a no-op when the feature is disabled (default).
+    //
+    // The curve is **quadratic** in `dead_norm`: a 30% dead fraction (the
+    // normal operating range for healthy lineages, since most mutations
+    // that wire a new connection also break an existing chain) pays only
+    // 9% of `bloat_weight`, while 80% dead pays 64% and 100% pays the full
+    // weight. The quadratic shape lets moderate bloat slide through as a
+    // near-tie-breaker and only bites hard at extreme bloat. A linear
+    // curve here punished exploration too aggressively: at weight=0.02
+    // and dead_norm=0.3 the 0.006 deduction was enough to flip rankings
+    // between (high-fitness, moderately-bloated) and (low-fitness, lean)
+    // agents on tight-fitness challenges.
     let bloat_weight = state.config.bloat_penalty_weight;
 
     let evaluated: Vec<(Genome, f32, bool, f32)> = state
@@ -358,11 +368,11 @@ pub fn spawn_new_generation(state: &mut SimulationState) -> u32 {
         .iter_alive()
         .map(|a| {
             let (pass, fitness) = state.challenges.evaluate(a, &world);
-            // `dead_norm` is in [0, 1]; the subtraction is bounded by
+            // `dead_norm² ∈ [0, 1]`; the subtraction is bounded by
             // `bloat_weight`. With the default weight = 0 this is exactly
             // zero — no behavioural change and no float-rounding drift.
             let dead_norm = a.dead_gene_count as f32 / a.genome.len().max(1) as f32;
-            let adjusted = fitness - bloat_weight * dead_norm;
+            let adjusted = fitness - bloat_weight * dead_norm * dead_norm;
             // Carry the agent's mutation_rate through selection so
             // adaptive lineages preserve their inherited rate.
             (a.genome.clone(), adjusted, pass, a.mutation_rate)
