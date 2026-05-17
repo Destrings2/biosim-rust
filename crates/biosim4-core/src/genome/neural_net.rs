@@ -48,7 +48,7 @@
 use crate::genome::gene::Gene;
 
 /// Parameters needed to wire a genome into a NeuralNet.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WiringConfig {
     pub sensor_count: u16,
     pub action_count: u16,

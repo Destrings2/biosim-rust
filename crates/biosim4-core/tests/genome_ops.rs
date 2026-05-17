@@ -265,6 +265,102 @@ fn generate_child_with_sexual_true_and_two_parents_returns_nonempty() {
     );
 }
 
+// ── Topology similarity (method 3) ───────────────────────────────────────
+//
+// These tests pin the topology metric used by speciation: Jaccard on the
+// canonical post-cull edge set with coarse weight bucketing. Any change to
+// the bit-packing in `edge_key` or the bucket size in `weight_bucket` will
+// shift these numbers and break the asserts — that's the point.
+
+#[test]
+fn topology_similarity_identical_networks_returns_one() {
+    use biosim4_core::genome::gene::{Gene, SINK_ACTION, SOURCE_SENSOR};
+    use biosim4_core::genome::neural_net::{create_wiring, WiringConfig};
+    use biosim4_core::genome::ops::nnet_topology_similarity;
+
+    let cfg = WiringConfig { sensor_count: 2, action_count: 2, max_neurons: 2 };
+    let g = vec![
+        Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, 4096),
+        Gene::new(SOURCE_SENSOR, 1, SINK_ACTION, 1, 4096),
+    ];
+    let nnet_a = create_wiring(&g, cfg);
+    let nnet_b = create_wiring(&g, cfg);
+    assert_eq!(nnet_topology_similarity(&nnet_a, &nnet_b), 1.0);
+}
+
+#[test]
+fn topology_similarity_disjoint_networks_returns_zero() {
+    use biosim4_core::genome::gene::{Gene, SINK_ACTION, SOURCE_SENSOR};
+    use biosim4_core::genome::neural_net::{create_wiring, WiringConfig};
+    use biosim4_core::genome::ops::nnet_topology_similarity;
+
+    let cfg = WiringConfig { sensor_count: 2, action_count: 2, max_neurons: 2 };
+    let g_a = vec![Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, 4096)];
+    let g_b = vec![Gene::new(SOURCE_SENSOR, 1, SINK_ACTION, 1, 4096)];
+    let nnet_a = create_wiring(&g_a, cfg);
+    let nnet_b = create_wiring(&g_b, cfg);
+    assert_eq!(nnet_topology_similarity(&nnet_a, &nnet_b), 0.0);
+}
+
+#[test]
+fn topology_similarity_partial_overlap_matches_jaccard() {
+    use biosim4_core::genome::gene::{Gene, SINK_ACTION, SOURCE_SENSOR};
+    use biosim4_core::genome::neural_net::{create_wiring, WiringConfig};
+    use biosim4_core::genome::ops::nnet_topology_similarity;
+
+    let cfg = WiringConfig { sensor_count: 2, action_count: 2, max_neurons: 2 };
+    // A edges: {s0→a0, s0→a1, s1→a0}
+    // B edges: {s0→a0, s0→a1, s1→a1}
+    // intersection = {s0→a0, s0→a1} (2); union = 4; Jaccard = 0.5.
+    let g_a = vec![
+        Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, 4096),
+        Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 1, 4096),
+        Gene::new(SOURCE_SENSOR, 1, SINK_ACTION, 0, 4096),
+    ];
+    let g_b = vec![
+        Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, 4096),
+        Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 1, 4096),
+        Gene::new(SOURCE_SENSOR, 1, SINK_ACTION, 1, 4096),
+    ];
+    let sim = nnet_topology_similarity(&create_wiring(&g_a, cfg), &create_wiring(&g_b, cfg));
+    assert!((sim - 0.5).abs() < 1e-6, "expected 0.5 Jaccard, got {sim}");
+}
+
+#[test]
+fn topology_similarity_dedupes_duplicate_connections() {
+    use biosim4_core::genome::gene::{Gene, SINK_ACTION, SOURCE_SENSOR};
+    use biosim4_core::genome::neural_net::{create_wiring, WiringConfig};
+    use biosim4_core::genome::ops::nnet_topology_similarity;
+
+    let cfg = WiringConfig { sensor_count: 1, action_count: 1, max_neurons: 2 };
+    let g_single = vec![Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, 4096)];
+    let g_double = vec![
+        Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, 4096),
+        Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, 4096),
+    ];
+    // Multiplicity collapses under set semantics → similarity is 1.0, not 0.5.
+    let sim =
+        nnet_topology_similarity(&create_wiring(&g_single, cfg), &create_wiring(&g_double, cfg));
+    assert_eq!(sim, 1.0, "duplicate connections must dedupe to a single edge");
+}
+
+#[test]
+fn topology_similarity_weight_buckets_split_strong_sign_flip() {
+    use biosim4_core::genome::gene::{Gene, SINK_ACTION, SOURCE_SENSOR};
+    use biosim4_core::genome::neural_net::{create_wiring, WiringConfig};
+    use biosim4_core::genome::ops::nnet_topology_similarity;
+
+    let cfg = WiringConfig { sensor_count: 1, action_count: 1, max_neurons: 2 };
+    // Same topology (sensor 0 → action 0); weights flipped past one
+    // bucket boundary. WEIGHT_BUCKET_SIZE = 0.5, so +1.0 → bucket 2 and
+    // −1.0 → bucket −2. Different packed keys, no overlap.
+    let g_pos = vec![Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, 8192)];
+    let g_neg = vec![Gene::new(SOURCE_SENSOR, 0, SINK_ACTION, 0, -8192)];
+    let sim = nnet_topology_similarity(&create_wiring(&g_pos, cfg), &create_wiring(&g_neg, cfg));
+    assert!(sim < 1.0, "strongly-flipped weight must split species; got similarity {sim}");
+    assert_eq!(sim, 0.0, "with only one edge each, sign-flip gives Jaccard 0");
+}
+
 /// Dead-end gene chains must show up as `genome.len() − connection_count()`.
 ///
 /// `create_wiring` Step 3 iteratively culls neurons whose outputs are zero;

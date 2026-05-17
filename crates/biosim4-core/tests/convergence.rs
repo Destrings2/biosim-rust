@@ -7,6 +7,33 @@ use biosim4_core::{
 };
 
 fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> Vec<f32> {
+    run_with_speciation(challenge_id, generations, seed, false)
+}
+
+fn run_with_speciation(
+    challenge_id: &str,
+    generations: u32,
+    seed: u64,
+    enable_speciation: bool,
+) -> Vec<f32> {
+    // Default to the configured speciation method (currently 3 = Network
+    // topology) when speciation is on; ignored when it's off.
+    run_with_speciation_method(
+        challenge_id,
+        generations,
+        seed,
+        enable_speciation,
+        SimConfig::default().speciation_similarity_method,
+    )
+}
+
+fn run_with_speciation_method(
+    challenge_id: &str,
+    generations: u32,
+    seed: u64,
+    enable_speciation: bool,
+    speciation_method: u8,
+) -> Vec<f32> {
     let mut cfg = SimConfig::default();
     cfg.size_x = 96;
     cfg.size_y = 96;
@@ -19,6 +46,8 @@ fn run_and_collect_survival(challenge_id: &str, generations: u32, seed: u64) -> 
     // path is intentionally non-deterministic, so parallel runs would make
     // the per-generation survival series flaky against a fixed threshold.
     cfg.num_threads = 1;
+    cfg.enable_speciation = enable_speciation;
+    cfg.speciation_similarity_method = speciation_method;
 
     let mut state = SimulationState::new(cfg);
     biosim4_sensors::register_builtin_sensors(&mut state.sensors);
@@ -170,5 +199,68 @@ fn migrate_distance_with_bloat_penalty_doesnt_grow_genome() {
         penalized_tail <= baseline_tail + 1.0,
         "bloat penalty did not curb genome growth: \
          baseline_tail={baseline_tail:.2}, penalized_tail={penalized_tail:.2}"
+    );
+}
+
+/// Speciation A/B/C on `sun_tracker`.
+///
+/// Three conditions compared per seed:
+///   - **baseline**: no speciation, plain tournament selection
+///   - **bitstring**: speciation with `method = 0` (Jaro-Winkler on raw
+///     gene bytes — the historically-broken approach)
+///   - **topology**: speciation with `method = 3` (Jaccard on the
+///     post-cull NN edge set with coarse weight bucketing — the new
+///     default)
+///
+/// The topology metric was added precisely because bitstring buckets
+/// were behaviourally meaningless and routinely *hurt* convergence on
+/// this challenge (see git history of this test). The hard guard is
+/// that topology must not regress vs the no-speciation baseline by
+/// more than 1% absolute — if it does, the new metric or one of its
+/// supporting pieces (cache, fingerprinting, weight bucketing) has
+/// broken. The bitstring number is logged for context but not asserted
+/// on; we expect it to be ≤ baseline and don't want to pin a sad
+/// number into the test as truth.
+#[test]
+fn sun_tracker_speciation_parity() {
+    let seeds = [0xBEEF42, 0xC0FFEE, 0xDEAD99];
+    let gens = 200;
+
+    let mut baseline_means = Vec::with_capacity(seeds.len());
+    let mut bitstring_means = Vec::with_capacity(seeds.len());
+    let mut topology_means = Vec::with_capacity(seeds.len());
+    for &seed in &seeds {
+        let base = run_with_speciation_method("sun_tracker", gens, seed, false, 0);
+        let bits = run_with_speciation_method("sun_tracker", gens, seed, true, 0);
+        let topo = run_with_speciation_method("sun_tracker", gens, seed, true, 3);
+        let base_tail = mean(&base[base.len() - 10..]);
+        let bits_tail = mean(&bits[bits.len() - 10..]);
+        let topo_tail = mean(&topo[topo.len() - 10..]);
+        eprintln!(
+            "[sun_tracker seed={seed:#x}] baseline={base_tail:.3} \
+             bitstring={bits_tail:.3} topology={topo_tail:.3}"
+        );
+        baseline_means.push(base_tail);
+        bitstring_means.push(bits_tail);
+        topology_means.push(topo_tail);
+    }
+
+    let baseline_mean = mean(&baseline_means);
+    let bitstring_mean = mean(&bitstring_means);
+    let topology_mean = mean(&topology_means);
+    eprintln!(
+        "[sun_tracker] baseline={baseline_mean:.3} bitstring={bitstring_mean:.3} \
+         topology={topology_mean:.3}"
+    );
+
+    // Topology must not regress vs baseline by more than 1% absolute.
+    // Tightened from the previous 5% parity guard now that the
+    // bit-similarity-clusters-noise problem is solved.
+    let max_regression = 0.01;
+    assert!(
+        topology_mean >= baseline_mean - max_regression,
+        "sun_tracker topology speciation regressed by more than {max_regression:.2} vs baseline \
+         (baseline={baseline_mean:.3}, topology={topology_mean:.3}, \
+         bitstring={bitstring_mean:.3})"
     );
 }

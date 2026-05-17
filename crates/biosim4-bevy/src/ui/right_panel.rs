@@ -40,6 +40,14 @@ const BARRIER_TYPE_OPTIONS: &[(u8, &str)] = &[
 const GENOME_COMPARISON_OPTIONS: &[(u8, &str)] =
     &[(0, "Jaro-Winkler"), (1, "Hamming bits"), (2, "Hamming bytes")];
 
+/// Names for `SimConfig.speciation_similarity_method` — extends
+/// GENOME_COMPARISON_OPTIONS with `(3, "Network topology")`, which compares
+/// post-cull connection edge sets (Jaccard) rather than raw genome bytes.
+/// Topology is the default because it clusters by behavioural niche; the
+/// bitstring options are kept for A/B comparison and historical parity.
+const SPECIATION_SIMILARITY_OPTIONS: &[(u8, &str)] =
+    &[(0, "Jaro-Winkler"), (1, "Hamming bits"), (2, "Hamming bytes"), (3, "Network topology")];
+
 /// Display labels for `SimConfig.topology` — mirrors the variants of
 /// [`biosim4_core::topology::Topology`]. "Sphere" is the user-facing
 /// name for the "wraps both axes" case; topologically it's a flat torus
@@ -1440,6 +1448,74 @@ fn config_tab(
         |v| format!("{v:.3}"),
     );
     widgets::toggle_field(ui, "Kill enabled", Some("Peeps can kill"), &mut cfg.kill_enable);
+
+    // ─── SPECIATION ────────────────────────────────────────────────────────
+    widgets::section_header(ui, "SPECIATION", None);
+    widgets::toggle_field(
+        ui,
+        "Enable speciation",
+        Some("Bucket population by genome distance"),
+        &mut cfg.enable_speciation,
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Compat. threshold",
+        Some("Distance threshold (1 - similarity)"),
+        &mut cfg.compatibility_threshold,
+        0.0..=1.0,
+        |v| format!("{v:.2}"),
+    );
+    widgets::stepper_field(
+        ui,
+        "Target species count",
+        Some("Adaptive threshold adjusts to reach this"),
+        &mut cfg.species_count_target,
+        1..=100,
+    );
+    widgets::stepper_field(
+        ui,
+        "Target tolerance",
+        Some("Acceptable band around target count"),
+        &mut cfg.species_count_target_tolerance,
+        0..=20,
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Threshold step",
+        Some("Adjustment per generation when out of band"),
+        &mut cfg.compatibility_threshold_step,
+        0.001..=0.1,
+        |v| format!("{v:.3}"),
+    );
+    widgets::stepper_field(
+        ui,
+        "Stagnation limit",
+        Some("Gens without improvement before pruning"),
+        &mut cfg.stagnation_limit,
+        1..=100,
+    );
+    widgets::stepper_field(
+        ui,
+        "Species elitism min",
+        Some("Minimum members to copy top genome unchanged"),
+        &mut cfg.species_elitism_min,
+        1..=50,
+    );
+    widgets::slider_field_f32(
+        ui,
+        "Interspecies mating",
+        Some("Probability of cross-species crossover"),
+        &mut cfg.interspecies_mating_rate,
+        0.0..=1.0,
+        |v| format!("{v:.4}"),
+    );
+    widgets::enum_field_u8(
+        ui,
+        "Similarity metric",
+        Some("Network topology = behaviourally meaningful niching"),
+        &mut cfg.speciation_similarity_method,
+        SPECIATION_SIMILARITY_OPTIONS,
+    );
 
     // ─── AGENT DEFAULTS ────────────────────────────────────────────────────
     widgets::section_header(ui, "AGENT DEFAULTS", None);

@@ -119,6 +119,12 @@ pub struct Agent {
     /// purely informational.
     pub mutation_rate: f32,
 
+    /// Species this agent was bred into. `None` when speciation is
+    /// disabled or for gen-0 / manually-spawned agents that predate
+    /// the first speciation pass. Set by `spawn_new_generation` when
+    /// `SimConfig.enable_speciation` is `true`.
+    pub species_id: Option<u32>,
+
     /// Number of genes that did not produce a connection in `nnet` —
     /// i.e. `genome.len() − nnet.connection_count()`. These are genes
     /// referencing neurons that `create_wiring` culled, so they carry
@@ -156,6 +162,7 @@ impl Agent {
             // Sentinel; `spawn.rs` overwrites with the inherited (or
             // configured) rate after construction.
             mutation_rate: 0.0,
+            species_id: None,
             dead_gene_count: 0,
         }
     }

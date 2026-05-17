@@ -32,6 +32,20 @@ fn main() {
     cfg.num_threads = 1;
     cfg.rng_seed = 0xC0FFEE;
 
+    let args: Vec<String> = std::env::args().collect();
+    let speciation_flag = args.iter().any(|arg| arg == "--species");
+    if speciation_flag {
+        cfg.enable_speciation = true;
+    }
+    // Optional `--similarity-method=N` flag (only meaningful when --species
+    // is set). Defaults to whatever SimConfig::default() picked (currently 3
+    // = Network topology). Used to A/B-bench speciation methods from the CLI.
+    if let Some(arg) = args.iter().find(|a| a.starts_with("--similarity-method=")) {
+        if let Some(num) = arg.split('=').nth(1).and_then(|s| s.parse::<u8>().ok()) {
+            cfg.speciation_similarity_method = num;
+        }
+    }
+
     let mut state = SimulationState::new(cfg);
     biosim4_sensors::register_builtin_sensors(&mut state.sensors);
     biosim4_actions::register_builtin_actions(&mut state.actions);
@@ -140,6 +154,31 @@ fn main() {
             div,
             mean_rate
         );
+
+        if state.config.enable_speciation {
+            let num_species =
+                state.speciation.species.iter().filter(|s| !s.members.is_empty()).count();
+            if num_species > 0 {
+                let mut active_species: Vec<_> =
+                    state.speciation.species.iter().filter(|s| !s.members.is_empty()).collect();
+                active_species.sort_by_key(|s| std::cmp::Reverse(s.members.len()));
+
+                let sizes: Vec<String> =
+                    active_species.iter().take(5).map(|s| format!("{}", s.members.len())).collect();
+                let best_fitness: Vec<String> = active_species
+                    .iter()
+                    .take(5)
+                    .map(|s| format!("{:.1}", s.all_time_best_fitness))
+                    .collect();
+
+                println!(
+                    "      └─ species: count={:02} top5_sizes=[{}] top5_best_fitness=[{}]",
+                    num_species,
+                    sizes.join(", "),
+                    best_fitness.join(", ")
+                );
+            }
+        }
     }
 
     let pop_total = state.config.population as f32;

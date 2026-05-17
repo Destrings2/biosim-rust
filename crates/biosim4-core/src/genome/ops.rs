@@ -209,6 +209,24 @@ pub fn generate_child_genome(
     params: &ReproductionParams,
     rng: &mut Rng,
 ) -> (Genome, f32) {
+    generate_child_genome_impl(parents, params, rng, None)
+}
+
+pub fn generate_child_genome_interspecies(
+    parents: &[(Genome, f32)],
+    global_parents: &[(Genome, f32)],
+    params: &ReproductionParams,
+    rng: &mut Rng,
+) -> (Genome, f32) {
+    generate_child_genome_impl(parents, params, rng, Some(global_parents))
+}
+
+fn generate_child_genome_impl(
+    parents: &[(Genome, f32)],
+    params: &ReproductionParams,
+    rng: &mut Rng,
+    global_parents: Option<&[(Genome, f32)]>,
+) -> (Genome, f32) {
     let ReproductionParams {
         sexual,
         tournament_size,
@@ -228,16 +246,33 @@ pub fn generate_child_genome(
     let (mut child, parent_rate) = if sexual && parents.len() > 1 {
         let a = pick(rng);
         let mut b = pick(rng);
-        // Bounded retry: a low-diversity pool must not stall the GA.
-        for _ in 0..4 {
-            if b != a {
-                break;
+
+        // Interspecies mating: when callers pass `global_parents` they've
+        // already filtered it to "members of OTHER species", so we can
+        // pick B from that pool unconditionally. Caller-side filtering
+        // keeps this draw symmetrical with the within-species path.
+        let b_genome = match global_parents {
+            Some(global) if global.len() > 1 => {
+                b = tournament_pick(global.len(), tournament_size, rng);
+                &global[b].0
             }
-            b = pick(rng);
-        }
+            _ => {
+                // Within-species mating with bounded retry: a low-diversity
+                // pool must not stall the GA. Up to 4 tries to avoid self-
+                // crossover, then accept the duplicate.
+                for _ in 0..4 {
+                    if b != a {
+                        break;
+                    }
+                    b = pick(rng);
+                }
+                &parents[b].0
+            }
+        };
+
         // Inherit from parent A; uniform crossover uses A's slot order
         // as the structural primary.
-        (uniform_crossover(&parents[a].0, &parents[b].0, rng), parents[a].1)
+        (uniform_crossover(&parents[a].0, b_genome, rng), parents[a].1)
     } else {
         let p = pick(rng);
         (parents[p].0.clone(), parents[p].1)
@@ -315,6 +350,107 @@ pub fn genome_similarity(a: &Genome, b: &Genome, method: u8) -> f32 {
         2 => hamming_distance_bytes(a, b),
         _ => jaro_winkler(a, b),
     }
+}
+
+// ── Network-topology similarity ────────────────────────────────────────────
+//
+// `genome_similarity` compares raw bit patterns, which clusters agents by
+// gene byte-packing rather than behaviour. The topology metric below clusters
+// by the *culled* connection graph (`NeuralNet.all_connections()`), which is
+// what `feed_forward` actually executes. Two agents that wire up the same
+// edges — same sources, same sinks, weights in the same coarse bin — sort
+// into the same species; agents whose surviving graphs diverge sort apart.
+//
+// Each edge is packed into a `u32` key; the fingerprint of a network is a
+// sorted, deduped `Vec<u32>`. Jaccard between two fingerprints is a single
+// linear merge — no hashing, no allocations inside the comparison loop.
+
+/// Bucket size for the weight component of an edge key. Two weights land in
+/// the same bucket when `round(w / WEIGHT_BUCKET_SIZE)` matches, so values
+/// drifting by less than half a bucket don't change the key.
+///
+/// `0.5` puts a weight of `0.49` and `−0.49` in the same bucket (0) — small
+/// mutations stay in-niche — while `+0.6` and `−0.6` land in different
+/// buckets (1 and −1), splitting a sign-flipped lineage into its own species.
+pub const WEIGHT_BUCKET_SIZE: f32 = 0.5;
+
+/// Discretise a float weight into a signed 5-bit bucket. Clamped to fit the
+/// packing layout in [`edge_key`] even if a weight escapes the typical
+/// `[-8, +8]` range produced by the i16 → f32 mapping.
+#[inline]
+pub fn weight_bucket(w: f32) -> i8 {
+    (w / WEIGHT_BUCKET_SIZE).round().clamp(-16.0, 15.0) as i8
+}
+
+/// Pack a single gene into a 23-bit `u32` topology key.
+///
+/// Bit layout:
+/// - bit 0:        `source_type` (sensor=1, neuron=0)
+/// - bits 1..=8:   `source_num`  (0..=255)
+/// - bit 9:        `sink_type`   (action=1, neuron=0)
+/// - bits 10..=17: `sink_num`    (0..=255)
+/// - bits 18..=22: `weight_bucket` (two's-complement i5, range −16..=15)
+///
+/// 23 bits used; the upper 9 stay zero. Two genes with the same wiring and
+/// weight bucket produce identical keys, so the fingerprint dedupes them.
+#[inline]
+pub fn edge_key(g: &Gene) -> u32 {
+    let st = (g.source_type() as u32) & 0x1;
+    let sn = (g.source_num() as u32) & 0xFF;
+    let kt = (g.sink_type() as u32) & 0x1;
+    let kn = (g.sink_num() as u32) & 0xFF;
+    let wb = weight_bucket(g.weight_as_float()) as i32;
+    let wb_packed = (wb & 0x1F) as u32; // 5 bits, two's-complement
+    st | (sn << 1) | (kt << 9) | (kn << 10) | (wb_packed << 18)
+}
+
+/// Build the sorted, deduped topology fingerprint of a compiled network.
+/// Walks `nnet.all_connections()` once; the resulting `Vec<u32>` is the
+/// canonical edge set that [`jaccard_sorted`] consumes.
+pub fn edge_fingerprint(nnet: &crate::genome::neural_net::NeuralNet) -> Vec<u32> {
+    let mut keys: Vec<u32> = nnet.all_connections().map(edge_key).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    keys
+}
+
+/// Jaccard similarity of two sorted, deduped `u32` sets, computed via a
+/// single merge pass: `|A ∩ B| / |A ∪ B|`. Empty-vs-empty returns `1.0`
+/// to match `genome_similarity`'s convention; otherwise empty-vs-non-empty
+/// returns `0.0`.
+#[inline]
+pub fn jaccard_sorted(a: &[u32], b: &[u32]) -> f32 {
+    if a.is_empty() && b.is_empty() {
+        return 1.0;
+    }
+    let (mut i, mut j, mut inter) = (0usize, 0usize, 0usize);
+    while i < a.len() && j < b.len() {
+        match a[i].cmp(&b[j]) {
+            std::cmp::Ordering::Less => i += 1,
+            std::cmp::Ordering::Greater => j += 1,
+            std::cmp::Ordering::Equal => {
+                inter += 1;
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    let union = a.len() + b.len() - inter;
+    if union == 0 {
+        1.0
+    } else {
+        inter as f32 / union as f32
+    }
+}
+
+/// Convenience wrapper for tests and one-off use: build both fingerprints
+/// and compute their Jaccard. The hot path in `speciate` caches fingerprints
+/// on `Species` and calls [`jaccard_sorted`] directly.
+pub fn nnet_topology_similarity(
+    a: &crate::genome::neural_net::NeuralNet,
+    b: &crate::genome::neural_net::NeuralNet,
+) -> f32 {
+    jaccard_sorted(&edge_fingerprint(a), &edge_fingerprint(b))
 }
 
 fn jaro_winkler(a: &Genome, b: &Genome) -> f32 {

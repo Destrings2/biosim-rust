@@ -116,6 +116,58 @@ pub struct SimConfig {
     #[serde(default)]
     pub bloat_penalty_weight: f32,
 
+    // ── Speciation ─────────────────────────────────────────────────────────
+    /// Bucket population into species by genome distance and reproduce
+    /// within species. Default `false`.
+    #[serde(default)]
+    pub enable_speciation: bool,
+    /// Compatibility distance threshold (1 − similarity). Lower = more
+    /// species; higher = fewer. Adaptive τ adjusts at runtime to keep the
+    /// species count near `species_count_target`.
+    #[serde(default = "default_compatibility_threshold")]
+    pub compatibility_threshold: f32,
+    /// Target number of species. Adaptive τ adjusts toward this.
+    #[serde(default = "default_species_count_target")]
+    pub species_count_target: u32,
+    /// Acceptable band for target species count.
+    #[serde(default = "default_species_count_target_tolerance")]
+    pub species_count_target_tolerance: u32,
+    /// τ adjustment step per generation when out of band.
+    #[serde(default = "default_compatibility_threshold_step")]
+    pub compatibility_threshold_step: f32,
+    /// Generations a species can go without improving before it is denied
+    /// offspring. The two top species are immune.
+    #[serde(default = "default_stagnation_limit")]
+    pub stagnation_limit: u32,
+    /// Minimum members for a species to copy its top genome unchanged.
+    /// Default `2`: a species with two or more members preserves its
+    /// best. Solo species (1 member) skip elitism to keep their slot
+    /// available for fresh exploration.
+    #[serde(default = "default_species_elitism_min")]
+    pub species_elitism_min: u32,
+    /// Probability of drawing the second parent from a different species
+    /// during sexual reproduction.
+    #[serde(default = "default_interspecies_mating_rate")]
+    pub interspecies_mating_rate: f32,
+    /// Similarity metric used when placing parents into species. Independent
+    /// of [`genome_comparison_method`]: that knob drives the analysis
+    /// dashboard and `genetic_diversity`, while this one drives the
+    /// speciation pipeline only.
+    ///
+    /// Values:
+    /// - `0` = Jaro-Winkler on raw genome bytes
+    /// - `1` = Hamming bits on raw genome bytes
+    /// - `2` = Hamming bytes on raw genome bytes
+    /// - `3` = Network topology (Jaccard on culled-NN edge set with coarse
+    ///   weight bucketing). **Default.** Buckets agents by behaviourally
+    ///   meaningful niche — same wiring + similar weight magnitudes cluster
+    ///   together. Bit-based methods cluster by gene byte-packing instead,
+    ///   which is rarely what's wanted for niching.
+    ///
+    /// [`genome_comparison_method`]: Self::genome_comparison_method
+    #[serde(default = "default_speciation_similarity_method")]
+    pub speciation_similarity_method: u8,
+
     // ── Energy system ──────────────────────────────────────────────────────
     /// Enable the energy and food subsystems.
     pub enable_energy: bool,
@@ -190,6 +242,15 @@ impl Default for SimConfig {
             mutation_rate_jitter: 0.2,
             kill_enable: false,
             bloat_penalty_weight: 0.0,
+            enable_speciation: false,
+            compatibility_threshold: default_compatibility_threshold(),
+            species_count_target: default_species_count_target(),
+            species_count_target_tolerance: default_species_count_target_tolerance(),
+            compatibility_threshold_step: default_compatibility_threshold_step(),
+            stagnation_limit: default_stagnation_limit(),
+            species_elitism_min: default_species_elitism_min(),
+            interspecies_mating_rate: default_interspecies_mating_rate(),
+            speciation_similarity_method: default_speciation_similarity_method(),
             enable_energy: false,
             energy_per_step_cost: 0.003,
             food_regen_rate: 0.0005,
@@ -229,4 +290,30 @@ impl SimConfig {
         *self = serde_json::from_value(current)?;
         Ok(())
     }
+}
+
+// ── Serde Defaults ───────────────────────────────────────────────────────
+fn default_compatibility_threshold() -> f32 {
+    0.30
+}
+fn default_species_count_target() -> u32 {
+    15
+}
+fn default_species_count_target_tolerance() -> u32 {
+    5
+}
+fn default_compatibility_threshold_step() -> f32 {
+    0.02
+}
+fn default_stagnation_limit() -> u32 {
+    15
+}
+fn default_species_elitism_min() -> u32 {
+    2
+}
+fn default_interspecies_mating_rate() -> f32 {
+    0.001
+}
+fn default_speciation_similarity_method() -> u8 {
+    3
 }

@@ -40,6 +40,7 @@ use crate::signals_layer::Signals;
 use crate::sim_config::SimConfig;
 use crate::types::Coord;
 use crate::world::World;
+use crate::genome::speciation::SpeciationState;
 use std::collections::HashMap;
 
 /// Reusable scratch buffers — allocated once, cleared and reused each step.
@@ -87,6 +88,7 @@ pub struct SimulationState {
     /// challenge configuration. See [`crate::registry::Breed`].
     pub breeds: crate::registry::BreedRegistry,
     pub rng: Rng,
+    pub speciation: SpeciationState,
     /// Scratch buffers reused each step. Not part of the simulation state proper
     /// — they hold no semantic information between steps. Public so `sim_step`
     /// can split-borrow them alongside `population` etc.
@@ -196,6 +198,7 @@ impl SimulationState {
             challenges,
             breeds,
             rng,
+            speciation: SpeciationState::default(),
             scratch: StepScratch::default(),
             user_barriers: HashMap::new(),
         }

@@ -322,6 +322,15 @@ fn left_column(ui: &mut egui::Ui, sim: &Sim, a: &biosim4_core::agent::Agent) {
     kv(ui, "LONGPROBE", format!("{}", a.long_probe_dist));
     kv(ui, "HEADING", format!("{:?}", a.heading.0));
 
+    // Render the SPECIES section only when speciation is producing
+    // attributions. With speciation disabled every agent's species_id
+    // is `None`, so the section would just be dead chrome.
+    if sim.state.config.enable_speciation || a.species_id.is_some() {
+        ui.add_space(10.0);
+        section_label(ui, "SPECIES");
+        species_panel(ui, sim, a);
+    }
+
     ui.add_space(10.0);
     section_label(ui, "MEMORY");
     egui::Frame::default()
@@ -465,6 +474,52 @@ fn action_row(ui: &mut egui::Ui, name: &str, weight: f32, max_abs: f32) {
             egui::Stroke::new(1.0, theme::LINE_2),
         );
     });
+}
+
+/// Render the SPECIES box: id, live sibling count, all-time-best fitness,
+/// stagnation counter, allocated offspring this gen.
+///
+/// `species_id` on the agent is set at reproduction time; the matching
+/// [`Species`] record in `state.speciation.species` carries the lineage
+/// statistics. The lookup is O(species count) — typically ~15 entries —
+/// so iterating per frame is fine. The live-count walks the population
+/// once per render to surface die-off mid-generation (allocated_offspring
+/// counts births; live count drops as agents die).
+///
+/// [`Species`]: biosim4_core::genome::speciation::Species
+fn species_panel(ui: &mut egui::Ui, sim: &Sim, a: &biosim4_core::agent::Agent) {
+    egui::Frame::default()
+        .fill(theme::BG_2)
+        .stroke(egui::Stroke::new(1.0, theme::LINE))
+        .corner_radius(egui::CornerRadius::same(4))
+        .inner_margin(egui::Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            let Some(sid) = a.species_id else {
+                ui.label(
+                    egui::RichText::new("unattributed").size(10.5).color(theme::MUTED).italics(),
+                );
+                return;
+            };
+            let species = sim.state.speciation.species.iter().find(|s| s.id == sid);
+            let Some(s) = species else {
+                // Species was pruned between this agent's birth and now
+                // (stagnant or went empty after reproduction). Show the
+                // id so the user can correlate but flag it as defunct.
+                kv(ui, "ID", format!("#{sid} (pruned)"));
+                return;
+            };
+            let live = sim
+                .state
+                .population
+                .iter_alive()
+                .filter(|other| other.species_id == Some(sid))
+                .count();
+            kv(ui, "ID", format!("#{sid}"));
+            kv(ui, "LIVE", format!("{live} agents"));
+            kv(ui, "BEST", format!("{:+.3}", s.all_time_best_fitness));
+            kv(ui, "STALE", format!("{} gens", s.gens_since_improvement));
+            kv(ui, "ALLOC", format!("{}", s.allocated_offspring));
+        });
 }
 
 fn minimap(ui: &mut egui::Ui, sim: &Sim, x: i16, y: i16, color: [u8; 3]) {
