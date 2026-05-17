@@ -30,6 +30,7 @@
 use crate::genome::gene::Gene;
 use crate::rng::Rng;
 use crate::sim_config::SimConfig;
+use crate::types::Coord;
 
 /// An ordered sequence of [`Gene`] values representing one agent's genome.
 ///
@@ -202,6 +203,26 @@ fn jitter_rate(parent_rate: f32, tau: f32, rng: &mut Rng) -> f32 {
     (parent_rate * (tau * r).exp()).clamp(MIN_MUTATION_RATE, MAX_MUTATION_RATE)
 }
 
+/// One reproduction outcome with optional parent-position telemetry.
+///
+/// `parent_a_pos` and `parent_b_pos` are populated only when the caller
+/// passed parallel `parent_positions` / `global_positions` slices to the
+/// `_with_positions` variant. They drive spatial offspring inheritance in
+/// [`crate::spawn::spawn_new_generation`] (cellular GA / parapatric
+/// speciation) — see [`crate::sim_config::OffspringPlacementMode`].
+///
+/// `parent_b_pos` is `None` for asexual / single-parent paths and for
+/// the extinction-recovery fallback (empty pool). Spatial placement
+/// modes that depend on B (e.g. `MidpointOfParents`) should fall back to
+/// `parent_a_pos` when B is missing.
+#[derive(Clone, Debug)]
+pub struct ChildResult {
+    pub genome: Genome,
+    pub mutation_rate: f32,
+    pub parent_a_pos: Option<Coord>,
+    pub parent_b_pos: Option<Coord>,
+}
+
 /// Generate one child `(genome, mutation_rate)` from a fitness-sorted
 /// parent pool of `(genome, rate)` pairs. Higher pool index = fitter.
 pub fn generate_child_genome(
@@ -209,7 +230,8 @@ pub fn generate_child_genome(
     params: &ReproductionParams,
     rng: &mut Rng,
 ) -> (Genome, f32) {
-    generate_child_genome_impl(parents, params, rng, None)
+    let r = generate_child_genome_impl(parents, None, params, rng, None, None);
+    (r.genome, r.mutation_rate)
 }
 
 pub fn generate_child_genome_interspecies(
@@ -218,15 +240,50 @@ pub fn generate_child_genome_interspecies(
     params: &ReproductionParams,
     rng: &mut Rng,
 ) -> (Genome, f32) {
-    generate_child_genome_impl(parents, params, rng, Some(global_parents))
+    let r = generate_child_genome_impl(parents, None, params, rng, Some(global_parents), None);
+    (r.genome, r.mutation_rate)
+}
+
+/// Position-aware variant that returns the chosen parents' grid
+/// positions alongside the child. `parent_positions` must be parallel
+/// to `parents` (same length, same order); the returned
+/// `parent_a_pos` / `parent_b_pos` are `None` when the slice is empty
+/// or the spawning path was single-parent.
+pub fn generate_child_genome_with_positions(
+    parents: &[(Genome, f32)],
+    parent_positions: &[Coord],
+    params: &ReproductionParams,
+    rng: &mut Rng,
+) -> ChildResult {
+    generate_child_genome_impl(parents, Some(parent_positions), params, rng, None, None)
+}
+
+pub fn generate_child_genome_interspecies_with_positions(
+    parents: &[(Genome, f32)],
+    parent_positions: &[Coord],
+    global_parents: &[(Genome, f32)],
+    global_positions: &[Coord],
+    params: &ReproductionParams,
+    rng: &mut Rng,
+) -> ChildResult {
+    generate_child_genome_impl(
+        parents,
+        Some(parent_positions),
+        params,
+        rng,
+        Some(global_parents),
+        Some(global_positions),
+    )
 }
 
 fn generate_child_genome_impl(
     parents: &[(Genome, f32)],
+    parent_positions: Option<&[Coord]>,
     params: &ReproductionParams,
     rng: &mut Rng,
     global_parents: Option<&[(Genome, f32)]>,
-) -> (Genome, f32) {
+    global_positions: Option<&[Coord]>,
+) -> ChildResult {
     let ReproductionParams {
         sexual,
         tournament_size,
@@ -238,12 +295,17 @@ fn generate_child_genome_impl(
         mutation_rate_jitter,
     } = *params;
     if parents.is_empty() {
-        return (vec![], mutation_rate);
+        return ChildResult {
+            genome: vec![],
+            mutation_rate,
+            parent_a_pos: None,
+            parent_b_pos: None,
+        };
     }
 
     let pick = |rng: &mut Rng| -> usize { tournament_pick(parents.len(), tournament_size, rng) };
 
-    let (mut child, parent_rate) = if sexual && parents.len() > 1 {
+    let (mut child, parent_rate, parent_a_pos, parent_b_pos) = if sexual && parents.len() > 1 {
         let a = pick(rng);
         let mut b = pick(rng);
 
@@ -251,10 +313,11 @@ fn generate_child_genome_impl(
         // already filtered it to "members of OTHER species", so we can
         // pick B from that pool unconditionally. Caller-side filtering
         // keeps this draw symmetrical with the within-species path.
-        let b_genome = match global_parents {
+        let (b_genome, b_pos) = match global_parents {
             Some(global) if global.len() > 1 => {
                 b = tournament_pick(global.len(), tournament_size, rng);
-                &global[b].0
+                let pos = global_positions.and_then(|p| p.get(b).copied());
+                (&global[b].0, pos)
             }
             _ => {
                 // Within-species mating with bounded retry: a low-diversity
@@ -266,16 +329,19 @@ fn generate_child_genome_impl(
                     }
                     b = pick(rng);
                 }
-                &parents[b].0
+                let pos = parent_positions.and_then(|p| p.get(b).copied());
+                (&parents[b].0, pos)
             }
         };
 
         // Inherit from parent A; uniform crossover uses A's slot order
         // as the structural primary.
-        (uniform_crossover(&parents[a].0, b_genome, rng), parents[a].1)
+        let a_pos = parent_positions.and_then(|p| p.get(a).copied());
+        (uniform_crossover(&parents[a].0, b_genome, rng), parents[a].1, a_pos, b_pos)
     } else {
         let p = pick(rng);
-        (parents[p].0.clone(), parents[p].1)
+        let p_pos = parent_positions.and_then(|pp| pp.get(p).copied());
+        (parents[p].0.clone(), parents[p].1, p_pos, None)
     };
 
     let child_rate = if adaptive_mutation {
@@ -292,7 +358,7 @@ fn generate_child_genome_impl(
         child.drain(..trim);
         child.truncate(max_len as usize);
     }
-    (child, child_rate)
+    ChildResult { genome: child, mutation_rate: child_rate, parent_a_pos, parent_b_pos }
 }
 
 /// Uniform per-gene crossover. Each child position takes A[i] or B[i]

@@ -328,6 +328,43 @@ impl Grid {
             }
         }
     }
+
+    /// Rejection-sample an empty cell within Chebyshev (L∞) `radius` of
+    /// `seed`. Backs off to [`find_empty_location`] after the local disk
+    /// has been probed `MAX_LOCAL_TRIES` times, so a fully-occupied
+    /// neighbourhood can't stall the spawner. Used by spatial offspring
+    /// inheritance (see [`crate::sim_config::OffspringPlacementMode`]).
+    ///
+    /// `radius == 0` collapses immediately to the global path — there's
+    /// no neighbourhood to sample.
+    pub fn find_empty_location_near(
+        &self,
+        seed: Coord,
+        radius: u32,
+        rng: &mut crate::rng::Rng,
+    ) -> Coord {
+        const MAX_LOCAL_TRIES: u32 = 16;
+        if radius == 0 {
+            return self.find_empty_location(rng);
+        }
+        let span = radius * 2 + 1;
+        for _ in 0..MAX_LOCAL_TRIES {
+            let dx = rng.gen_range_u32(0, span) as i32 - radius as i32;
+            let dy = rng.gen_range_u32(0, span) as i32 - radius as i32;
+            let cx = seed.x as i32 + dx;
+            let cy = seed.y as i32 + dy;
+            // Guard against pathologically large radii on small worlds —
+            // wrap takes a Coord (i16), so the i32 candidate must fit.
+            if let (Ok(cx), Ok(cy)) = (i16::try_from(cx), i16::try_from(cy)) {
+                if let Some(c) = self.wrap(Coord::new(cx, cy)) {
+                    if self.is_empty_at(c) {
+                        return c;
+                    }
+                }
+            }
+        }
+        self.find_empty_location(rng)
+    }
 }
 
 /// Visit all valid grid locations within a circular radius of `center`.
@@ -415,6 +452,53 @@ mod tests {
         assert!(!is_programmable_cell(KILL_BARRIER));
         assert!(!is_programmable_cell(EMPTY));
         assert!(!is_programmable_cell(1));
+    }
+
+    #[test]
+    fn find_empty_location_near_stays_in_disk_when_room() {
+        // With an empty grid every disk cell is a valid candidate, so the
+        // sampler must never escape the disk. Pinning this rules out
+        // off-by-one bugs in the dx/dy range or seed math.
+        let g = Grid::new(32, 32);
+        let mut rng = crate::rng::Rng::seeded(0xDEAD_BEEF);
+        let seed = Coord::new(16, 16);
+        let radius = 4;
+        for _ in 0..50 {
+            let loc = g.find_empty_location_near(seed, radius, &mut rng);
+            assert!(g.chebyshev_dist(seed, loc) <= radius as i32);
+        }
+    }
+
+    #[test]
+    fn find_empty_location_near_falls_back_when_disk_full() {
+        // Surround the seed with occupied cells (disk fully blocked) and a
+        // single empty cell far away. The lookup must back off to the
+        // global path and find that lone empty cell.
+        let mut g = Grid::new(32, 32);
+        let seed = Coord::new(8, 8);
+        let radius = 2;
+        for y in 0..32 {
+            for x in 0..32 {
+                if !(x == 25 && y == 25) {
+                    g.set(Coord::new(x, y), 1);
+                }
+            }
+        }
+        let mut rng = crate::rng::Rng::seeded(0xC0DE);
+        let loc = g.find_empty_location_near(seed, radius, &mut rng);
+        assert_eq!(loc, Coord::new(25, 25));
+    }
+
+    #[test]
+    fn find_empty_location_near_radius_zero_is_global() {
+        // radius == 0 must behave identically to find_empty_location:
+        // same RNG seed should produce the same coordinate.
+        let g = Grid::new(16, 16);
+        let mut rng_a = crate::rng::Rng::seeded(0x1234);
+        let mut rng_b = crate::rng::Rng::seeded(0x1234);
+        let a = g.find_empty_location_near(Coord::new(0, 0), 0, &mut rng_a);
+        let b = g.find_empty_location(&mut rng_b);
+        assert_eq!(a, b);
     }
 
     #[test]

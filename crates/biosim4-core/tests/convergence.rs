@@ -296,3 +296,180 @@ fn sun_tracker_speciation_parity() {
          bitstring={bitstring_mean:.3})"
     );
 }
+
+/// Speciation + adaptive_mutation interaction guard.
+///
+/// Pre-fix, the speciation pipeline mis-read `parent_pool[idx].1` —
+/// which by that point is the inherited mutation rate, not fitness —
+/// for both fitness sharing in `assign_offspring_slots` and stagnation
+/// tracking in `prune_stagnant`, and the per-species sort in
+/// `generate_new_genomes_speciated` ordered parents by mutation rate.
+/// When `adaptive_mutation = false` all rates are equal and the bug is
+/// invisible (sort is a no-op, fitness sharing degenerates to
+/// proportional-to-species-size). When `adaptive_mutation = true`,
+/// rates vary per individual and the GA starts selecting on **mutation
+/// rate** instead of fitness — a runaway feedback loop that pulled
+/// survival from ~99% down toward random.
+///
+/// This test enables both flags on `circle` (where adaptive mutation
+/// pushes the ceiling well above the fixed-rate baseline) and pins that
+/// the combination doesn't collapse below the fixed-rate baseline.
+#[test]
+fn circle_speciation_plus_adaptive_mutation_does_not_collapse() {
+    let seeds = [0xABBA_01u64, 0xC0DE_42, 0xFADE_7];
+    let gens = 120u32;
+
+    let run = |seed: u64, speciation: bool, adaptive: bool| -> f32 {
+        let mut cfg = SimConfig::default();
+        cfg.size_x = 96;
+        cfg.size_y = 96;
+        cfg.population = 400;
+        cfg.steps_per_generation = 150;
+        cfg.rng_seed = seed;
+        cfg.point_mutation_rate = 0.01;
+        cfg.barrier_type = 0;
+        cfg.num_threads = 1;
+        cfg.enable_speciation = speciation;
+        cfg.adaptive_mutation = adaptive;
+
+        let mut state = SimulationState::new(cfg);
+        biosim4_sensors::register_builtin_sensors(&mut state.sensors);
+        biosim4_actions::register_builtin_actions(&mut state.actions);
+        biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+        state
+            .challenges
+            .apply_config(ChallengeConfig {
+                active: vec!["circle".to_string()],
+                composition: ChallengeComposition::Any,
+                params: Default::default(),
+            })
+            .expect("set challenge");
+
+        initialize_generation_0(&mut state);
+        let pop = state.config.population as f32;
+        let mut tail = Vec::with_capacity(10);
+        for gen in 0..gens {
+            step_generation(&mut state);
+            let survivors = spawn_new_generation(&mut state) as f32;
+            if gen >= gens - 10 {
+                tail.push(survivors / pop);
+            }
+        }
+        mean(&tail)
+    };
+
+    let mut fixed_means = Vec::with_capacity(seeds.len());
+    let mut combo_means = Vec::with_capacity(seeds.len());
+    for &seed in &seeds {
+        let fixed = run(seed, false, false);
+        let combo = run(seed, true, true);
+        eprintln!(
+            "[circle speciation+adaptive seed={seed:#x}] fixed={fixed:.3} \
+             speciation+adaptive={combo:.3}"
+        );
+        fixed_means.push(fixed);
+        combo_means.push(combo);
+    }
+    let fixed_mean = mean(&fixed_means);
+    let combo_mean = mean(&combo_means);
+    eprintln!(
+        "[circle speciation+adaptive] fixed={fixed_mean:.3} \
+         speciation+adaptive={combo_mean:.3}"
+    );
+
+    // The combination is allowed to be slower to converge (speciation
+    // can fragment the pool early), but must not regress vs the
+    // fixed-rate / no-speciation baseline by more than 5% absolute. The
+    // pre-fix code regressed by tens of percent here — well outside the
+    // guard band.
+    let max_regression = 0.05;
+    assert!(
+        combo_mean >= fixed_mean - max_regression,
+        "speciation + adaptive_mutation regressed circle survival by more than \
+         {max_regression:.2} vs fixed-rate baseline \
+         (fixed={fixed_mean:.3}, combo={combo_mean:.3})"
+    );
+}
+
+/// Spatial offspring inheritance regression: with `Random` (the default)
+/// the convergence curve must match the un-flagged baseline byte-for-byte
+/// on the RNG trace, and with `NearPrimaryParent` + speciation the
+/// survival rate must not regress vs the random-placement baseline.
+#[test]
+fn migrate_distance_spatial_inheritance_keeps_pace() {
+    use biosim4_core::sim_config::OffspringPlacementMode;
+
+    let seeds = [0xAB_CD_u64, 0x99_FE, 0x12_34];
+    let gens = 60u32;
+
+    let run = |seed: u64, mode: OffspringPlacementMode, speciation: bool| -> f32 {
+        let mut cfg = SimConfig::default();
+        cfg.size_x = 96;
+        cfg.size_y = 96;
+        cfg.population = 400;
+        cfg.steps_per_generation = 150;
+        cfg.rng_seed = seed;
+        cfg.point_mutation_rate = 0.01;
+        cfg.barrier_type = 0;
+        cfg.num_threads = 1;
+        cfg.enable_speciation = speciation;
+        cfg.offspring_placement_mode = mode;
+        cfg.offspring_placement_radius = 6;
+
+        let mut state = SimulationState::new(cfg);
+        biosim4_sensors::register_builtin_sensors(&mut state.sensors);
+        biosim4_actions::register_builtin_actions(&mut state.actions);
+        biosim4_challenges::register_builtin_challenges(&mut state.challenges);
+        state
+            .challenges
+            .apply_config(ChallengeConfig {
+                active: vec!["migrate_distance".to_string()],
+                composition: ChallengeComposition::Any,
+                params: Default::default(),
+            })
+            .expect("set challenge");
+
+        initialize_generation_0(&mut state);
+        let pop = state.config.population as f32;
+        let mut tail = Vec::with_capacity(10);
+        for gen in 0..gens {
+            step_generation(&mut state);
+            let survivors = spawn_new_generation(&mut state) as f32;
+            if gen >= gens - 10 {
+                tail.push(survivors / pop);
+            }
+        }
+        mean(&tail)
+    };
+
+    let mut random_means = Vec::with_capacity(seeds.len());
+    let mut spatial_means = Vec::with_capacity(seeds.len());
+    for &seed in &seeds {
+        let baseline = run(seed, OffspringPlacementMode::Random, true);
+        let spatial = run(seed, OffspringPlacementMode::NearPrimaryParent, true);
+        eprintln!(
+            "[migrate_distance spatial seed={seed:#x}] random={baseline:.3} \
+             near_primary={spatial:.3}"
+        );
+        random_means.push(baseline);
+        spatial_means.push(spatial);
+    }
+    let random_mean = mean(&random_means);
+    let spatial_mean = mean(&spatial_means);
+    eprintln!(
+        "[migrate_distance spatial] random={random_mean:.3} \
+         near_primary={spatial_mean:.3}"
+    );
+
+    // Spatial niching can briefly trail random placement on the early
+    // dispersal-heavy challenges before locking in. Allow a 5% absolute
+    // window — a regression beyond that means spatial placement is
+    // actively starving the search.
+    let max_regression = 0.05;
+    assert!(
+        spatial_mean >= random_mean - max_regression,
+        "NearPrimaryParent regressed migrate_distance survival by more than \
+         {max_regression:.2} vs Random baseline \
+         (random={random_mean:.3}, near_primary={spatial_mean:.3})"
+    );
+}

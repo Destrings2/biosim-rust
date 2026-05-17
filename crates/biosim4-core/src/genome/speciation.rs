@@ -196,7 +196,16 @@ impl SpeciationState {
     /// each species' fitness-shared sum. When total adjusted fitness
     /// is zero or negative (e.g. an entire generation that scored 0),
     /// the remainder is split equally instead.
-    pub fn assign_offspring_slots(&mut self, parent_pool: &[(Genome, f32)], total_population: u32) {
+    ///
+    /// `parent_fitnesses` is indexed by the same positions stored in
+    /// `species.members` (i.e. parallel to the parent pool that was
+    /// passed to [`speciate`]). It must be the **fitness** of each
+    /// parent — not the mutation rate. Confusing the two silently
+    /// breaks fitness sharing whenever `adaptive_mutation` is enabled,
+    /// because the rates then vary per-individual and the proportional
+    /// allocation degenerates into "favour high-mutation lineages",
+    /// which causes a mutation runaway that collapses survival.
+    pub fn assign_offspring_slots(&mut self, parent_fitnesses: &[f32], total_population: u32) {
         // Reset per-generation accumulators on every species, including
         // ones that went empty this gen (so they get dropped by
         // `end_of_generation`'s retain rather than carrying a stale slot
@@ -216,7 +225,7 @@ impl SpeciationState {
             }
             let size = species.members.len() as f32;
             for &idx in &species.members {
-                species.adjusted_fitness_sum += parent_pool[idx].1 / size;
+                species.adjusted_fitness_sum += parent_fitnesses[idx] / size;
             }
             total_adjusted += species.adjusted_fitness_sum;
         }
@@ -283,14 +292,20 @@ impl SpeciationState {
         }
     }
 
-    pub fn prune_stagnant(&mut self, parent_pool: &[(Genome, f32)], stagnation_limit: u32) {
+    /// `parent_fitnesses` is parallel to the pool that was passed to
+    /// [`speciate`] — same caution as [`assign_offspring_slots`]: this
+    /// must be fitness, not mutation rate, or stagnation tracking will
+    /// silently switch to "no lineage ever improves its mutation rate",
+    /// pruning every species the moment its top member's rate stops
+    /// climbing.
+    pub fn prune_stagnant(&mut self, parent_fitnesses: &[f32], stagnation_limit: u32) {
         for species in &mut self.species {
             if species.members.is_empty() {
                 continue;
             }
             let mut current_best = f32::NEG_INFINITY;
             for &idx in &species.members {
-                let fitness = parent_pool[idx].1;
+                let fitness = parent_fitnesses[idx];
                 if fitness > current_best {
                     current_best = fitness;
                 }
@@ -421,10 +436,11 @@ mod tests {
         let g1 = genome_of(&[0x00000000]);
         let g2 = genome_of(&[0xFFFFFFFF]);
         let pool: Vec<(Genome, f32)> = vec![(g1, 0.8), (g2, 0.2)];
+        let fitnesses: Vec<f32> = pool.iter().map(|(_, f)| *f).collect();
         let mut state = SpeciationState::new(0.05);
         state.speciate(&pool, &cfg_with_method(1), dummy_wiring_cfg());
         let total_pop: u32 = 100;
-        state.assign_offspring_slots(&pool, total_pop);
+        state.assign_offspring_slots(&fitnesses, total_pop);
         let sum: usize = state.species.iter().map(|s| s.allocated_offspring).sum();
         assert_eq!(sum as u32, total_pop, "allocations must sum to population");
     }
@@ -438,9 +454,10 @@ mod tests {
         let g2 = genome_of(&[0xFFFFFFFF, 0xEEEEEEEE]);
         let g3 = genome_of(&[0xAAAAAAAA, 0x55555555]);
         let pool: Vec<(Genome, f32)> = vec![(g1, 1.0), (g2, 0.8), (g3, 0.3)];
+        let fitnesses: Vec<f32> = pool.iter().map(|(_, f)| *f).collect();
         let mut state = SpeciationState::new(0.05);
         state.speciate(&pool, &cfg_with_method(1), dummy_wiring_cfg()); // hamming → 3 very distinct species
-        state.assign_offspring_slots(&pool, 100);
+        state.assign_offspring_slots(&fitnesses, 100);
 
         // Pre-set species 3 (id=3, lowest fitness) as stagnant.
         // Set all_time_best low (0.2) so it ranks below species 1 (1.0) and 2 (0.8).
@@ -451,7 +468,7 @@ mod tests {
             s.gens_since_improvement = 100;
         }
 
-        state.prune_stagnant(&pool, 15);
+        state.prune_stagnant(&fitnesses, 15);
 
         // Top-2 by all_time_best_fitness: species 1 (1.0) and species 2 (0.8) → protected.
         // Species 3 has all_time_best=0.9 but is third and stagnant → pruned.

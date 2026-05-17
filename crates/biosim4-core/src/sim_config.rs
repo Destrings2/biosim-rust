@@ -28,6 +28,34 @@ use serde::{Deserialize, Serialize};
 
 use crate::topology::Topology;
 
+/// Where to place each new agent at the generation boundary.
+///
+/// The grid is wiped between generations, so the default behaviour
+/// (`Random`) re-randomises every spatial relationship the population
+/// built up. The other modes inherit a position from the parents so
+/// lineages remain geographically coherent — this turns the grid into a
+/// niching substrate (cellular / spatially structured GA) and pairs
+/// with the genome-based speciation pipeline to produce parapatric
+/// species (genetic + geographic isolation).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OffspringPlacementMode {
+    /// Uniform random empty cell across the whole grid. Historical
+    /// default; preserves the gen-to-gen RNG trace byte-for-byte.
+    #[default]
+    Random,
+    /// Place the child within `offspring_placement_radius` of parent A's
+    /// last position (parent A is already the structural primary in
+    /// `uniform_crossover`). Asexual / elite / fallback paths use the
+    /// sole parent's position. Falls back to a global random pick when
+    /// the local disk is full.
+    NearPrimaryParent,
+    /// Place the child within `offspring_placement_radius` of the
+    /// (wrap-aware) midpoint of parents A and B. Asexual / interspecies /
+    /// elite / extinction-fallback paths degrade to `NearPrimaryParent`.
+    MidpointOfParents,
+}
+
 /// Full simulation configuration. JSON-serializable so frontends can read and write it.
 ///
 /// World dimensions (`size_x`, `size_y`, `population`) are effectively
@@ -124,6 +152,24 @@ pub struct SimConfig {
     /// challenge `pass`/fail is unaffected.
     #[serde(default)]
     pub bloat_penalty_weight: f32,
+
+    // ── Offspring placement ────────────────────────────────────────────────
+    /// Where to place each new agent on the grid at generation boundary.
+    /// Default `Random` (current behaviour: uniform empty cell). Other
+    /// modes inherit a position from the parents to create *spatial
+    /// niching* (cellular GA / parapatric speciation): lineages that
+    /// thrive in a region stay in that region, complementing the
+    /// (genetic) speciation pipeline.
+    #[serde(default)]
+    pub offspring_placement_mode: OffspringPlacementMode,
+    /// Chebyshev (L∞) radius around the inherited seed within which new
+    /// agents may be placed. Ignored when `offspring_placement_mode` is
+    /// `Random`. `0` collapses to "same cell" → almost always falls
+    /// back to global random (parent's cell is the only candidate and
+    /// is empty post-reset, but the next sibling can't reuse it).
+    /// Useful range `3..16`; defaults to `6` which gives a 13×13 disk.
+    #[serde(default = "default_offspring_placement_radius")]
+    pub offspring_placement_radius: u32,
 
     // ── Speciation ─────────────────────────────────────────────────────────
     /// Bucket population into species by genome distance and reproduce
@@ -251,6 +297,8 @@ impl Default for SimConfig {
             mutation_rate_jitter: 0.2,
             kill_enable: false,
             bloat_penalty_weight: 0.0,
+            offspring_placement_mode: OffspringPlacementMode::Random,
+            offspring_placement_radius: default_offspring_placement_radius(),
             enable_speciation: false,
             compatibility_threshold: default_compatibility_threshold(),
             species_count_target: default_species_count_target(),
@@ -325,4 +373,7 @@ fn default_interspecies_mating_rate() -> f32 {
 }
 fn default_speciation_similarity_method() -> u8 {
     3
+}
+fn default_offspring_placement_radius() -> u32 {
+    6
 }
