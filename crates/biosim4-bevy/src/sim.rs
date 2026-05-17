@@ -739,10 +739,11 @@ fn reproduce_at(sim: &mut Sim, x: u16, y: u16) {
         return;
     }
 
-    let (parent_genome, parent_color, parent_rate) = match sim.state.population.get(parent_id) {
-        Some(a) if a.alive => (a.genome.clone(), a.color, a.mutation_rate),
-        _ => return,
-    };
+    let (parent_genome, parent_color, parent_rate, parent_species) =
+        match sim.state.population.get(parent_id) {
+            Some(a) if a.alive => (a.genome.clone(), a.color, a.mutation_rate, a.species_id),
+            _ => return,
+        };
 
     let mut candidates: Vec<biosim4_core::types::Coord> = Vec::with_capacity(8);
     for dy in -1..=1i16 {
@@ -783,10 +784,16 @@ fn reproduce_at(sim: &mut Sim, x: u16, y: u16) {
     };
     let (child_genome, child_rate) = generate_child_genome(&parents, &repro, &mut sim.state.rng);
     let nnet = create_wiring(&child_genome, sim.state.wiring_config());
+    let dead = child_genome.len().saturating_sub(nnet.connection_count()) as u16;
     let id = sim.state.population.next_id();
     let mut child = Agent::new(id, child_loc, child_genome, nnet);
     child.color = parent_color;
     child.mutation_rate = child_rate;
+    // Inherit the parent's species so the manually-spawned child is
+    // attributed to the same lineage in the inspector. The next round
+    // of `speciate` may reassign it once the GA pipeline runs.
+    child.species_id = parent_species;
+    child.dead_gene_count = dead;
     let assigned = sim.state.population.spawn(child);
     sim.state.grid.set(child_loc, assigned);
 }

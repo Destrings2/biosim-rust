@@ -31,11 +31,19 @@ fn main() {
     // stepping path is non-deterministic.
     cfg.num_threads = 1;
     cfg.rng_seed = 0xC0FFEE;
-    
+
     let args: Vec<String> = std::env::args().collect();
     let speciation_flag = args.iter().any(|arg| arg == "--species");
     if speciation_flag {
         cfg.enable_speciation = true;
+    }
+    // Optional `--similarity-method=N` flag (only meaningful when --species
+    // is set). Defaults to whatever SimConfig::default() picked (currently 3
+    // = Network topology). Used to A/B-bench speciation methods from the CLI.
+    if let Some(arg) = args.iter().find(|a| a.starts_with("--similarity-method=")) {
+        if let Some(num) = arg.split('=').nth(1).and_then(|s| s.parse::<u8>().ok()) {
+            cfg.speciation_similarity_method = num;
+        }
     }
 
     let mut state = SimulationState::new(cfg);
@@ -69,7 +77,7 @@ fn main() {
     println!("challenge={challenge} gens={gens} stride={stride}");
     println!();
     println!(
-        "{:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>6} {:>6} {:>8} {:>9}",
+        "{:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>6} {:>6} {:>6} {:>8} {:>9}",
         "gen",
         "alive",
         "minL",
@@ -80,6 +88,7 @@ fn main() {
         "deadN",
         "0conn",
         "noAct",
+        "dead%",
         "surv%",
         "diverz",
         "mut_rate"
@@ -113,12 +122,23 @@ fn main() {
         let mean_rate: f32 =
             alive.iter().map(|a| a.mutation_rate).sum::<f32>() / alive.len() as f32;
 
+        // dead% = mean per-agent fraction of genes that didn't produce a
+        // wired connection. Empty genomes contribute 0 (max(1) guard).
+        // Tracks parsimony pressure under bloat_penalty_weight — should
+        // trend down with penalty on, stay flat with penalty off.
+        let dead_pct: f32 = alive
+            .iter()
+            .map(|a| a.dead_gene_count as f32 / a.genome.len().max(1) as f32)
+            .sum::<f32>()
+            / alive.len() as f32
+            * 100.0;
+
         let genome_refs: Vec<&Genome> = alive.iter().map(|a| &a.genome).collect();
         let mut div_rng = biosim4_core::rng::Rng::seeded(0xD1B45 ^ g as u64);
         let div = genetic_diversity(&genome_refs, 0, &mut div_rng);
 
         println!(
-            "{:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>6} {:>5.1}% {:>8.3} {:>9.4}",
+            "{:>5} {:>6} {:>5} {:>5} {:>5} {:>5} {:>5} {:>6} {:>6} {:>6} {:>5.1}% {:>5.1}% {:>8.3} {:>9.4}",
             g,
             alive.len(),
             lengths[0],
@@ -129,23 +149,33 @@ fn main() {
             zero_genome,
             dead_nnet,
             no_action,
+            dead_pct,
             last_surv_pct,
             div,
             mean_rate
         );
 
         if state.config.enable_speciation {
-            let num_species = state.speciation.species.iter().filter(|s| !s.members.is_empty()).count();
+            let num_species =
+                state.speciation.species.iter().filter(|s| !s.members.is_empty()).count();
             if num_species > 0 {
-                let mut active_species: Vec<_> = state.speciation.species.iter().filter(|s| !s.members.is_empty()).collect();
+                let mut active_species: Vec<_> =
+                    state.speciation.species.iter().filter(|s| !s.members.is_empty()).collect();
                 active_species.sort_by_key(|s| std::cmp::Reverse(s.members.len()));
-                
-                let sizes: Vec<String> = active_species.iter().take(5).map(|s| format!("{}", s.members.len())).collect();
-                let best_fitness: Vec<String> = active_species.iter().take(5).map(|s| format!("{:.1}", s.all_time_best_fitness)).collect();
-                
+
+                let sizes: Vec<String> =
+                    active_species.iter().take(5).map(|s| format!("{}", s.members.len())).collect();
+                let best_fitness: Vec<String> = active_species
+                    .iter()
+                    .take(5)
+                    .map(|s| format!("{:.1}", s.all_time_best_fitness))
+                    .collect();
+
                 println!(
                     "      └─ species: count={:02} top5_sizes=[{}] top5_best_fitness=[{}]",
-                    num_species, sizes.join(", "), best_fitness.join(", ")
+                    num_species,
+                    sizes.join(", "),
+                    best_fitness.join(", ")
                 );
             }
         }

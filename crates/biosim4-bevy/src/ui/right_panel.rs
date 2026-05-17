@@ -40,6 +40,14 @@ const BARRIER_TYPE_OPTIONS: &[(u8, &str)] = &[
 const GENOME_COMPARISON_OPTIONS: &[(u8, &str)] =
     &[(0, "Jaro-Winkler"), (1, "Hamming bits"), (2, "Hamming bytes")];
 
+/// Names for `SimConfig.speciation_similarity_method` — extends
+/// GENOME_COMPARISON_OPTIONS with `(3, "Network topology")`, which compares
+/// post-cull connection edge sets (Jaccard) rather than raw genome bytes.
+/// Topology is the default because it clusters by behavioural niche; the
+/// bitstring options are kept for A/B comparison and historical parity.
+const SPECIATION_SIMILARITY_OPTIONS: &[(u8, &str)] =
+    &[(0, "Jaro-Winkler"), (1, "Hamming bits"), (2, "Hamming bytes"), (3, "Network topology")];
+
 /// Display labels for `SimConfig.topology` — mirrors the variants of
 /// [`biosim4_core::topology::Topology`]. "Sphere" is the user-facing
 /// name for the "wraps both axes" case; topologically it's a flat torus
@@ -1431,6 +1439,14 @@ fn config_tab(
         0.0..=1.0,
         |v| format!("{v:.2}"),
     );
+    widgets::slider_field_f32(
+        ui,
+        "Bloat penalty",
+        Some("Parsimony pressure on dead-end gene count"),
+        &mut cfg.bloat_penalty_weight,
+        0.0..=0.5,
+        |v| format!("{v:.3}"),
+    );
     widgets::toggle_field(ui, "Kill enabled", Some("Peeps can kill"), &mut cfg.kill_enable);
 
     // ─── SPECIATION ────────────────────────────────────────────────────────
@@ -1492,6 +1508,13 @@ fn config_tab(
         &mut cfg.interspecies_mating_rate,
         0.0..=1.0,
         |v| format!("{v:.4}"),
+    );
+    widgets::enum_field_u8(
+        ui,
+        "Similarity metric",
+        Some("Network topology = behaviourally meaningful niching"),
+        &mut cfg.speciation_similarity_method,
+        SPECIATION_SIMILARITY_OPTIONS,
     );
 
     // ─── AGENT DEFAULTS ────────────────────────────────────────────────────
